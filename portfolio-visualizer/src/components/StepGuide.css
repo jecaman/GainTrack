@@ -1,0 +1,56 @@
+/* StepGuide.css */
+
+.step-guide-container {
+  /* Estilos base del contenedor principal */
+}
+
+@media (max-width: 1600px) {
+  .step-guide-container {
+    width: 550px;
+    margin-left: 15px;
+  }
+}
+@media (max-width: 1400px) {
+  .step-guide-container {
+    width: 500px;
+    margin-left: 10px;
+  }
+}
+@media (max-width: 1200px) {
+  .step-guide-container {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    margin-left: 0 !important;
+    width: calc(100vw - 40px) !important;
+    max-width: 600px !important;
+    background-color: #0a0a0a !important;
+    border-radius: 24px !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5) !important;
+    padding: 24px !important;
+  }
+  .step-guide-columns {
+    flex-direction: column !important;
+    gap: 20px !important;
+  }
+}
+@media (max-width: 768px) {
+  .step-guide-container {
+    padding: 20px !important;
+  }
+}
+
+.divider-line {
+  width: 2px;
+  background: rgba(255,255,255,0.12);
+  align-self: stretch;
+  margin: 0 18px;
+  border-radius: 2px;
+}
+@media (max-width: 1200px) {
+  .divider-line {
+    display: none;
+  }
+} 
