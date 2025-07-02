@@ -89,8 +89,8 @@ const PortfolioCharts = ({ apiKey, apiSecret }) => {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Main Container */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      {/* Main Container - Pantalla Completa */}
+      <div className="w-full mx-auto px-4 lg:px-8 py-8">
         {/* Control Panel */}
         <div className="text-center mb-12">
           <div className="group relative max-w-md mx-auto">
@@ -127,12 +127,27 @@ const PortfolioCharts = ({ apiKey, apiSecret }) => {
           </div>
         )}
 
-        {/* Loading State */}
+        {/* Loading State Mejorado */}
         {isLoading && (
-          <div className="text-center py-12">
-            <div className="inline-flex items-center px-8 py-4 bg-gray-900 rounded-2xl border border-gray-700">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mr-4"></div>
-              <span className="text-xl font-mono text-gray-300">Loading your portfolio...</span>
+          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+            <div className="text-center">
+              <div className="group relative">
+                <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-cyan-600 rounded-2xl blur opacity-40 group-hover:opacity-60 transition-opacity duration-300"></div>
+                <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-8">
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-500 border-t-transparent"></div>
+                    <div className="text-center">
+                      <h3 className="text-2xl font-bold text-white mb-2 font-mono">🔄 Conectando con Kraken</h3>
+                      <p className="text-lg text-gray-300 font-mono mb-2">Obteniendo datos de tu portfolio...</p>
+                      <div className="flex items-center justify-center space-x-2 text-sm text-gray-400">
+                        <span>📊</span>
+                        <span className="animate-pulse">Esto puede tomar unos segundos</span>
+                        <span>⏳</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
