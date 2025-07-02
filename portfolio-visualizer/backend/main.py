@@ -7,6 +7,12 @@ import krakenex
 from pykrakenapi import KrakenAPI
 import pandas as pd
 from datetime import datetime, timedelta
+import time
+import hashlib
+
+# Cache simple para evitar llamadas repetidas
+cache = {}
+CACHE_DURATION = 300  # 5 minutos en segundos
 
 app = FastAPI()
 
@@ -38,8 +44,8 @@ def get_valid_pair(kraken, asset, quote="ZEUR"):
             return pair_name
     return None
 
-def obtener_rentabilidad(api_key, api_secret):
-    kraken = crear_kraken_api(api_key, api_secret)
+def obtener_rentabilidad_optimizada(kraken):
+    """Versión optimizada que reutiliza la instancia de KrakenAPI"""
     since = int((datetime.now() - timedelta(days=365 * 50)).timestamp())
     trades, _ = kraken.get_trades_history(start=since)
     resultados = []
@@ -101,6 +107,11 @@ def obtener_rentabilidad(api_key, api_secret):
                     "pnl_percent": None
                 })
     return resultados, trades
+
+def obtener_rentabilidad(api_key, api_secret):
+    """Función original que mantiene compatibilidad"""
+    kraken = crear_kraken_api(api_key, api_secret)
+    return obtener_rentabilidad_optimizada(kraken)
 
 def reconstruir_holdings_diarios(trades_df):
     trades_df["date"] = pd.to_datetime(trades_df["time"], unit="s").dt.date
@@ -205,17 +216,43 @@ def calcular_profit_timeline(trades_df, holdings_diarios, precios_por_asset):
 @app.post("/api/portfolio")
 async def portfolio_endpoint(req: PortfolioRequest):
     try:
-        summary, trades_df = obtener_rentabilidad(req.api_key, req.api_secret)
+        # Crear clave de caché basada en las credenciales API
+        cache_key = hashlib.md5(f"{req.api_key}{req.api_secret}".encode()).hexdigest()
+        current_time = time.time()
+        
+        # Verificar si hay datos en caché y no han expirado
+        if cache_key in cache:
+            cached_data, timestamp = cache[cache_key]
+            if current_time - timestamp < CACHE_DURATION:
+                print(f"📊 Devolviendo datos desde caché para evitar llamadas redundantes a Kraken")
+                return cached_data
+        
+        print(f"🔄 Obteniendo datos frescos de Kraken API...")
+        
+        # Crear una sola instancia de KrakenAPI para reutilizar
+        kraken = crear_kraken_api(req.api_key, req.api_secret)
+        
+        summary, trades_df = obtener_rentabilidad_optimizada(kraken)
         holdings_diarios = reconstruir_holdings_diarios(trades_df)
         precios_por_asset = {}
+        
+        # Obtener precios para todos los assets de una vez, reutilizando la conexión
         for asset in set([a['asset'] for a in summary if a['average_cost'] is not None]):
             precios_por_asset[asset] = obtener_precios_diarios(
-                asset, crear_kraken_api(req.api_key, req.api_secret),
+                asset, kraken,  # Reutilizar la misma instancia
                 min(holdings_diarios.keys()), max(holdings_diarios.keys())
             )
+        
         timeline = calcular_profit_timeline(trades_df, holdings_diarios, precios_por_asset)
-        return {"summary": summary, "timeline": timeline}
+        result = {"summary": summary, "timeline": timeline}
+        
+        # Guardar en caché
+        cache[cache_key] = (result, current_time)
+        print(f"✅ Datos guardados en caché por {CACHE_DURATION} segundos")
+        
+        return result
     except Exception as e:
+        print(f"❌ Error al obtener datos de portfolio: {str(e)}")
         return {"error": str(e)}
 
 if __name__ == "__main__":

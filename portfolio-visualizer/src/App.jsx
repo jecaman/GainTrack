@@ -30,7 +30,7 @@ function App() {
       display: 'flex',
       alignItems: showPortfolio ? 'flex-start' : 'center',
       justifyContent: 'center',
-      padding: '24px'
+      padding: showPortfolio ? '0' : '24px'
     }}>
       {!showPortfolio ? (
         <div style={{ maxWidth: '1000px', width: '100%' }}>
@@ -86,14 +86,15 @@ function App() {
           <ApiForm onSubmit={handleApiSubmit} isLoading={isLoading} />
         </div>
       ) : (
-        <div style={{ width: '100%', maxWidth: '100%' }}>
+        <div style={{ width: '100vw', maxWidth: '100vw', margin: '0', padding: '0' }}>
           {/* Header with back button */}
           <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'space-between',
             marginBottom: '20px',
-            padding: '0 20px'
+            padding: '20px 40px',
+            backgroundColor: 'black'
           }}>
             <h1 style={{ 
               fontSize: '36px',

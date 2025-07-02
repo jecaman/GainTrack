@@ -300,17 +300,17 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
         <div className="w-32 h-1 bg-gradient-to-r from-purple-500 to-cyan-500 mx-auto rounded-full"></div>
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      {/* Charts Grid - Pantalla Completa */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-8">
         {/* Portfolio Distribution */}
         <div className="group relative">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
           <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-purple-500">
-            <h3 className="text-xl font-bold text-white mb-4 font-mono flex items-center">
+            <h3 className="text-2xl font-bold text-white mb-6 font-mono flex items-center">
               <span className="mr-2">🎯</span>
               Portfolio Distribution
             </h3>
-            <div className="h-80">
+            <div className="h-96 lg:h-[32rem]">
               <Chart
                 type="doughnut"
                 data={createDonutChartData()}
@@ -324,11 +324,11 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
         <div className="group relative">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-600 to-blue-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
           <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-cyan-500">
-            <h3 className="text-xl font-bold text-white mb-4 font-mono flex items-center">
+            <h3 className="text-2xl font-bold text-white mb-6 font-mono flex items-center">
               <span className="mr-2">💼</span>
               Investment Distribution
             </h3>
-            <div className="h-80">
+            <div className="h-96 lg:h-[32rem]">
               <Chart
                 type="doughnut"
                 data={createInvestmentPieChartData()}
@@ -342,11 +342,11 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
         <div className="group relative">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-600 to-red-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
           <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-orange-500">
-            <h3 className="text-xl font-bold text-white mb-4 font-mono flex items-center">
+            <h3 className="text-2xl font-bold text-white mb-6 font-mono flex items-center">
               <span className="mr-2">📊</span>
               Portfolio Summary
             </h3>
-            <div className="h-80">
+            <div className="h-96 lg:h-[32rem]">
               <Chart
                 type="bar"
                 data={createSummaryChartData()}
@@ -361,8 +361,8 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
           <div className="group relative">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
             <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-green-500">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-white font-mono flex items-center">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-2xl font-bold text-white font-mono flex items-center">
                   <span className="mr-2">📈</span>
                   Portfolio Evolution
                 </h3>
@@ -379,7 +379,7 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
                   </select>
                 </div>
               </div>
-              <div className="h-80">
+              <div className="h-96 lg:h-[32rem]">
                 <Chart
                   type="line"
                   data={createTimelineChartData()}
