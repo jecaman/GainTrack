@@ -69,7 +69,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
         maxWidth: '675px', 
         margin: '0 auto',
         position: 'relative',
-        '@media (max-width: 768px)': {
+        '@media (maxWidth: 768px)': {
           maxWidth: '360px',
           width: '90%'
         }
@@ -82,7 +82,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
           position: 'relative',
-          '@media (max-width: 768px)': {
+          '@media (maxWidth: 768px)': {
             padding: '28px 40px 42px 40px'
           }
         }}>
@@ -138,7 +138,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
               marginBottom: '54px',
               fontFamily: 'JetBrains Mono, monospace',
               whiteSpace: 'nowrap',
-              '@media (max-width: 768px)': {
+              '@media (maxWidth: 768px)': {
                 fontSize: '28px',
                 marginBottom: '40px'
               }
@@ -157,7 +157,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
                 fontFamily: 'JetBrains Mono, monospace',
-                '@media (max-width: 768px)': {
+                '@media (maxWidth: 768px)': {
                   fontSize: '20px'
                 }
               }}>
@@ -186,7 +186,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                   fontFamily: 'JetBrains Mono, monospace',
                   textAlign: 'left',
                   boxSizing: 'border-box',
-                  '@media (max-width: 768px)': {
+                  '@media (maxWidth: 768px)': {
                     height: '56px',
                     fontSize: '16px',
                     padding: '0 20px'
@@ -215,7 +215,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
                 fontFamily: 'JetBrains Mono, monospace',
-                '@media (max-width: 768px)': {
+                '@media (maxWidth: 768px)': {
                   fontSize: '18px'
                 }
               }}>
@@ -244,7 +244,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                   fontFamily: 'JetBrains Mono, monospace',
                   textAlign: 'left',
                   boxSizing: 'border-box',
-                  '@media (max-width: 768px)': {
+                  '@media (maxWidth: 768px)': {
                     height: '56px',
                     fontSize: '16px',
                     padding: '0 20px'
@@ -281,7 +281,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                 fontWeight: '600',
                 fontFamily: 'JetBrains Mono, monospace',
                 padding: '0 18px',
-                '@media (max-width: 768px)': {
+                '@media (maxWidth: 768px)': {
                   fontSize: '16px',
                   padding: '0 14px'
                 }
@@ -322,7 +322,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                   fontFamily: 'JetBrains Mono, monospace',
                   textTransform: 'uppercase',
                   transform: 'scale(1)',
-                  '@media (max-width: 768px)': {
+                  '@media (maxWidth: 768px)': {
                     width: '70%',
                     height: '70px',
                     fontSize: '18px'
@@ -411,7 +411,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                     transition: 'all 0.3s',
                     transform: 'scale(1)',
                     fontFamily: 'JetBrains Mono, monospace',
-                    '@media (max-width: 768px)': {
+                    '@media (maxWidth: 768px)': {
                       height: '72px',
                       fontSize: '22px'
                     }
@@ -459,7 +459,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
             fontSize: '19px',
             fontFamily: 'JetBrains Mono, monospace',
             margin: '0',
-            '@media (max-width: 768px)': {
+            '@media (maxWidth: 768px)': {
               fontSize: '16px'
             }
           }}>
@@ -606,7 +606,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                           • Funds permissions › <strong style={{ color: 'white' }}>Query</strong>
                         </div>
                         <div style={{ color: '#d1d5db', fontSize: '20px' }}>
-                          • Orders and trades › <strong style={{ color: 'white' }}>Query open orders & trades</strong>
+                          • Orders and trades › <strong style={{ color: 'white' }}>Query closed orders & trades</strong>
                         </div>
                       </div>
                     </div>

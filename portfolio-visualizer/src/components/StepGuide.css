@@ -4,19 +4,19 @@
   /* Estilos base del contenedor principal */
 }
 
-@media (max-width: 1600px) {
+@media (maxWidth: 1600px) {
   .step-guide-container {
     width: 550px;
     margin-left: 15px;
   }
 }
-@media (max-width: 1400px) {
+@media (maxWidth: 1400px) {
   .step-guide-container {
     width: 500px;
     margin-left: 10px;
   }
 }
-@media (max-width: 1200px) {
+@media (maxWidth: 1200px) {
   .step-guide-container {
     position: fixed !important;
     top: 50% !important;
@@ -24,7 +24,7 @@
     transform: translate(-50%, -50%) !important;
     margin-left: 0 !important;
     width: calc(100vw - 40px) !important;
-    max-width: 600px !important;
+    maxWidth: 600px !important;
     background-color: #0a0a0a !important;
     border-radius: 24px !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
@@ -36,7 +36,7 @@
     gap: 20px !important;
   }
 }
-@media (max-width: 768px) {
+@media (maxWidth: 768px) {
   .step-guide-container {
     padding: 20px !important;
   }
@@ -49,7 +49,7 @@
   margin: 0 18px;
   border-radius: 2px;
 }
-@media (max-width: 1200px) {
+@media (maxWidth: 1200px) {
   .divider-line {
     display: none;
   }

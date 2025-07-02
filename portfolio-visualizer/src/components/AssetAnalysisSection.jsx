@@ -363,17 +363,17 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
         </div>
       )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Charts - Pantalla Completa */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {/* Performance Chart */}
         <div className="group relative">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-green-600 to-blue-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
           <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-green-500">
-            <h3 className="text-xl font-bold text-white mb-4 font-mono flex items-center">
+            <h3 className="text-2xl font-bold text-white mb-6 font-mono flex items-center">
               <span className="mr-2">📈</span>
               {selectedAsset === 'ALL' ? 'Assets Performance Comparison' : `${assetLabelMap[selectedAsset] || selectedAsset} Analysis`}
             </h3>
-            <div className="h-80">
+            <div className="h-96 lg:h-[32rem]">
               <Chart
                 type={selectedAsset === 'ALL' ? 'bar' : 'bar'}
                 data={createAssetPerformanceData()}
@@ -387,11 +387,11 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
         <div className="group relative">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-600 to-pink-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
           <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-orange-500">
-            <h3 className="text-xl font-bold text-white mb-4 font-mono flex items-center">
+            <h3 className="text-2xl font-bold text-white mb-6 font-mono flex items-center">
               <span className="mr-2">💼</span>
               Value vs Investment Comparison
             </h3>
-            <div className="h-80">
+            <div className="h-96 lg:h-[32rem]">
               <Chart
                 type="bar"
                 data={createAssetAllocationData()}
