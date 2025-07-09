@@ -1,4 +1,4 @@
-import { calculateKPIs } from '../utils/chartUtils';
+  import { calculateKPIs } from '../utils/chartUtils';
 
 const KPISection = ({ portfolioData }) => {
   if (!portfolioData) return null;
@@ -10,84 +10,162 @@ const KPISection = ({ portfolioData }) => {
     {
       title: 'Total Invested',
       value: `${symbol}${totalInvested.toFixed(2)}`,
-      icon: '💰',
-      color: 'text-blue-400'
+      color: '#ffffff',
+      titleColor: '#ffffff'
     },
     {
       title: 'Current Value',
       value: `${symbol}${totalCurrent.toFixed(2)}`,
-      icon: '📈',
-      color: 'text-green-400'
+      color: '#ffffff',
+      titleColor: '#ffffff'
     },
     {
       title: 'Liquidity',
       value: `${symbol}${liquidity.toFixed(2)}`,
-      icon: '💧',
-      color: 'text-cyan-400'
+      color: '#ffffff',
+      titleColor: '#ffffff'
     },
     {
       title: 'Profit',
       value: `${symbol}${profit.toFixed(2)}`,
-      icon: profit >= 0 ? '📊' : '📉',
-      color: profit >= 0 ? 'text-green-400' : 'text-red-400'
+      color: profit >= 0 ? '#22c55e' : '#ef4444',
+      titleColor: '#ffffff'
     },
     {
       title: 'Profit %',
       value: `${profitPercent.toFixed(2)}%`,
-      icon: profitPercent >= 0 ? '🚀' : '📉',
-      color: profitPercent >= 0 ? 'text-green-400' : 'text-red-400'
+      color: profitPercent >= 0 ? '#22c55e' : '#ef4444',
+      titleColor: '#ffffff'
     }
   ];
 
   return (
-    <section className="mb-12">
-      <div className="text-center mb-8">
-        <h2 className="text-4xl font-bold text-white mb-4 font-mono">
-          📊 Global Portfolio Summary
+    <section style={{ marginBottom: '48px' }}>
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <h2 style={{
+          fontSize: '36px',
+          fontWeight: 'bold',
+          color: 'white',
+          marginBottom: '16px',
+          fontFamily: 'JetBrains Mono, monospace'
+        }}>
+          Global Portfolio Summary
         </h2>
-        <div className="w-32 h-1 bg-gradient-to-r from-purple-500 to-cyan-500 mx-auto rounded-full"></div>
+        <div style={{
+          width: '128px',
+          height: '4px',
+          background: 'linear-gradient(to right, #8b5cf6, #06b6d4)',
+          margin: '0 auto',
+          borderRadius: '9999px'
+        }}></div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '24px',
+        width: '100%'
+      }}>
         {kpiCards.map((kpi, index) => (
           <div 
             key={index}
-            className="group relative"
+            style={{ position: 'relative' }}
           >
             {/* Background glow effect */}
-            <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-cyan-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
+            <div style={{
+              position: 'absolute',
+              inset: '-2px',
+              background: 'linear-gradient(to right, #9333ea, #0891b2)',
+              borderRadius: '12px',
+              filter: 'blur(4px)',
+              opacity: 0.2,
+              transition: 'opacity 0.3s ease'
+            }}></div>
             
             {/* Card content */}
-            <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 h-full flex flex-col items-center justify-center text-center transition-all duration-300 hover:border-purple-500 hover:shadow-lg hover:shadow-purple-500/20">
-              <div className="text-3xl mb-3 transform transition-transform duration-300 group-hover:scale-110">
-                {kpi.icon}
-              </div>
-              
-              <h3 className="text-gray-400 text-sm font-medium mb-2 uppercase tracking-wider">
+            <div style={{
+              position: 'relative',
+              backgroundColor: '#111827',
+              border: '1px solid #374151',
+              borderRadius: '12px',
+              padding: '20px',
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              transition: 'all 0.3s ease',
+              cursor: 'pointer'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.borderColor = '#8b5cf6';
+              e.target.style.boxShadow = '0 10px 25px rgba(139, 92, 246, 0.2)';
+              e.target.previousSibling.style.opacity = '0.4';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.borderColor = '#374151';
+              e.target.style.boxShadow = 'none';
+              e.target.previousSibling.style.opacity = '0.2';
+            }}>
+              <h3 style={{
+                color: kpi.titleColor,
+                fontSize: '24px',
+                fontWeight: 'bold',
+                marginBottom: '12px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                fontFamily: 'JetBrains Mono, monospace'
+              }}>
                 {kpi.title}
               </h3>
               
-              <p className={`text-2xl font-bold font-mono ${kpi.color} transition-colors duration-300`}>
+              <p style={{
+                fontSize: '32px',
+                fontWeight: 'bold',
+                fontFamily: 'JetBrains Mono, monospace',
+                color: kpi.color,
+                transition: 'color 0.3s ease',
+                margin: '0'
+              }}>
                 {kpi.value}
               </p>
               
               {/* Animated border */}
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-cyan-500 transition-all duration-300 group-hover:w-3/4"></div>
+              <div style={{
+                position: 'absolute',
+                bottom: '0',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '0',
+                height: '2px',
+                background: 'linear-gradient(to right, #8b5cf6, #06b6d4)',
+                transition: 'width 0.3s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.width = '75%';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.width = '0';
+              }}></div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Performance indicator */}
-      <div className="mt-8 text-center">
-        <div className={`inline-flex items-center px-6 py-3 rounded-full text-lg font-semibold ${
-          profit >= 0 
-            ? 'bg-green-900/30 text-green-400 border border-green-500/30' 
-            : 'bg-red-900/30 text-red-400 border border-red-500/30'
-        }`}>
-          <span className="mr-2">
-            {profit >= 0 ? '📈' : '📉'}
-          </span>
+      <div style={{ marginTop: '32px', textAlign: 'center' }}>
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          padding: '12px 24px',
+          borderRadius: '9999px',
+          fontSize: '18px',
+          fontWeight: '600',
+          backgroundColor: profit >= 0 ? 'rgba(22, 163, 74, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+          color: 'white',
+          border: `1px solid ${profit >= 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(248, 113, 113, 0.3)'}`
+        }}>
           <span>
             Portfolio Performance: {profit >= 0 ? 'Positive' : 'Negative'}
           </span>

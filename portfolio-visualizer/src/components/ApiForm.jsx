@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const ApiForm = ({ onSubmit, isLoading }) => {
+const ApiForm = ({ onSubmit, isLoading, error }) => {
   const [formData, setFormData] = useState({
     apiKey: '',
     secretKey: ''
@@ -467,6 +467,30 @@ const ApiForm = ({ onSubmit, isLoading }) => {
           </p>
         </div>
 
+        {/* Mostrar error si existe */}
+        {error && (
+          <div style={{
+            marginTop: '18px',
+            marginBottom: '0',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              display: 'inline-block',
+              background: 'rgba(170,0,254,0.12)',
+              border: '1px solid #aa00fe',
+              borderRadius: '12px',
+              padding: '16px 32px',
+              color: '#aa00fe',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              boxShadow: '0 0 12px rgba(170,0,254,0.15)'
+            }}>
+              {error}
+            </div>
+          </div>
+        )}
+
         {/* Guía paso a paso - Rediseñada con dos columnas */}
         {(showGuide || isClosing) && (
           <div className="step-guide-container" style={{
@@ -672,7 +696,7 @@ const ApiForm = ({ onSubmit, isLoading }) => {
                       marginLeft: '-60px',
                       fontFamily: 'JetBrains Mono, monospace'
                     }}>
-                      📄 Option 2: Upload a CSV
+                      📁 Option 2: Upload a CSV
                     </h4>
                   </div>
                 </div>

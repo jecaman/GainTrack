@@ -36,8 +36,8 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
   const createAssetPerformanceData = () => {
     if (selectedAsset === 'ALL') {
       const labels = filteredAssets.map(asset => assetLabelMap[asset.asset] || asset.asset);
-      const profitData = filteredAssets.map(asset => asset.pnl_eur);
-      const profitPercentData = filteredAssets.map(asset => asset.pnl_percent);
+      const profitData = filteredAssets.map(asset => asset.pnl_eur || 0);
+      const profitPercentData = filteredAssets.map(asset => asset.pnl_percent || 0);
 
       return {
         labels,
@@ -73,7 +73,11 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
       if (!asset) return { labels: [], datasets: [] };
 
       const labels = ['Invested', 'Current Value', 'Profit/Loss'];
-      const data = [asset.total_invested, asset.current_value, asset.pnl_eur];
+      const data = [
+        asset.total_invested || asset.current_value || 0, 
+        asset.current_value || 0, 
+        asset.pnl_eur || 0
+      ];
 
       return {
         labels,
@@ -81,13 +85,13 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
           data,
           backgroundColor: [
             '#f59e0b',
-            asset.current_value >= asset.total_invested ? '#10b981' : '#ef4444',
-            asset.pnl_eur >= 0 ? '#10b981' : '#ef4444'
+            (asset.current_value || 0) >= (asset.total_invested || 0) ? '#10b981' : '#ef4444',
+            (asset.pnl_eur || 0) >= 0 ? '#10b981' : '#ef4444'
           ],
           borderColor: [
             '#d97706',
-            asset.current_value >= asset.total_invested ? '#059669' : '#dc2626',
-            asset.pnl_eur >= 0 ? '#059669' : '#dc2626'
+            (asset.current_value || 0) >= (asset.total_invested || 0) ? '#059669' : '#dc2626',
+            (asset.pnl_eur || 0) >= 0 ? '#059669' : '#dc2626'
           ],
           borderWidth: 2,
           borderRadius: 8
@@ -98,8 +102,8 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
 
   const createAssetAllocationData = () => {
     const labels = filteredAssets.map(asset => assetLabelMap[asset.asset] || asset.asset);
-    const currentValues = filteredAssets.map(asset => asset.current_value);
-    const investedValues = filteredAssets.map(asset => asset.total_invested);
+    const currentValues = filteredAssets.map(asset => asset.current_value || 0);
+    const investedValues = filteredAssets.map(asset => asset.total_invested || asset.current_value || 0);
 
     return {
       labels,
@@ -252,13 +256,13 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
       
       return {
         assetName: assetLabelMap[asset.asset] || asset.asset,
-        amount: asset.amount,
-        avgCost: asset.average_cost,
-        currentPrice: asset.current_price,
-        invested: asset.total_invested,
-        currentValue: asset.current_value,
-        profit: asset.pnl_eur,
-        profitPercent: asset.pnl_percent
+        amount: asset.amount || 0,
+        avgCost: asset.average_cost || asset.current_price || 0,
+        currentPrice: asset.current_price || 0,
+        invested: asset.total_invested || asset.current_value || 0,
+        currentValue: asset.current_value || 0,
+        profit: asset.pnl_eur || 0,
+        profitPercent: asset.pnl_percent || 0
       };
     }
   };

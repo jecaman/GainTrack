@@ -72,9 +72,8 @@ export const fiatSymbols = {
 
 // Get fiat symbol from portfolio data
 export const getFiatSymbol = (data) => {
-  const fiatAsset = data.find(a => a.average_cost === null);
-  const fiatCode = fiatAsset ? fiatAsset.asset.replace(/^Z/, '') : 'EUR';
-  return fiatSymbols[fiatCode] || '€';
+  // En el nuevo formato, siempre trabajamos con EUR
+  return '€';
 };
 
 // Color palette for charts
@@ -139,14 +138,20 @@ export const groupTimelineData = (timelineData, mode) => {
 
 // Calculate portfolio KPIs
 export const calculateKPIs = (data) => {
-  const symbol = getFiatSymbol(data);
-  const filteredAssets = data.filter(a => a.average_cost !== null);
-  const totalInvested = filteredAssets.reduce((sum, a) => sum + a.total_invested, 0);
-  const totalCurrent = filteredAssets.reduce((sum, a) => sum + a.current_value, 0);
-  const profit = totalCurrent - totalInvested;
+  const symbol = '€'; // Siempre EUR en el nuevo formato
+  
+  // Separar assets crypto y fiat
+  const cryptoAssets = data.filter(a => a.average_cost !== null && a.current_value !== null);
+  const fiatAssets = data.filter(a => a.average_cost === null);
+  
+  // Calcular totales
+  const totalInvested = cryptoAssets.reduce((sum, a) => sum + (a.total_invested || 0), 0);
+  const totalCurrent = cryptoAssets.reduce((sum, a) => sum + (a.current_value || 0), 0);
+  const liquidity = fiatAssets.reduce((sum, a) => sum + (a.current_value || 0), 0);
+  
+  // Calcular profit (si tenemos datos de inversión)
+  const profit = totalInvested > 0 ? totalCurrent - totalInvested : 0;
   const profitPercent = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
-  const fiatAsset = data.find(a => a.average_cost === null);
-  const liquidity = fiatAsset ? fiatAsset.current_value : 0;
 
   return {
     symbol,
