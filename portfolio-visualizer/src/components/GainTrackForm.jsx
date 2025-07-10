@@ -6,41 +6,31 @@ import { useState, useEffect, useRef } from 'react';
 const ZigzagLogo = ({
   size = 32,
   color = "#00ff88",
-  intervaloFrecuenciaMs = 8000, // Frecuencia: cada cuántos ms aparece el punto
-  duracionAnimacionMs = 800    // Velocidad: ms que tarda en recorrer el zigzag
+  sloganGlow = false,
+  isDarkMode = true
 }) => {
   const [visible, setVisible] = useState(false);
   const [fade, setFade] = useState(false); // Nuevo estado para controlar el fade
   const timeoutRef = useRef(null);
   const fadeTimeoutRef = useRef(null);
 
+  // Sincronizar con el estado del slogan
   useEffect(() => {
-    let activo = true;
-
-    const ciclo = () => {
-      if (!activo) return;
+    if (sloganGlow) {
       setVisible(true);
-      setFade(false); // Asegura que el punto aparece opaco
-      // El punto se muestra y se anima durante la duración de la animación
-      timeoutRef.current = setTimeout(() => {
-        setFade(true); // Inicia el fade out
-        // Espera a que termine el fade antes de ocultar el punto realmente
-        fadeTimeoutRef.current = setTimeout(() => {
-          setVisible(false);
-          // Espera el resto del intervalo antes de volver a mostrar el punto
-          timeoutRef.current = setTimeout(ciclo, intervaloFrecuenciaMs - duracionAnimacionMs);
-        }, 1200); // Duración del fade-out mucho más suave (1.2s)
-      }, duracionAnimacionMs);
-    };
+      setFade(false);
+      // Logo debe completar su recorrido en 2 segundos y luego fade por 0.4 segundos
+      const timer = setTimeout(() => {
+        setFade(true);
+        setTimeout(() => setVisible(false), 400); // Fade out de 0.4 segundos
+      }, 2000); // 2 segundos para completar el recorrido completo
 
-    ciclo();
-
-    return () => {
-      activo = false;
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
-    };
-  }, [intervaloFrecuenciaMs, duracionAnimacionMs]);
+      return () => clearTimeout(timer);
+    } else {
+      setVisible(false);
+      setFade(false);
+    }
+  }, [sloganGlow]);
 
   // El path del zigzag para la animación (coincide con el SVG)
   const path = [
@@ -92,7 +82,7 @@ const ZigzagLogo = ({
     const animate = (timestamp) => {
       if (!start) start = timestamp;
       const elapsed = timestamp - start;
-      let p = Math.min(elapsed / duracionAnimacionMs, 1);
+      let p = Math.min(elapsed / 2000, 1); // 2 segundos para recorrer el path completo
       setProgress(p);
       if (p < 1) {
         rafId = requestAnimationFrame(animate);
@@ -102,13 +92,23 @@ const ZigzagLogo = ({
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [visible, duracionAnimacionMs]);
+  }, [visible]);
 
   // Calcula la posición del punto
   const punto = getPointPosition(progress);
 
+  // Ajuste: el punto estaba ligeramente más abajo de lo que debería.
+  // Para corregirlo, restamos un pequeño valor al cálculo de la posición top.
+  // Por ejemplo, restamos 1.5px para subirlo un poco.
+  const ajusteVerticalPx = 1.5;
+
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
+    <div style={{ 
+      position: 'relative', 
+      display: 'inline-block',
+      transform: sloganGlow && !isDarkMode ? 'scale(1.2)' : 'scale(1)',
+      transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+    }}>
       <svg width={size} height={size * 0.6} viewBox="0 0 32 20" fill="none">
         {/* Base logo */}
         <path
@@ -119,13 +119,14 @@ const ZigzagLogo = ({
           strokeLinejoin="round"
         />
       </svg>
-      {/* Moving bright point */}
-      {visible && (
+      {/* Moving bright point - only in dark mode */}
+      {visible && isDarkMode && (
         <div
           style={{
             position: 'absolute',
             left: `calc(${(punto.x / 32) * 100}% - 4px)`,
-            top: `calc(${(punto.y / 20) * 100}% - 4px)`,
+            // Ajuste vertical: restamos 1.5px para subir el punto
+            top: `calc(${(punto.y / 20) * 100}% - 4px - ${ajusteVerticalPx}px)`,
             width: '8px',
             height: '8px',
             background: 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.9) 30%, rgba(0,255,136,0.7) 60%, rgba(0,255,136,0.3) 80%, transparent 100%)',
@@ -133,8 +134,8 @@ const ZigzagLogo = ({
             filter: 'blur(3px) drop-shadow(0 0 20px #00ff88) drop-shadow(0 0 40px rgba(0,255,136,1)) drop-shadow(0 0 60px rgba(255,255,255,0.8)) drop-shadow(0 0 80px rgba(0,255,136,0.6))',
             opacity: fade ? 0 : 1,
             transition: fade
-              ? 'opacity 1.2s cubic-bezier(0.4,0,0.2,1)'
-              : 'opacity 0.2s cubic-bezier(0.4,0,0.2,1)',
+              ? 'opacity 0.4s cubic-bezier(0.4,0,0.2,1)'
+              : 'opacity 0.15s cubic-bezier(0.4,0,0.2,1)',
             zIndex: 10,
             boxShadow: '0 0 15px rgba(0,255,136,0.8), inset 0 0 10px rgba(255,255,255,0.5)',
             pointerEvents: 'none'
@@ -146,8 +147,75 @@ const ZigzagLogo = ({
 };
 
 
+// Theme Toggle Button Component  
+const ThemeToggle = ({ isDark, onToggle }) => (
+  <div style={{
+    position: 'fixed',
+    top: 'clamp(16px, 4vw, 20px)',
+    right: 'clamp(16px, 4vw, 20px)',
+    zIndex: 100
+  }}>
+    <button
+      onClick={onToggle}
+      style={{
+        width: 'clamp(64px, 15vw, 72px)',
+        height: 'clamp(36px, 8vw, 40px)',
+        background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+        border: `2px solid ${isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'}`,
+        borderRadius: 'clamp(20px, 5vw, 22px)',
+        cursor: 'pointer',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: 'relative',
+        padding: '2px',
+        display: 'flex',
+        alignItems: 'center',
+        backdropFilter: 'blur(8px)'
+      }}
+      onMouseEnter={(e) => {
+        e.target.style.background = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
+        e.target.style.transform = 'scale(1.05)';
+      }}
+      onMouseLeave={(e) => {
+        e.target.style.background = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+        e.target.style.transform = 'scale(1)';
+      }}
+    >
+      {/* Toggle circle */}
+      <div style={{
+        width: 'clamp(28px, 6vw, 32px)',
+        height: 'clamp(28px, 6vw, 32px)',
+        background: isDark ? '#6b7280' : '#4b5563',
+        borderRadius: '50%',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        transform: isDark ? 'translateX(0)' : 'translateX(32px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 'clamp(12px, 3vw, 14px)',
+        filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))'
+      }}>
+        {isDark ? '🌙' : '☀️'}
+      </div>
+    </button>
+  </div>
+);
+
 // Background Grid Component with Dynamic Effects
-const BackgroundPattern = () => (
+const BackgroundPattern = ({ isDark = true }) => {
+  // Generate consistent random values that don't change on re-renders
+  const verticalLines = Array.from({ length: 25 }, (_, i) => ({
+    id: i,
+    duration: 4 + (Math.sin(i * 0.1) + 1) * 1, // Consistent pseudo-random based on index
+    delay: (Math.sin(i * 0.3) + 1) * 1.5 // Consistent pseudo-random based on index
+  }));
+  
+  const horizontalLines = Array.from({ length: 20 }, (_, i) => ({
+    id: i,
+    duration: 4 + (Math.cos(i * 0.15) + 1) * 1,
+    delay: (Math.cos(i * 0.25) + 1) * 1.5
+  }));
+
+  return (
   <div style={{
     position: 'fixed',
     top: 0,
@@ -159,43 +227,49 @@ const BackgroundPattern = () => (
     zIndex: 0
   }}>
     {/* Enhanced Grid Layer */}
-    <div style={{ opacity: 0.08 }}>
+    <div style={{ 
+      opacity: 0.08,
+      transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+    }}>
       {/* Vertical Lines */}
-      {[...Array(25)].map((_, i) => (
+      {verticalLines.map((line) => (
         <div
-          key={`vertical-${i}`}
+          key={`vertical-${line.id}`}
           style={{
             position: 'absolute',
-            left: `${i * 4}%`,
+            left: `${line.id * 4}%`,
             top: 0,
             width: '1px',
             height: '100%',
-            background: `linear-gradient(180deg, transparent, #00ff88, transparent)`,
-            animation: `gridFlow ${4 + Math.random() * 2}s ease-in-out infinite`,
-            animationDelay: `${Math.random() * 3}s`
+            background: `linear-gradient(180deg, transparent, ${isDark ? '#00ff88' : '#2d3748'}, transparent)`,
+            animation: `gridFlow ${line.duration}s ease-in-out infinite`,
+            animationDelay: `${line.delay}s`,
+            transition: 'background 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
           }}
         />
       ))}
       {/* Horizontal Lines */}
-      {[...Array(20)].map((_, i) => (
+      {horizontalLines.map((line) => (
         <div
-          key={`horizontal-${i}`}
+          key={`horizontal-${line.id}`}
           style={{
             position: 'absolute',
-            top: `${i * 5}%`,
+            top: `${line.id * 5}%`,
             left: 0,
             width: '100%',
             height: '1px',
-            background: `linear-gradient(90deg, transparent, #00ff88, transparent)`,
-            animation: `gridFlow ${4 + Math.random() * 2}s ease-in-out infinite`,
-            animationDelay: `${Math.random() * 3}s`
+            background: `linear-gradient(90deg, transparent, ${isDark ? '#00ff88' : '#2d3748'}, transparent)`,
+            animation: `gridFlow ${line.duration}s ease-in-out infinite`,
+            animationDelay: `${line.delay}s`,
+            transition: 'background 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
           }}
         />
       ))}
     </div>
     
   </div>
-);
+  );
+};
 
 const GainTrackForm = ({ onSubmit, isLoading, error }) => {
   const [formData, setFormData] = useState({
@@ -203,6 +277,8 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
     secretKey: ''
   });
   const [activeMethod, setActiveMethod] = useState('api');
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [sloganGlow, setSloganGlow] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -224,45 +300,97 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
     }
   };
 
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
+  // Efecto glow del slogan sincronizado con el logo
+  useEffect(() => {
+    // Sincronizar ambos efectos perfectamente
+    const interval = setInterval(() => {
+      setSloganGlow(true);
+      // Duración total para que todas las letras terminen: 2.7 segundos
+      setTimeout(() => setSloganGlow(false), 2700);
+    }, 12900); // Cada 12.9 segundos (2.9 + 10 segundos)
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Colores de tema basados en el sistema de marca
+  const theme = isDarkMode ? {
+    bg: '#000000',
+    bgElevated: '#111111',
+    bgContainer: '#1a1a1a',
+    border: 'rgba(255, 255, 255, 0.08)',
+    borderLight: 'rgba(255, 255, 255, 0.05)',
+    greenPrimary: '#00ff88',
+    greenSecondary: '#22c55e',
+    textPrimary: '#ffffff',
+    textSecondary: '#a1a1aa',
+    textMuted: '#71717a',
+    gridColor: '#00ff88',
+    gridOpacity: 0.08
+  } : {
+    bg: '#f6f7f8',
+    bgElevated: '#ffffff',
+    bgContainer: '#f1f3f4',
+    border: 'rgba(0, 0, 0, 0.06)',
+    borderLight: 'rgba(0, 0, 0, 0.03)',
+    greenPrimary: '#10b981',
+    greenSecondary: '#ecfdf5',
+    textPrimary: '#1a1a1a',
+    textSecondary: '#4a4a4a',
+    textMuted: '#737373',
+    gridColor: '#2d3748',
+    gridOpacity: 0.08
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#000000',
+      background: theme.bg,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px',
+      padding: '16px',
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      position: 'relative'
+      position: 'relative',
+      transition: 'background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+      zoom: '1'
     }}>
-      <BackgroundPattern />
+      <ThemeToggle isDark={isDarkMode} onToggle={toggleTheme} />
+      <BackgroundPattern isDark={isDarkMode} />
       <div style={{
         width: '100%',
-        maxWidth: '420px',
+        maxWidth: '342px',
         position: 'relative',
-        zIndex: 1
+        zIndex: 1,
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         {/* Header */}
         <div style={{ 
           textAlign: 'center', 
-          marginBottom: '48px'
+          marginBottom: '29px',
         }}>
           {/* Logo */}
           <div style={{
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '16px',
-            marginBottom: '32px'
+            gap: '7px',
+            marginBottom: '22px',
           }}>
-            <ZigzagLogo size={80} />
+            <ZigzagLogo size={58} color={theme.greenPrimary} sloganGlow={sloganGlow} isDarkMode={isDarkMode} />
             <h1 style={{
-              fontSize: '48px',
+              fontSize: 'clamp(29px, 7.2vw, 36px)',
               fontWeight: '700',
-              color: '#ffffff',
+              color: theme.textPrimary,
               margin: '0',
               fontFamily: "'Space Grotesk', sans-serif",
-              letterSpacing: '-0.02em'
+              letterSpacing: '-0.02em',
+              transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              lineHeight: '1'
             }}>
               GainTrack
             </h1>
@@ -270,50 +398,84 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           
           {/* Subtitle */}
           <p style={{
-            color: '#a1a1aa',
-            fontSize: '16px',
+            color: theme.textSecondary,
+            fontSize: 'clamp(13px, 3.2vw, 14px)',
             margin: '0',
-            fontWeight: '400',
-            lineHeight: '1.5'
+            fontWeight: '500',
+            lineHeight: '1.5',
+            transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            fontFamily: "'Space Grotesk', sans-serif",
+            letterSpacing: '0.01em'
           }}>
             Track your portfolio performance
             <br />
             <span style={{ 
-              color: '#00ff88', 
+              color: theme.greenPrimary, 
               fontWeight: '600',
-              textShadow: '0 0 8px rgba(0, 255, 136, 0.4), 0 0 16px rgba(0, 255, 136, 0.2)',
-              filter: 'drop-shadow(0 0 4px rgba(0, 255, 136, 0.3))'
-            }}>Simple. Secure. Precise.</span>
+              display: 'inline-block',
+              transform: sloganGlow && !isDarkMode
+                ? 'translateY(-1px) scale(1.05)'
+                : 'translateY(0) scale(1)',
+              textShadow: sloganGlow && !isDarkMode
+                ? '0 0 0 1px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(0, 0, 0, 0.4)'
+                : 'none',
+              transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}>
+              {sloganGlow && isDarkMode ? (
+                <>
+                  {'Simple. Secure. Precise.'.split('').map((char, index) => (
+                    <span
+                      key={index}
+                      style={{
+                        display: 'inline-block',
+                        animation: `letterGlow 1.6s ease-out`,
+                        animationDelay: `${index * 0.05}s`,
+                        animationFillMode: 'both'
+                      }}
+                    >
+                      {char === ' ' ? '\u00A0' : char}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                'Simple. Secure. Precise.'
+              )}
+            </span>
           </p>
         </div>
 
         {/* Main Card */}
         <div style={{
-          background: '#111111',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '16px',
-          padding: '32px',
-          position: 'relative'
+          background: theme.bgElevated,
+          border: `1px solid ${theme.border}`,
+          borderRadius: '14px',
+          padding: 'clamp(18px, 4.5vw, 25px)',
+          position: 'relative',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          ...(isDarkMode ? {} : {
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)'
+          })
         }}>
           {/* Method Selection */}
           <div style={{
             display: 'flex',
-            background: '#1a1a1a',
+            background: theme.bgContainer,
             borderRadius: '12px',
             padding: '4px',
-            marginBottom: '32px',
-            border: '1px solid rgba(255, 255, 255, 0.05)'
+            marginBottom: 'clamp(18px, 4.5vw, 25px)',
+            border: `1px solid ${theme.borderLight}`,
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}>
             <button
               onClick={() => setActiveMethod('api')}
               style={{
                 flex: 1,
-                padding: '12px 16px',
+                padding: 'clamp(9px, 2.3vw, 11px) clamp(11px, 2.7vw, 14px)',
                 borderRadius: '8px',
                 border: 'none',
-                background: activeMethod === 'api' ? '#00ff88' : 'transparent',
-                color: activeMethod === 'api' ? '#000000' : '#a1a1aa',
-                fontSize: '14px',
+                background: activeMethod === 'api' ? theme.greenPrimary : 'transparent',
+                color: activeMethod === 'api' ? (isDarkMode ? '#000000' : '#ffffff') : theme.textSecondary,
+                fontSize: 'clamp(11px, 2.7vw, 13px)',
                 fontWeight: '500',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -321,13 +483,13 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               }}
               onMouseEnter={(e) => {
                 if (activeMethod !== 'api') {
-                  e.target.style.color = '#ffffff';
-                  e.target.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.target.style.color = theme.textPrimary;
+                  e.target.style.background = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (activeMethod !== 'api') {
-                  e.target.style.color = '#a1a1aa';
+                  e.target.style.color = theme.textSecondary;
                   e.target.style.background = 'transparent';
                 }
               }}
@@ -338,12 +500,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               onClick={() => setActiveMethod('csv')}
               style={{
                 flex: 1,
-                padding: '12px 16px',
+                padding: 'clamp(9px, 2.3vw, 11px) clamp(11px, 2.7vw, 14px)',
                 borderRadius: '8px',
                 border: 'none',
-                background: activeMethod === 'csv' ? '#00ff88' : 'transparent',
-                color: activeMethod === 'csv' ? '#000000' : '#a1a1aa',
-                fontSize: '14px',
+                background: activeMethod === 'csv' ? theme.greenPrimary : 'transparent',
+                color: activeMethod === 'csv' ? (isDarkMode ? '#000000' : '#ffffff') : theme.textSecondary,
+                fontSize: 'clamp(11px, 2.7vw, 13px)',
                 fontWeight: '500',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -351,13 +513,13 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               }}
               onMouseEnter={(e) => {
                 if (activeMethod !== 'csv') {
-                  e.target.style.color = '#ffffff';
-                  e.target.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.target.style.color = theme.textPrimary;
+                  e.target.style.background = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (activeMethod !== 'csv') {
-                  e.target.style.color = '#a1a1aa';
+                  e.target.style.color = theme.textSecondary;
                   e.target.style.background = 'transparent';
                 }
               }}
@@ -368,7 +530,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
 
           {/* Input Section with Content Transition */}
           <div style={{
-            minHeight: '180px',
+            minHeight: 'clamp(135px, 18vw, 144px)',
             position: 'relative'
           }}>
             {/* API Method - Only Inputs */}
@@ -387,12 +549,13 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                 <div>
                   <label style={{
                     display: 'block',
-                    fontSize: '14px',
+                    fontSize: 'clamp(11px, 2.7vw, 13px)',
                     fontWeight: '600',
-                    color: '#ffffff',
+                    color: theme.textPrimary,
                     marginBottom: '8px',
                     fontFamily: "'Inter', sans-serif",
-                    textShadow: '0 0 4px rgba(255, 255, 255, 0.1)'
+                    textShadow: isDarkMode ? '0 0 4px rgba(255, 255, 255, 0.1)' : 'none',
+                    transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                   }}>
                     API Key
                   </label>
@@ -404,23 +567,23 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                     placeholder="Enter your Kraken API key"
                     style={{
                       width: '100%',
-                      padding: '14px 16px',
-                      background: '#1a1a1a',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      padding: 'clamp(12px, 3vw, 14px) clamp(14px, 3.5vw, 16px)',
+                      background: theme.bgContainer,
+                      border: `1px solid ${theme.border}`,
                       borderRadius: '10px',
-                      color: '#ffffff',
-                      fontSize: '15px',
+                      color: theme.textPrimary,
+                      fontSize: 'clamp(13px, 3.2vw, 15px)',
                       outline: 'none',
                       transition: 'all 0.2s ease',
                       boxSizing: 'border-box',
                       fontFamily: "'JetBrains Mono', monospace"
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = '#00ff88';
-                      e.target.style.boxShadow = '0 0 0 2px rgba(0, 255, 136, 0.1)';
+                      e.target.style.borderColor = theme.greenPrimary;
+                      e.target.style.boxShadow = `0 0 0 2px ${isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(22, 163, 74, 0.1)'}`;
                     }}
                     onBlur={(e) => {
-                      e.target.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                      e.target.style.borderColor = theme.border;
                       e.target.style.boxShadow = 'none';
                     }}
                     required
@@ -431,12 +594,13 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                 <div>
                   <label style={{
                     display: 'block',
-                    fontSize: '14px',
+                    fontSize: 'clamp(11px, 2.7vw, 13px)',
                     fontWeight: '600',
-                    color: '#ffffff',
+                    color: theme.textPrimary,
                     marginBottom: '8px',
                     fontFamily: "'Inter', sans-serif",
-                    textShadow: '0 0 4px rgba(255, 255, 255, 0.1)'
+                    textShadow: isDarkMode ? '0 0 4px rgba(255, 255, 255, 0.1)' : 'none',
+                    transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                   }}>
                     API Secret
                   </label>
@@ -448,23 +612,23 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                     placeholder="Enter your Kraken API secret"
                     style={{
                       width: '100%',
-                      padding: '14px 16px',
-                      background: '#1a1a1a',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      padding: 'clamp(12px, 3vw, 14px) clamp(14px, 3.5vw, 16px)',
+                      background: theme.bgContainer,
+                      border: `1px solid ${theme.border}`,
                       borderRadius: '10px',
-                      color: '#ffffff',
-                      fontSize: '15px',
+                      color: theme.textPrimary,
+                      fontSize: 'clamp(13px, 3.2vw, 15px)',
                       outline: 'none',
                       transition: 'all 0.2s ease',
                       boxSizing: 'border-box',
                       fontFamily: "'JetBrains Mono', monospace"
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = '#00ff88';
-                      e.target.style.boxShadow = '0 0 0 2px rgba(0, 255, 136, 0.1)';
+                      e.target.style.borderColor = theme.greenPrimary;
+                      e.target.style.boxShadow = `0 0 0 2px ${isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(22, 163, 74, 0.1)'}`;
                     }}
                     onBlur={(e) => {
-                      e.target.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+                      e.target.style.borderColor = theme.border;
                       e.target.style.boxShadow = 'none';
                     }}
                     required
@@ -495,32 +659,32 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               <div 
                 onClick={() => document.getElementById('csvFile').click()}
                 style={{
-                  border: '2px dashed rgba(0, 255, 136, 0.3)',
+                  border: `2px dashed ${isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)'}`,
                   borderRadius: '12px',
-                  padding: '32px 24px',
+                  padding: 'clamp(18px, 4.5vw, 25px) clamp(14px, 3.6vw, 18px)',
                   textAlign: 'center',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
-                  background: 'rgba(0, 255, 136, 0.02)',
-                  height: '180px',
+                  background: isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)',
+                  height: 'clamp(135px, 18vw, 144px)',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'center',
                   alignItems: 'center'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.borderColor = 'rgba(0, 255, 136, 0.5)';
-                  e.target.style.background = 'rgba(0, 255, 136, 0.05)';
+                  e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.5)' : 'rgba(16, 185, 129, 0.4)';
+                  e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.05)' : 'rgba(16, 185, 129, 0.03)';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.borderColor = 'rgba(0, 255, 136, 0.3)';
-                  e.target.style.background = 'rgba(0, 255, 136, 0.02)';
+                  e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)';
+                  e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)';
                 }}
               >
                 <div style={{
                   width: '40px',
                   height: '40px',
-                  background: 'rgba(0, 255, 136, 0.1)',
+                  background: isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(16, 185, 129, 0.08)',
                   borderRadius: '10px',
                   margin: '0 auto 12px',
                   display: 'flex',
@@ -531,23 +695,23 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                   📊
                 </div>
                 <h3 style={{
-                  fontSize: '16px',
+                  fontSize: 'clamp(13px, 3.2vw, 14px)',
                   fontWeight: '600',
-                  color: '#ffffff',
+                  color: theme.textPrimary,
                   margin: '0 0 6px',
                   fontFamily: "'Space Grotesk', sans-serif"
                 }}>
                   Upload Trading Data
                 </h3>
                 <p style={{
-                  fontSize: '13px',
-                  color: '#a1a1aa',
+                  fontSize: 'clamp(11px, 2.5vw, 13px)',
+                  color: theme.textSecondary,
                   margin: '0',
                   lineHeight: '1.4'
                 }}>
                   Drop your Kraken CSV export here
                   <br />
-                  <span style={{ color: '#00ff88' }}>or click to browse</span>
+                  <span style={{ color: theme.greenPrimary }}>or click to browse</span>
                 </p>
               </div>
             </div>
@@ -559,12 +723,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             disabled={isLoading}
             style={{
               width: '100%',
-              padding: '16px',
+              padding: 'clamp(14px, 3.5vw, 16px)',
               background: 'transparent',
-              color: isLoading ? '#a1a1aa' : '#00ff88',
-              border: isLoading ? '2px solid #1a1a1a' : '2px solid #00ff88',
+              color: isLoading ? theme.textMuted : theme.greenPrimary,
+              border: isLoading ? `2px solid ${theme.border}` : `2px solid ${theme.greenPrimary}`,
               borderRadius: '10px',
-              fontSize: '16px',
+              fontSize: 'clamp(13px, 3.2vw, 14px)',
               fontWeight: '600',
               cursor: isLoading ? 'not-allowed' : 'pointer',
               transition: 'all 0.2s ease',
@@ -573,20 +737,20 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              marginTop: '40px',
-              marginBottom: '24px'
+              marginTop: 'clamp(22px, 5.4vw, 29px)',
+              marginBottom: 'clamp(14px, 3.6vw, 18px)'
             }}
             onMouseEnter={(e) => {
               if (!isLoading) {
-                e.target.style.background = '#00ff88';
-                e.target.style.color = '#000000';
+                e.target.style.background = theme.greenPrimary;
+                e.target.style.color = isDarkMode ? '#000000' : '#ffffff';
                 e.target.style.transform = 'translateY(-1px)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isLoading) {
                 e.target.style.background = 'transparent';
-                e.target.style.color = '#00ff88';
+                e.target.style.color = theme.greenPrimary;
                 e.target.style.transform = 'translateY(0)';
               }
             }}
@@ -613,12 +777,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           {error && (
             <div style={{
               marginTop: '16px',
-              padding: '12px 16px',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
+              padding: 'clamp(10px, 2.5vw, 12px) clamp(12px, 3vw, 16px)',
+              background: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(220, 38, 38, 0.05)',
+              border: isDarkMode ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(220, 38, 38, 0.2)',
               borderRadius: '8px',
-              color: '#fca5a5',
-              fontSize: '14px'
+              color: isDarkMode ? '#fca5a5' : '#dc2626',
+              fontSize: 'clamp(12px, 3vw, 14px)'
             }}>
               {error}
             </div>
@@ -628,35 +792,76 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         {/* Footer */}
         <div style={{
           textAlign: 'center',
-          marginTop: '32px'
+          marginTop: 'clamp(18px, 4.5vw, 25px)'
         }}>
           <p style={{
-            fontSize: '12px',
-            color: '#71717a',
+            fontSize: 'clamp(9px, 2.3vw, 11px)',
+            color: theme.textMuted,
             margin: '0 0 8px 0',
             fontWeight: '500',
             textAlign: 'center',
-            background: 'rgba(113, 113, 122, 0.08)',
+            background: isDarkMode ? 'rgba(113, 113, 122, 0.08)' : 'rgba(156, 163, 175, 0.08)',
             padding: '8px 16px',
             borderRadius: '8px',
-            border: '1px solid rgba(113, 113, 122, 0.15)'
+            border: `1px solid ${isDarkMode ? 'rgba(113, 113, 122, 0.15)' : 'rgba(156, 163, 175, 0.15)'}`,
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}>
             🔒 Your data is processed locally and never stored on our servers
           </p>
           <p style={{
-            fontSize: '12px',
-            color: '#71717a',
-            margin: '0'
+            fontSize: 'clamp(9px, 2.3vw, 11px)',
+            color: theme.textMuted,
+            margin: '0',
+            transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}>
             Need help?{' '}
             <a href="#" style={{ 
-              color: '#00ff88', 
+              color: theme.greenPrimary, 
               textDecoration: 'none',
-              fontWeight: '500'
+              fontWeight: '500',
+              transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
             }}>
               Check our setup guide
             </a>
           </p>
+        </div>
+        
+        {/* Contact Us Button */}
+        <div style={{
+          position: 'fixed',
+          bottom: 'clamp(16px, 4vw, 24px)',
+          right: 'clamp(16px, 4vw, 24px)',
+          zIndex: 100
+        }}>
+          <button
+            onClick={() => window.open('mailto:contact@gaintrack.app', '_blank')}
+            style={{
+              padding: 'clamp(8px, 2vw, 12px) clamp(12px, 3vw, 16px)',
+              background: 'transparent',
+              color: theme.textSecondary,
+              border: `1px solid ${theme.border}`,
+              borderRadius: '8px',
+              fontSize: 'clamp(11px, 2.5vw, 13px)',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              fontFamily: "'Inter', sans-serif",
+              backdropFilter: 'blur(8px)',
+              background: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.8)'
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.color = theme.textPrimary;
+              e.target.style.borderColor = theme.greenPrimary;
+              e.target.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.color = theme.textSecondary;
+              e.target.style.borderColor = theme.border;
+              e.target.style.transform = 'translateY(0)';
+            }}
+          >
+            Contact Us
+          </button>
         </div>
       </div>
 
@@ -677,56 +882,81 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           }
         }
         
-        @keyframes movingPoint {
+        /* Responsive breakpoints */
+        @media (max-width: 480px) {
+          .container {
+            padding: 12px;
+            max-width: 100%;
+          }
+          .header {
+            margin-bottom: 20px;
+          }
+          .logo-container {
+            gap: 8px;
+            margin-bottom: 16px;
+          }
+        }
+        
+        @media (max-width: 768px) {
+          .container {
+            padding: 14px;
+          }
+          .header {
+            margin-bottom: 24px;
+          }
+        }
+        
+        @media (min-width: 1200px) {
+          .container {
+            max-width: 420px;
+          }
+        }
+        
+        @keyframes letterGlow {
           0% {
-            opacity: 0;
-            left: 6%;
-            top: 65%;
+            color: inherit;
+            text-shadow: none;
+            filter: none;
           }
-          5% {
-            opacity: 1;
-            left: 6%;
-            top: 65%;
-          }
-          20% {
-            opacity: 1;
-            left: 18%;
-            top: 40%;
+          15% {
+            color: rgba(0, 255, 136, 1);
+            text-shadow: 0 0 8px rgba(0, 255, 136, 0.6), 0 0 16px rgba(0, 255, 136, 0.4);
+            filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.5));
           }
           35% {
-            opacity: 1;
-            left: 32%;
-            top: 60%;
+            color: rgba(0, 255, 136, 1);
+            text-shadow: 0 0 8px rgba(0, 255, 136, 0.6), 0 0 16px rgba(0, 255, 136, 0.4);
+            filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.5));
           }
-          50% {
-            opacity: 1;
-            left: 48%;
-            top: 30%;
+          60% {
+            color: rgba(0, 255, 136, 0.8);
+            text-shadow: 0 0 6px rgba(0, 255, 136, 0.4), 0 0 12px rgba(0, 255, 136, 0.3);
+            filter: drop-shadow(0 0 4px rgba(0, 255, 136, 0.4));
           }
-          65% {
-            opacity: 1;
-            left: 65%;
-            top: 50%;
+          75% {
+            color: rgba(0, 255, 136, 0.6);
+            text-shadow: 0 0 4px rgba(0, 255, 136, 0.3), 0 0 8px rgba(0, 255, 136, 0.2);
+            filter: drop-shadow(0 0 3px rgba(0, 255, 136, 0.3));
           }
-          80% {
-            opacity: 1;
-            left: 82%;
-            top: 20%;
+          85% {
+            color: rgba(0, 255, 136, 0.4);
+            text-shadow: 0 0 3px rgba(0, 255, 136, 0.2), 0 0 6px rgba(0, 255, 136, 0.1);
+            filter: drop-shadow(0 0 2px rgba(0, 255, 136, 0.2));
           }
-          90% {
-            opacity: 1;
-            left: 94%;
-            top: 10%;
+          92% {
+            color: rgba(0, 255, 136, 0.2);
+            text-shadow: 0 0 2px rgba(0, 255, 136, 0.1);
+            filter: drop-shadow(0 0 1px rgba(0, 255, 136, 0.1));
           }
-          95% {
-            opacity: 0.5;
-            left: 94%;
-            top: 10%;
+          97% {
+            color: rgba(0, 255, 136, 0.1);
+            text-shadow: 0 0 1px rgba(0, 255, 136, 0.05);
+            filter: none;
           }
           100% {
-            opacity: 0;
-            left: 94%;
-            top: 10%;
+            color: inherit;
+            text-shadow: none;
+            filter: none;
           }
         }
       `}</style>
