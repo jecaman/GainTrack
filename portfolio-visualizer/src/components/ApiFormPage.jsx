@@ -6,44 +6,32 @@ const ApiFormPage = ({ onSubmit, isLoading, error }) => (
       {/* Cabecera */}
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
         <img 
-          src="public/logo.png"
+          src="/logo.png"
           alt="Portfolio Visualizer Logo"
           style={{
             display: 'block',
-            height: '300px',
+            height: '260px',
             width: 'auto',
-            maxWidth: '360px',
+            maxWidth: '280px',
             objectFit: 'contain',
-            margin: '-150px auto 0px',
-            '@media (maxWidth: 768px)': {
-              height: '200px',
-              maxWidth: '280px'
-            }
+            margin: '-20px auto -20px' // Reducido el margen inferior
           }}
         />
         <h1 style={{ 
-          fontSize: '60px',
+          fontSize: '42px',
           fontWeight: 'bold',
           color: 'white',
-          margin: '-50px 0 10px',
-          fontFamily: 'JetBrains Mono, monospace',
-          '@media (maxWidth: 768px)': {
-            fontSize: '40px',
-            margin: '-35px 0 8px'
-          }
+          margin: '5px 0 8px', // Reducido el margen superior
+          fontFamily: 'JetBrains Mono, monospace'
         }}>
           Portfolio Visualizer
         </h1>
         <p style={{ 
           color: '#aa00fe',
-          fontSize: '24px',
+          fontSize: '18px',
           margin: '0',
           fontFamily: 'JetBrains Mono, monospace',
-          textShadow: '0 0 10px rgba(170, 0, 254, 0.6), 0 0 20px rgba(170, 0, 254, 0.4), 0 0 30px rgba(170, 0, 254, 0.2)',
-          animation: 'neonPulse 2s ease-in-out infinite alternate',
-          '@media (maxWidth: 768px)': {
-            fontSize: '18px'
-          }
+          textShadow: '0 0 10px rgba(170, 0, 254, 0.6)'
         }}>
           Track your crypto performance
         </p>

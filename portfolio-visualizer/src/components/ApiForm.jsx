@@ -56,9 +56,10 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
       setTimeout(() => {
         setShowGuide(false);
         setIsClosing(false);
-      }, 400); // Tiempo total de la animación de salida
+      }, 500); // Tiempo total de la animación de salida
     } else {
       setShowGuide(true);
+      setIsClosing(false);
     }
   };
 
@@ -66,25 +67,18 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
     <>
       <div style={{ 
         width: '100%', 
-        maxWidth: '675px', 
+        maxWidth: '458px', 
         margin: '0 auto',
-        position: 'relative',
-        '@media (maxWidth: 768px)': {
-          maxWidth: '360px',
-          width: '90%'
-        }
+        position: 'relative'
       }}>
         {/* Bloque principal del formulario */}
         <div style={{
           backgroundColor: '#1a1a1a',
-          borderRadius: '24px',
-          padding: '36px 65px 54px 65px',
+          borderRadius: '16px',
+          padding: '22px 36px 32px 36px',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
-          position: 'relative',
-          '@media (maxWidth: 768px)': {
-            padding: '28px 40px 42px 40px'
-          }
+          position: 'relative'
         }}>
           {/* Botón de ayuda */}
           <button
@@ -93,13 +87,13 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
               position: 'absolute',
               top: '20px',
               right: '20px',
-              width: '50px',
-              height: '50px',
+              width: '35px',
+              height: '35px',
               borderRadius: '50%',
               backgroundColor: 'transparent',
               border: '2px solid white',
               color: '#fff',
-              fontSize: '24px',
+              fontSize: '17px',
               fontWeight: 'bold',
               cursor: 'pointer',
               display: 'flex',
@@ -130,35 +124,35 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
           </button>
 
           {/* Título del formulario */}
-          <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <h2 style={{ 
-              fontSize: '36px',
+              fontSize: '22px',
               fontWeight: 'bold',
               color: 'white',
-              marginBottom: '54px',
+              marginBottom: '34px',
               fontFamily: 'JetBrains Mono, monospace',
               whiteSpace: 'nowrap',
               '@media (maxWidth: 768px)': {
-                fontSize: '28px',
-                marginBottom: '40px'
+                fontSize: '18px',
+                marginBottom: '24px'
               }
             }}>
               Connect Your Portfolio
             </h2>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '45px' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '35px' }}>
             {/* Campo API Key */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '14px', width: '100%' }}>
               <label htmlFor="apiKey" style={{
-                fontSize: '22px',
+                fontSize: '18px',
                 color: 'white',
                 fontWeight: 'bold',
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
                 fontFamily: 'JetBrains Mono, monospace',
                 '@media (maxWidth: 768px)': {
-                  fontSize: '20px'
+                  fontSize: '16px'
                 }
               }}>
                 🔑 API Key
@@ -208,7 +202,7 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
             {/* Campo API Secret */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '14px', width: '100%' }}>
               <label htmlFor="secretKey" style={{
-                fontSize: '22px',
+                fontSize: '18px',
                 fontWeight: '600',
                 color: 'white',
                 fontWeight: 'bold',
@@ -216,7 +210,7 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                 letterSpacing: '0.08em',
                 fontFamily: 'JetBrains Mono, monospace',
                 '@media (maxWidth: 768px)': {
-                  fontSize: '18px'
+                  fontSize: '16px'
                 }
               }}>
                 🔒 API Secret
@@ -310,12 +304,12 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                 onClick={() => document.getElementById('csvFile').click()}
                 style={{
                   width: '60%',
-                  height: '80px',
+                  height: '56px',
                   backgroundColor: '#1a1a1a',
                   color: 'white',
                   fontWeight: 'bold',
-                  fontSize: '22px',
-                  borderRadius: '17px',
+                  fontSize: '15px',
+                  borderRadius: '12px',
                   border: '2px solid #4b5563',
                   cursor: 'pointer',
                   transition: 'all 0.3s ease',
@@ -324,8 +318,8 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                   transform: 'scale(1)',
                   '@media (maxWidth: 768px)': {
                     width: '70%',
-                    height: '70px',
-                    fontSize: '18px'
+                    height: '49px',
+                    fontSize: '13px'
                   }
                 }}
                 onMouseEnter={(e) => {
@@ -370,7 +364,7 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                       width: '60px',
                       height: '60px',
                       borderRadius: '50%',
-                      background: 'radial-gradient(circle, rgba(170, 0, 254, 0.3) 0%, transparent 70%)',
+                      background: 'radial-gradient(circle, rgba(157, 156, 158, 0.3) 0%, transparent 70%)',
                       animation: 'pulse 2s ease-in-out infinite'
                     }}></div>
                     {/* Bitcoin girando */}
@@ -400,34 +394,35 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                   disabled={isLoading}
                   style={{
                     width: '100%',
-                    height: '82px',
-                    backgroundColor: '#aa00fe',
+                    height: '57px',
+                    backgroundColor: '#8b5cf6', // Morado más oscuro y menos rosado
                     color: 'white',
                     fontWeight: 'bold',
-                    fontSize: '26px',
-                    borderRadius: '22px',
+                    fontSize: '18px',
+                    borderRadius: '15px',
                     border: 'none',
-                    cursor: 'pointer',
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
                     transition: 'all 0.3s',
                     transform: 'scale(1)',
                     fontFamily: 'JetBrains Mono, monospace',
+                    boxShadow: '0 0 10px rgba(139, 92, 246, 0.18)',
                     '@media (maxWidth: 768px)': {
-                      height: '72px',
-                      fontSize: '22px'
+                      height: '50px',
+                      fontSize: '15px'
                     }
                   }}
                   onMouseEnter={(e) => {
                     if (!isLoading) {
-                      e.target.style.backgroundColor = '#8a00d4';
+                      e.target.style.backgroundColor = '#7c3aed'; // Hover más oscuro
                       e.target.style.transform = 'scale(1.02)';
-                      e.target.style.boxShadow = '0 0 10px rgba(170, 0, 254, 0.3)';
+                      e.target.style.boxShadow = '0 0 14px rgba(139, 92, 246, 0.28)';
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isLoading) {
-                      e.target.style.backgroundColor = '#aa00fe';
+                      e.target.style.backgroundColor = '#8b5cf6';
                       e.target.style.transform = 'scale(1)';
-                      e.target.style.boxShadow = 'none';
+                      e.target.style.boxShadow = '0 0 10px rgba(139, 92, 246, 0.18)';
                     }
                   }}
                   onMouseDown={(e) => {
@@ -498,25 +493,28 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
             top: '0',
             left: '100%',
             marginLeft: '20px',
-            width: '750px',
+            width: '800px',
+            maxWidth: 'calc(100vw - 100% - 60px)',
             padding: '0',
             zIndex: 1000,
-            animation: isClosing ? 'fadeOut 0.4s ease-in-out' : 'fadeIn 0.2s ease-in-out'
+            animation: isClosing ? 'fadeOut 0.4s ease-in-out forwards' : 'fadeIn 0.3s ease-in-out forwards'
           }}>
             {/* Contenedor de dos columnas */}
             <div className="step-guide-columns" style={{
               display: 'flex',
               gap: '20px',
               justifyContent: 'flex-start',
-              alignItems: 'stretch'
+              alignItems: 'stretch',
+              overflow: 'visible'
             }}>
               {/* Opción 1: Kraken API Keys */}
               <div style={{
                 flex: 1,
-                minWidth: 570,
-                borderRadius: '14px',
-                padding: '24px',
-                animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.05s both' : 'fadeIn 0.25s ease-in-out 0.05s both'
+                minWidth: '350px',
+                maxWidth: '380px',
+                borderRadius: '11px',
+                padding: '18px',
+                animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.05s forwards' : 'fadeIn 0.3s ease-in-out 0.05s forwards'
               }}>
                 {/* Header de la opción */}
                 <div style={{
@@ -527,10 +525,10 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                 }}>
                   <div style={{ minWidth: '0', flex: '1' }}>
                     <h4 style={{
-                      fontSize: '26px',
+                      fontSize: '20px',
                       fontWeight: 'bold',
                       color: 'white',
-                      margin: '0 0 5px -20px',
+                      margin: '0 0 5px -15px',
                       fontFamily: 'JetBrains Mono, monospace'
                     }}>
                       🔑 Option 1: Kraken API Keys
@@ -543,10 +541,10 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                   {/* Línea vertical conectando los pasos */}
                   <div style={{
                     position: 'absolute',
-                    left: '21px',
+                    left: '16px', // Centrado exacto: 32px/2 = 16px
                     top: '32px',
                     bottom: '35px',
-                    width: '1px',
+                    width: '1.5px',
                     backgroundColor: 'rgba(255, 255, 255, 0.2)',
                     zIndex: 1
                   }}></div>
@@ -554,82 +552,82 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                   {/* Línea horizontal conectando el header con el primer paso */}
                   <div style={{
                     position: 'absolute',
-                    left: '21px',
+                    left: '16px', // Centrado igual que la vertical
                     top: '32px',
                     width: '18px',
-                    height: '1px',
+                    height: '1.5px',
                     backgroundColor: 'rgba(255, 255, 255, 0.2)',
                     zIndex: 1
                   }}></div>
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.15s both' : 'fadeIn 0.3s ease-in-out 0.1s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       1
                     </div>
-                    <div style={{ color: 'white', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: 'white', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Go to <a href="https://pro.kraken.com/app/settings/api" target="_blank" rel="noopener noreferrer" style={{ color: '#aa00fe', textDecoration: 'underline' }}>pro.kraken.com › Settings › API</a>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.1s both' : 'fadeIn 0.3s ease-in-out 0.2s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       2
                     </div>
-                    <div style={{ color: '#d1d5db', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: '#d1d5db', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Click <strong style={{ color: 'white' }}>"Create API Key"</strong>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.05s both' : 'fadeIn 0.3s ease-in-out 0.3s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       3
                     </div>
-                    <div style={{ color: '#d1d5db', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: '#d1d5db', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Enable <strong style={{ color: 'white' }}>only</strong> these permissions:
                       <div style={{ marginTop: '16px', marginLeft: '24px' }}>
-                        <div style={{ color: '#d1d5db', fontSize: '20px', marginBottom: '8px' }}>
+                        <div style={{ color: '#d1d5db', fontSize: '15px', marginBottom: '6px' }}>
                           • Funds permissions › <strong style={{ color: 'white' }}>Query</strong>
                         </div>
-                        <div style={{ color: '#d1d5db', fontSize: '20px' }}>
+                        <div style={{ color: '#d1d5db', fontSize: '15px' }}>
                           • Orders and trades › <strong style={{ color: 'white' }}>Query closed orders & trades</strong>
                         </div>
                       </div>
@@ -638,22 +636,22 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out both' : 'fadeIn 0.3s ease-in-out 0.4s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       4
                     </div>
-                    <div style={{ color: '#d1d5db', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: '#d1d5db', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Paste your <strong style={{ color: 'white' }}>API Key</strong> and <strong style={{ color: 'white' }}>API Secret</strong> into the form
                     </div>
                   </div>
@@ -662,23 +660,25 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                 {/* Línea divisoria vertical con degradado elegante */}
                 <div style={{
                     width: '1px',
-                    height: '650px',
+                    height: '540px', // Más larga hacia abajo
                     position: 'absolute',
-                    right: '-23px',
+                    right: '-10px',
                     top: '0',
                     zIndex: 1,
-                    background: 'linear-gradient(to bottom, rgba(255,255,255,0.2), rgba(255,255,255,0.05))'
+                    background: 'linear-gradient(to bottom, rgba(255,255,255,0.2), rgba(255,255,255,0.05))',
+                    animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.1s forwards' : 'fadeIn 0.3s ease-in-out 0.1s forwards'
                 }}></div>
               </div>
 
               {/* Opción 2: Upload a CSV */}
               <div style={{
                 flex: 1,
-                minWidth: 550,
-                borderRadius: '14px',
-                marginLeft: '30px',
-                padding: '24px',
-                animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.05s both' : 'fadeIn 0.25s ease-in-out 0.05s both'
+                minWidth: '350px',
+                maxWidth: '380px',
+                borderRadius: '11px',
+                padding: '18px',
+                animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.05s forwards' : 'fadeIn 0.3s ease-in-out 0.05s forwards',
+                marginLeft: '40px' // Más separación respecto a la línea divisoria
               }}>
                 {/* Header de la opción */}
                 <div style={{
@@ -689,11 +689,11 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                 }}>
                   <div style={{ minWidth: '0', flex: '1' }}>
                     <h4 style={{
-                      fontSize: '26px',
+                      fontSize: '20px',
                       fontWeight: 'bold',
                       color: 'white',
                       margin: '0 0 5px 0px',
-                      marginLeft: '-60px',
+                      marginLeft: '-45px',
                       fontFamily: 'JetBrains Mono, monospace'
                     }}>
                       📁 Option 2: Upload a CSV
@@ -706,10 +706,10 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                   {/* Línea vertical conectando los pasos */}
                   <div style={{
                     position: 'absolute',
-                    left: '21px',
+                    left: '16px', // Centrado exacto: 32px/2 = 16px
                     top: '32px',
                     bottom: '35px',
-                    width: '1px',
+                    width: '1.5px',
                     backgroundColor: 'rgba(255, 255, 255, 0.2)',
                     zIndex: 1
                   }}></div>
@@ -717,98 +717,98 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
                   {/* Línea horizontal conectando el header con el primer paso */}
                   <div style={{
                     position: 'absolute',
-                    left: '21px',
+                    left: '16px', // Centrado igual que la vertical
                     top: '32px',
                     width: '18px',
-                    height: '1px',
+                    height: '1.5px',
                     backgroundColor: 'rgba(255, 255, 255, 0.2)',
                     zIndex: 1
                   }}></div>
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.15s both' : 'fadeIn 0.3s ease-in-out 0.1s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       1
                     </div>
-                    <div style={{ color: 'white', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: 'white', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Go to <a href="https://pro.kraken.com/app/settings/documents" target="_blank" rel="noopener noreferrer" style={{ color: '#aa00fe', textDecoration: 'underline' }}>kraken.com/u/history/export</a>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.1s both' : 'fadeIn 0.3s ease-in-out 0.2s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       2
                     </div>
-                    <div style={{ color: '#d1d5db', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: '#d1d5db', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Click <strong style={{ color: 'white' }}>"Create Export"</strong>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out 0.05s both' : 'fadeIn 0.3s ease-in-out 0.3s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       3
                     </div>
-                    <div style={{ color: '#d1d5db', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: '#d1d5db', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Select <strong style={{ color: 'white' }}>"Trades"</strong> as type
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px', position: 'relative', zIndex: 2, animation: isClosing ? 'fadeOut 0.4s ease-in-out both' : 'fadeIn 0.3s ease-in-out 0.4s both' }}>
                     <div style={{
-                      width: '42px',
-                      height: '42px',
+                      width: '32px',
+                      height: '32px',
                       backgroundColor: 'white',
                       color: 'black',
                       borderRadius: '50%',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '22px',
+                      fontSize: '17px',
                       fontWeight: 'bold',
                       flexShrink: 0,
                       marginTop: '3px'
                     }}>
                       4
                     </div>
-                    <div style={{ color: '#d1d5db', fontSize: '22px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
+                    <div style={{ color: '#d1d5db', fontSize: '17px', lineHeight: '1.6', minWidth: '0', flex: '1', textAlign: 'left' }}>
                       Download and <strong style={{ color: 'white' }}>upload</strong> it here
                     </div>
                   </div>
@@ -856,7 +856,7 @@ const ApiForm = ({ onSubmit, isLoading, error }) => {
             </div>
             <span style={{
               color: 'white',
-              fontSize: '20px',
+              fontSize: '15px',
               fontWeight: '600',
               fontFamily: 'JetBrains Mono, monospace'
             }}>

@@ -98,6 +98,47 @@ def obtener_portfolio_historico(kraken):
         }
     return resumen
 
+def calcular_kpis_portfolio(portfolio_data):
+    """Calcula los KPIs principales del portfolio"""
+    if not portfolio_data:
+        return {
+            "total_invested": 0,
+            "current_value": 0,
+            "liquidity": 0,
+            "profit_neto": 0,
+            "profit_porcentaje": 0,
+            "total_portfolio_value": 0
+        }
+    
+    total_invested = sum(data['total_cost'] for data in portfolio_data.values())
+    total_fees = sum(data['total_fee'] for data in portfolio_data.values())
+    
+    # Para el valor actual, necesitaríamos precios actuales de mercado
+    # Por ahora usamos el costo total como aproximación
+    current_value = total_invested
+    
+    # Liquidez (asumiendo que los activos fiat son líquidos)
+    liquidity = sum(data['total_cost'] for pair, data in portfolio_data.items() 
+                   if any(fiat in pair for fiat in FIAT_ASSETS))
+    
+    # Profit neto (simplificado)
+    profit_neto = current_value - total_invested - total_fees
+    
+    # Porcentaje de profit
+    profit_porcentaje = (profit_neto / total_invested * 100) if total_invested > 0 else 0
+    
+    # Valor total del portfolio
+    total_portfolio_value = current_value + liquidity
+    
+    return {
+        "total_invested": round(total_invested, 2),
+        "current_value": round(current_value, 2),
+        "liquidity": round(liquidity, 2),
+        "profit_neto": round(profit_neto, 2),
+        "profit_porcentaje": round(profit_porcentaje, 2),
+        "total_portfolio_value": round(total_portfolio_value, 2)
+    }
+
 
 @app.post("/api/portfolio")
 async def portfolio_endpoint(req: PortfolioRequest):
@@ -125,46 +166,19 @@ async def portfolio_endpoint(req: PortfolioRequest):
         print(f"❌ Error al obtener datos de portfolio: {str(e)}")
         return {"error": str(e)}
 
-@app.post("/api/kpis")
-async def kpis_endpoint(req: PortfolioRequest):
-    """Endpoint específico para obtener solo los KPIs del portfolio"""
-    try:
-        kraken = crear_kraken_api(req.api_key, req.api_secret)
-        portfolio_data = obtener_portfolio_historico(kraken)
-        kpis = calcular_kpis_portfolio(portfolio_data)
-        return kpis
-    except Exception as e:
-        print(f"❌ Error al obtener KPIs: {str(e)}")
-        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
     
     # Credenciales reales de Kraken (reemplaza con las tuyas)
-    api_key = "IITH+u7wTKm8bCgcHstIxc+HpUKj75ylHlBkKSdf3HQCNOUCJaXQ9e+E"
-    api_secret = "Qg4gE2ncHzy/mPu5x5nHZ1GAfvJFRJbUaQ/Lya2lP01TWIZBgc6IidMOkpt62wQJIJEPAwHOYuxRZEaHWRf1KA=="
+    #api_key = "IITH+u7wTKm8bCgcHstIxc+HpUKj75ylHlBkKSdf3HQCNOUCJaXQ9e+E"
+    #api_secret = "Qg4gE2ncHzy/mPu5x5nHZ1GAfvJFRJbUaQ/Lya2lP01TWIZBgc6IidMOkpt62wQJIJEPAwHOYuxRZEaHWRf1KA=="
     
     print("🚀 Iniciando servidor Portfolio Visualizer...")
     print("📊 Backend disponible en: http://localhost:8000")
     print("🌐 Frontend disponible en: http://localhost:5173")
     print("📖 Documentación API: http://localhost:8000/docs")
     print("=" * 50)
-    
-    # Obtener y mostrar solo los KPIs
-    kraken = crear_kraken_api(api_key, api_secret)
-    print(len(get_all_trades(kraken)))
-    print(obtener_portfolio_historico(kraken))
    
-    # portfolio_data = obtener_portfolio_historico(kraken)
-    # print(portfolio_data)
-    # kpis = calcular_kpis_portfolio(portfolio_data)
-    
-    # print("📈 KPIs DEL PORTFOLIO:")
-    # print(f"💰 Total Invertido: {kpis['total_invested']} EUR")
-    # print(f"💎 Valor Actual: {kpis['current_value']} EUR")
-    # print(f"💵 Liquidez: {kpis['liquidity']} EUR")
-    # print(f"📈 Profit Neto: {kpis['profit_neto']} EUR ({kpis['profit_porcentaje']}%)")
-    # print(f"🏦 Valor Total Portfolio: {kpis['total_portfolio_value']} EUR")
-    # print("=" * 50)
     
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)

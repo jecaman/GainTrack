@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ApiFormPage from './components/ApiFormPage';
+import GainTrackFormPage from './components/GainTrackFormPage';
 import PortfolioPage from './components/PortfolioPage';
 
 function App() {
@@ -66,7 +66,7 @@ function App() {
   return (
     <>
       {!showPortfolio ? (
-        <ApiFormPage
+        <GainTrackFormPage
           onSubmit={handleApiSubmit}
           isLoading={isLoading}
           error={error}
