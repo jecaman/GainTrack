@@ -151,18 +151,18 @@ const ZigzagLogo = ({
 const ThemeToggle = ({ isDark, onToggle }) => (
   <div style={{
     position: 'fixed',
-    top: 'clamp(16px, 4vw, 20px)',
-    right: 'clamp(16px, 4vw, 20px)',
+    top: 'clamp(14px, 3.6vw, 18px)',
+    right: 'clamp(14px, 3.6vw, 18px)',
     zIndex: 100
   }}>
     <button
       onClick={onToggle}
       style={{
-        width: 'clamp(64px, 15vw, 72px)',
-        height: 'clamp(36px, 8vw, 40px)',
+        width: 'clamp(58px, 13.5vw, 65px)',
+        height: 'clamp(32px, 7.2vw, 36px)',
         background: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
         border: `2px solid ${isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'}`,
-        borderRadius: 'clamp(20px, 5vw, 22px)',
+        borderRadius: 'clamp(18px, 4.5vw, 20px)',
         cursor: 'pointer',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         position: 'relative',
@@ -182,16 +182,16 @@ const ThemeToggle = ({ isDark, onToggle }) => (
     >
       {/* Toggle circle */}
       <div style={{
-        width: 'clamp(28px, 6vw, 32px)',
-        height: 'clamp(28px, 6vw, 32px)',
+        width: 'clamp(25px, 5.4vw, 29px)',
+        height: 'clamp(25px, 5.4vw, 29px)',
         background: isDark ? '#6b7280' : '#4b5563',
         borderRadius: '50%',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        transform: isDark ? 'translateX(0)' : 'translateX(32px)',
+        transform: isDark ? 'translateX(0)' : 'translateX(29px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 'clamp(12px, 3vw, 14px)',
+        fontSize: 'clamp(11px, 2.7vw, 13px)',
         filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))'
       }}>
         {isDark ? '🌙' : '☀️'}
@@ -362,7 +362,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
       <BackgroundPattern isDark={isDarkMode} />
       <div style={{
         width: '100%',
-        maxWidth: '342px',
+        maxWidth: '308px',
         position: 'relative',
         zIndex: 1,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -370,7 +370,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         {/* Header */}
         <div style={{ 
           textAlign: 'center', 
-          marginBottom: '29px',
+          marginBottom: '26px',
         }}>
           {/* Logo */}
           <div style={{
@@ -378,12 +378,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '7px',
-            marginBottom: '22px',
+            gap: '6px',
+            marginBottom: '20px',
           }}>
-            <ZigzagLogo size={58} color={theme.greenPrimary} sloganGlow={sloganGlow} isDarkMode={isDarkMode} />
+            <ZigzagLogo size={52} color={theme.greenPrimary} sloganGlow={sloganGlow} isDarkMode={isDarkMode} />
             <h1 style={{
-              fontSize: 'clamp(29px, 7.2vw, 36px)',
+              fontSize: 'clamp(26px, 6.5vw, 32px)',
               fontWeight: '700',
               color: theme.textPrimary,
               margin: '0',
@@ -399,7 +399,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           {/* Subtitle */}
           <p style={{
             color: theme.textSecondary,
-            fontSize: 'clamp(13px, 3.2vw, 14px)',
+            fontSize: 'clamp(12px, 2.9vw, 13px)',
             margin: '0',
             fontWeight: '500',
             lineHeight: '1.5',
@@ -448,8 +448,8 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         <div style={{
           background: theme.bgElevated,
           border: `1px solid ${theme.border}`,
-          borderRadius: '14px',
-          padding: 'clamp(18px, 4.5vw, 25px)',
+          borderRadius: '13px',
+          padding: 'clamp(16px, 4vw, 23px)',
           position: 'relative',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           ...(isDarkMode ? {} : {
@@ -462,7 +462,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             background: theme.bgContainer,
             borderRadius: '12px',
             padding: '4px',
-            marginBottom: 'clamp(18px, 4.5vw, 25px)',
+            marginBottom: 'clamp(16px, 4vw, 23px)',
             border: `1px solid ${theme.borderLight}`,
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}>
@@ -470,12 +470,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               onClick={() => setActiveMethod('api')}
               style={{
                 flex: 1,
-                padding: 'clamp(9px, 2.3vw, 11px) clamp(11px, 2.7vw, 14px)',
+                padding: 'clamp(8px, 2.1vw, 10px) clamp(10px, 2.4vw, 13px)',
                 borderRadius: '8px',
                 border: 'none',
                 background: activeMethod === 'api' ? theme.greenPrimary : 'transparent',
                 color: activeMethod === 'api' ? (isDarkMode ? '#000000' : '#ffffff') : theme.textSecondary,
-                fontSize: 'clamp(11px, 2.7vw, 13px)',
+                fontSize: 'clamp(10px, 2.4vw, 12px)',
                 fontWeight: '500',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -500,12 +500,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               onClick={() => setActiveMethod('csv')}
               style={{
                 flex: 1,
-                padding: 'clamp(9px, 2.3vw, 11px) clamp(11px, 2.7vw, 14px)',
+                padding: 'clamp(8px, 2.1vw, 10px) clamp(10px, 2.4vw, 13px)',
                 borderRadius: '8px',
                 border: 'none',
                 background: activeMethod === 'csv' ? theme.greenPrimary : 'transparent',
                 color: activeMethod === 'csv' ? (isDarkMode ? '#000000' : '#ffffff') : theme.textSecondary,
-                fontSize: 'clamp(11px, 2.7vw, 13px)',
+                fontSize: 'clamp(10px, 2.4vw, 12px)',
                 fontWeight: '500',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
@@ -530,7 +530,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
 
           {/* Input Section with Content Transition */}
           <div style={{
-            minHeight: 'clamp(135px, 18vw, 144px)',
+            minHeight: 'clamp(122px, 16.2vw, 130px)',
             position: 'relative'
           }}>
             {/* API Method - Only Inputs */}
@@ -544,15 +544,15 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
               pointerEvents: activeMethod === 'api' ? 'auto' : 'none'
             }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%', justifyContent: 'center' }}>
                 {/* API Key Field */}
                 <div>
                   <label style={{
                     display: 'block',
-                    fontSize: 'clamp(11px, 2.7vw, 13px)',
+                    fontSize: 'clamp(10px, 2.4vw, 12px)',
                     fontWeight: '600',
                     color: theme.textPrimary,
-                    marginBottom: '8px',
+                    marginBottom: '6px',
                     fontFamily: "'Inter', sans-serif",
                     textShadow: isDarkMode ? '0 0 4px rgba(255, 255, 255, 0.1)' : 'none',
                     transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -567,7 +567,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                     placeholder="Enter your Kraken API key"
                     style={{
                       width: '100%',
-                      padding: 'clamp(12px, 3vw, 14px) clamp(14px, 3.5vw, 16px)',
+                      padding: 'clamp(9px, 2.3vw, 11px) clamp(11px, 2.7vw, 13px)',
                       background: theme.bgContainer,
                       border: `1px solid ${theme.border}`,
                       borderRadius: '10px',
@@ -594,10 +594,10 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                 <div>
                   <label style={{
                     display: 'block',
-                    fontSize: 'clamp(11px, 2.7vw, 13px)',
+                    fontSize: 'clamp(10px, 2.4vw, 12px)',
                     fontWeight: '600',
                     color: theme.textPrimary,
-                    marginBottom: '8px',
+                    marginBottom: '6px',
                     fontFamily: "'Inter', sans-serif",
                     textShadow: isDarkMode ? '0 0 4px rgba(255, 255, 255, 0.1)' : 'none',
                     transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -612,7 +612,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                     placeholder="Enter your Kraken API secret"
                     style={{
                       width: '100%',
-                      padding: 'clamp(12px, 3vw, 14px) clamp(14px, 3.5vw, 16px)',
+                      padding: 'clamp(9px, 2.3vw, 11px) clamp(11px, 2.7vw, 13px)',
                       background: theme.bgContainer,
                       border: `1px solid ${theme.border}`,
                       borderRadius: '10px',
@@ -661,12 +661,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                 style={{
                   border: `2px dashed ${isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)'}`,
                   borderRadius: '12px',
-                  padding: 'clamp(18px, 4.5vw, 25px) clamp(14px, 3.6vw, 18px)',
+                  padding: 'clamp(16px, 4vw, 23px) clamp(13px, 3.2vw, 16px)',
                   textAlign: 'center',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   background: isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)',
-                  height: 'clamp(135px, 18vw, 144px)',
+                  height: 'clamp(122px, 16.2vw, 130px)',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'center',
@@ -695,7 +695,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                   📊
                 </div>
                 <h3 style={{
-                  fontSize: 'clamp(13px, 3.2vw, 14px)',
+                  fontSize: 'clamp(12px, 2.9vw, 13px)',
                   fontWeight: '600',
                   color: theme.textPrimary,
                   margin: '0 0 6px',
@@ -728,7 +728,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               color: isLoading ? theme.textMuted : theme.greenPrimary,
               border: isLoading ? `2px solid ${theme.border}` : `2px solid ${theme.greenPrimary}`,
               borderRadius: '10px',
-              fontSize: 'clamp(13px, 3.2vw, 14px)',
+              fontSize: 'clamp(12px, 2.9vw, 13px)',
               fontWeight: '600',
               cursor: isLoading ? 'not-allowed' : 'pointer',
               transition: 'all 0.2s ease',
@@ -737,8 +737,8 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              marginTop: 'clamp(22px, 5.4vw, 29px)',
-              marginBottom: 'clamp(14px, 3.6vw, 18px)'
+              marginTop: 'clamp(45px, 9vw, 54px)',
+              marginBottom: 'clamp(13px, 3.2vw, 16px)'
             }}
             onMouseEnter={(e) => {
               if (!isLoading) {
@@ -792,10 +792,10 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         {/* Footer */}
         <div style={{
           textAlign: 'center',
-          marginTop: 'clamp(18px, 4.5vw, 25px)'
+          marginTop: 'clamp(16px, 4vw, 23px)'
         }}>
           <p style={{
-            fontSize: 'clamp(9px, 2.3vw, 11px)',
+            fontSize: 'clamp(8px, 2.1vw, 10px)',
             color: theme.textMuted,
             margin: '0 0 8px 0',
             fontWeight: '500',
@@ -809,7 +809,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             🔒 Your data is processed locally and never stored on our servers
           </p>
           <p style={{
-            fontSize: 'clamp(9px, 2.3vw, 11px)',
+            fontSize: 'clamp(8px, 2.1vw, 10px)',
             color: theme.textMuted,
             margin: '0',
             transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -829,19 +829,19 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         {/* Contact Us Button */}
         <div style={{
           position: 'fixed',
-          bottom: 'clamp(16px, 4vw, 24px)',
-          right: 'clamp(16px, 4vw, 24px)',
+          bottom: 'clamp(14px, 3.6vw, 22px)',
+          right: 'clamp(14px, 3.6vw, 22px)',
           zIndex: 100
         }}>
           <button
             onClick={() => window.open('mailto:contact@gaintrack.app', '_blank')}
             style={{
-              padding: 'clamp(8px, 2vw, 12px) clamp(12px, 3vw, 16px)',
+              padding: 'clamp(7px, 1.8vw, 11px) clamp(11px, 2.7vw, 14px)',
               background: 'transparent',
               color: theme.textSecondary,
               border: `1px solid ${theme.border}`,
               borderRadius: '8px',
-              fontSize: 'clamp(11px, 2.5vw, 13px)',
+              fontSize: 'clamp(10px, 2.3vw, 12px)',
               fontWeight: '500',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
