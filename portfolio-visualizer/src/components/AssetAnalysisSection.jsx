@@ -13,7 +13,7 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
   if (!portfolioData) return null;
 
   const symbol = getFiatSymbol(portfolioData);
-  const assets = portfolioData.filter(asset => asset.average_cost !== null);
+  const assets = portfolioData;
 
   // Filter data based on selected asset
   const getFilteredData = () => {
@@ -24,7 +24,7 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
   };
 
   const filteredData = getFilteredData();
-  const filteredAssets = filteredData.filter(asset => asset.average_cost !== null);
+  const filteredAssets = filteredData;
 
   // Get available assets for filter
   const availableAssets = assets.map(asset => ({
@@ -254,15 +254,22 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
       const asset = assets.find(a => a.asset === selectedAsset);
       if (!asset) return null;
       
+      const priceChange = asset.average_cost > 0 ? (((asset.current_price || 0) - asset.average_cost) / asset.average_cost * 100) : 0;
+      const totalCost = (asset.total_invested || 0) + (asset.fees_paid || 0);
+      const roi = totalCost > 0 ? ((asset.current_value || 0) - totalCost) / totalCost * 100 : 0;
+      
       return {
         assetName: assetLabelMap[asset.asset] || asset.asset,
         amount: asset.amount || 0,
         avgCost: asset.average_cost || asset.current_price || 0,
         currentPrice: asset.current_price || 0,
+        priceChange: priceChange,
         invested: asset.total_invested || asset.current_value || 0,
+        feesPaid: asset.fees_paid || 0,
         currentValue: asset.current_value || 0,
         profit: asset.pnl_eur || 0,
-        profitPercent: asset.pnl_percent || 0
+        profitPercent: asset.pnl_percent || 0,
+        roi: roi
       };
     }
   };
@@ -341,7 +348,7 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-cyan-400 font-mono">{stats.amount}</div>
                     <div className="text-sm text-gray-400">Amount Held</div>
@@ -355,10 +362,20 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
                     <div className="text-sm text-gray-400">Current Price</div>
                   </div>
                   <div className="text-center">
-                    <div className={`text-2xl font-bold font-mono ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {stats.profitPercent.toFixed(2)}%
+                    <div className={`text-2xl font-bold font-mono ${stats.priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {stats.priceChange >= 0 ? '+' : ''}{stats.priceChange.toFixed(2)}%
                     </div>
-                    <div className="text-sm text-gray-400">Performance</div>
+                    <div className="text-sm text-gray-400">Price Change</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-400 font-mono">{symbol}{stats.feesPaid.toFixed(2)}</div>
+                    <div className="text-sm text-gray-400">Fees Paid</div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`text-2xl font-bold font-mono ${stats.roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {stats.roi >= 0 ? '+' : ''}{stats.roi.toFixed(2)}%
+                    </div>
+                    <div className="text-sm text-gray-400">ROI</div>
                   </div>
                 </div>
               )}
@@ -414,7 +431,7 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
             <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-purple-500">
               <h3 className="text-xl font-bold text-white mb-4 font-mono flex items-center">
                 <span className="mr-2">📋</span>
-                {assetLabelMap[selectedAsset] || selectedAsset} Detailed Information
+                {assetLabelMap[selectedAsset] || selectedAsset} Complete Metrics
               </h3>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-white font-mono">
@@ -457,6 +474,30 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
                           <td className="px-4 py-3 text-sm">Profit/Loss (%)</td>
                           <td className={`px-4 py-3 text-sm text-right font-semibold ${asset.pnl_percent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {asset.pnl_percent}%
+                          </td>
+                        </tr>
+                        <tr key={`${index}-fees`} className="hover:bg-gray-800 transition-colors duration-200">
+                          <td className="px-4 py-3 text-sm">Fees Paid</td>
+                          <td className="px-4 py-3 text-sm text-right text-orange-400">
+                            {symbol}{asset.fees_paid || '0.00'}
+                          </td>
+                        </tr>
+                        <tr key={`${index}-price-change`} className="hover:bg-gray-800 transition-colors duration-200">
+                          <td className="px-4 py-3 text-sm">Price Change (%)</td>
+                          <td className={`px-4 py-3 text-sm text-right font-semibold ${((asset.current_price || 0) - asset.average_cost) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {asset.average_cost > 0 ? 
+                              `${((asset.current_price || 0) - asset.average_cost) >= 0 ? '+' : ''}${(((asset.current_price || 0) - asset.average_cost) / asset.average_cost * 100).toFixed(2)}%` 
+                              : 'N/A'
+                            }
+                          </td>
+                        </tr>
+                        <tr key={`${index}-roi`} className="hover:bg-gray-800 transition-colors duration-200">
+                          <td className="px-4 py-3 text-sm">ROI (%)</td>
+                          <td className={`px-4 py-3 text-sm text-right font-semibold ${((asset.current_value || 0) - (asset.total_invested || 0) - (asset.fees_paid || 0)) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {((asset.total_invested || 0) + (asset.fees_paid || 0)) > 0 ? 
+                              `${((asset.current_value || 0) - (asset.total_invested || 0) - (asset.fees_paid || 0)) >= 0 ? '+' : ''}${(((asset.current_value || 0) - (asset.total_invested || 0) - (asset.fees_paid || 0)) / ((asset.total_invested || 0) + (asset.fees_paid || 0)) * 100).toFixed(2)}%`
+                              : 'N/A'
+                            }
                           </td>
                         </tr>
                       </>

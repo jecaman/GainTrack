@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import GainTrackFormPage from './components/GainTrackFormPage';
 import PortfolioPage from './components/PortfolioPage';
+import GainTrackKPIs from './components/GainTrackKPIs';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [apiCredentials, setApiCredentials] = useState(null);
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [portfolioData, setPortfolioData] = useState(null);
+  const [fullPortfolioData, setFullPortfolioData] = useState(null); // Datos completos del backend
   const [timeline, setTimeline] = useState([]);
   const [error, setError] = useState('');
 
@@ -26,23 +28,17 @@ function App() {
         setIsLoading(false);
         return;
       }
-      if (!data.summary || !Array.isArray(data.summary)) {
+      if (!data.portfolio_data || !Array.isArray(data.portfolio_data)) {
         setError('Unexpected response format');
         setIsLoading(false);
         return;
       }
       
-      // Adaptar los datos del nuevo formato del backend al formato que espera el frontend
-      const adaptedData = data.summary.map(asset => ({
-        asset: asset.asset,
-        amount: asset.amount,
-        average_cost: asset.is_fiat ? null : (asset.current_price_eur || null),
-        current_price: asset.current_price_eur || 1.0,
-        total_invested: asset.is_fiat ? null : (asset.current_value_eur || null),
-        current_value: asset.current_value_eur || asset.amount,
-        pnl_eur: asset.is_fiat ? null : 0, // No tenemos datos de P&L en el nuevo formato
-        pnl_percent: asset.is_fiat ? null : 0 // No tenemos datos de P&L en el nuevo formato
-      }));
+      // Guardar datos completos del backend
+      setFullPortfolioData(data);
+      
+      // Usar los datos del nuevo formato del backend directamente
+      const adaptedData = data.portfolio_data;
       
       setPortfolioData(adaptedData);
       setTimeline(data.timeline || []);
@@ -59,6 +55,7 @@ function App() {
     setShowPortfolio(false);
     setApiCredentials(null);
     setPortfolioData(null);
+    setFullPortfolioData(null);
     setTimeline([]);
     setError('');
   };
@@ -72,9 +69,10 @@ function App() {
           error={error}
         />
       ) : (
-        <PortfolioPage
-          portfolioData={portfolioData}
-          timeline={timeline}
+        <GainTrackKPIs
+          portfolioData={fullPortfolioData}
+          isLoading={isLoading}
+          error={error}
           onBack={handleBackToForm}
         />
       )}

@@ -25,7 +25,7 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
 
     portfolioData.forEach(asset => {
       const value = parseFloat(asset.current_value);
-      if (!isNaN(value) && value > 0 && asset.average_cost !== null) {
+      if (!isNaN(value) && value > 0) {
         labels.push(assetLabelMap[asset.asset] || asset.asset);
         values.push(value);
       }
@@ -49,7 +49,7 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
     const values = [];
 
     portfolioData.forEach(asset => {
-      if (asset.average_cost !== null && asset.total_invested > 0) {
+      if (asset.total_invested > 0) {
         labels.push(assetLabelMap[asset.asset] || asset.asset);
         values.push(asset.total_invested);
       }
@@ -397,45 +397,83 @@ const GeneralPerformanceSection = ({ portfolioData, timeline }) => {
         <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-purple-500">
           <h3 className="text-xl font-bold text-white mb-4 font-mono flex items-center">
             <span className="mr-2">📄</span>
-            Portfolio Breakdown (per asset)
+Detailed Asset Breakdown
           </h3>
           <div className="overflow-x-auto">
             <table className="min-w-full text-white font-mono">
               <thead className="bg-gray-800">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">Asset</th>
+                  <th className="px-4 py-3 text-center text-sm font-medium text-gray-300 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Amount</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Avg. Cost (€)</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Current Price (€)</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Price Change (%)</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Invested (€)</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Fees (€)</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Value (€)</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">Weight (%)</th>
                   <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">PNL (€)</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">PNL (%)</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-300 uppercase tracking-wider">ROI (%)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-700">
-                {portfolioData.filter(asset => asset.average_cost !== null).map((asset, index) => (
-                  <tr key={index} className="hover:bg-gray-800 transition-colors duration-200">
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
-                      {assetLabelMap[asset.asset] || asset.asset}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.amount}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.average_cost}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.current_price}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.total_invested}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.current_value}</td>
-                    <td className={`px-4 py-4 whitespace-nowrap text-sm text-right font-semibold ${
-                      asset.pnl_eur >= 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {asset.pnl_eur}
-                    </td>
-                    <td className={`px-4 py-4 whitespace-nowrap text-sm text-right font-semibold ${
-                      asset.pnl_percent >= 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {asset.pnl_percent}%
-                    </td>
-                  </tr>
-                ))}
+                {portfolioData.map((asset, index) => {
+                  const totalPortfolioValue = portfolioData.reduce((sum, a) => sum + (a.current_value || 0), 0);
+                  const portfolioWeight = totalPortfolioValue > 0 ? ((asset.current_value || 0) / totalPortfolioValue * 100) : 0;
+                  const priceChange = asset.average_cost > 0 ? (((asset.current_price || 0) - asset.average_cost) / asset.average_cost * 100) : 0;
+                  const totalCost = (asset.total_invested || 0) + (asset.fees_paid || 0);
+                  const roi = totalCost > 0 ? ((asset.current_value || 0) - totalCost) / totalCost * 100 : 0;
+                  
+                  return (
+                    <tr key={index} className="hover:bg-gray-800 transition-colors duration-200">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center">
+                          <span className="mr-2">
+                            {asset.is_sold ? '🔴' : (asset.asset_type === 'crypto' ? '₿' : '💰')}
+                          </span>
+                          {assetLabelMap[asset.asset] || asset.asset}
+                          {asset.is_sold && <span className="ml-2 text-xs text-red-400">(SOLD)</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-center">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          asset.asset_type === 'crypto' 
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' 
+                            : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}>
+                          {asset.asset_type || 'crypto'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.amount}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.average_cost}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.current_price}</td>
+                      <td className={`px-4 py-4 whitespace-nowrap text-sm text-right font-semibold ${
+                        priceChange >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-right">{asset.total_invested}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-right text-orange-400">
+                        {asset.fees_paid || '0.00'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-right font-medium">{asset.current_value}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-right text-cyan-400">
+                        {portfolioWeight.toFixed(2)}%
+                      </td>
+                      <td className={`px-4 py-4 whitespace-nowrap text-sm text-right font-semibold ${
+                        asset.pnl_eur >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {asset.pnl_eur}
+                      </td>
+                      <td className={`px-4 py-4 whitespace-nowrap text-sm text-right font-semibold ${
+                        roi >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {roi >= 0 ? '+' : ''}{roi.toFixed(2)}%
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

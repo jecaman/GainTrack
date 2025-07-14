@@ -109,12 +109,12 @@ const ZigzagLogo = ({
       transform: sloganGlow && !isDarkMode ? 'scale(1.2)' : 'scale(1)',
       transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
     }}>
-      <svg width={size} height={size * 0.6} viewBox="0 0 32 20" fill="none">
+      <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
         {/* Base logo */}
         <path
           d="M2 16L8 6L14 12L20 4L26 10L30 2"
           stroke={color}
-          strokeWidth="3"
+          strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -124,20 +124,20 @@ const ZigzagLogo = ({
         <div
           style={{
             position: 'absolute',
-            left: `calc(${(punto.x / 32) * 100}% - 4px)`,
+            left: `calc(${(punto.x / 32) * 100}% - 2.8px)`,
             // Ajuste vertical: restamos 1.5px para subir el punto
-            top: `calc(${(punto.y / 20) * 100}% - 4px - ${ajusteVerticalPx}px)`,
-            width: '8px',
-            height: '8px',
-            background: 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.9) 30%, rgba(0,255,136,0.7) 60%, rgba(0,255,136,0.3) 80%, transparent 100%)',
+            top: `calc(${(punto.y / 32) * 100}% - 2.8px - ${ajusteVerticalPx}px)`,
+            width: '5.6px',
+            height: '5.6px',
+            background: 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.9) 40%, rgba(0,255,136,0.5) 70%, transparent 100%)',
             borderRadius: '50%',
-            filter: 'blur(3px) drop-shadow(0 0 20px #00ff88) drop-shadow(0 0 40px rgba(0,255,136,1)) drop-shadow(0 0 60px rgba(255,255,255,0.8)) drop-shadow(0 0 80px rgba(0,255,136,0.6))',
+            filter: 'blur(2px) drop-shadow(0 0 8px #ffffff) drop-shadow(0 0 12px rgba(0,255,136,0.6))',
             opacity: fade ? 0 : 1,
             transition: fade
               ? 'opacity 0.4s cubic-bezier(0.4,0,0.2,1)'
               : 'opacity 0.15s cubic-bezier(0.4,0,0.2,1)',
             zIndex: 10,
-            boxShadow: '0 0 15px rgba(0,255,136,0.8), inset 0 0 10px rgba(255,255,255,0.5)',
+            boxShadow: '0 0 6px rgba(255,255,255,0.8), inset 0 0 4px rgba(255,255,255,0.3)',
             pointerEvents: 'none'
           }}
         />
@@ -202,18 +202,39 @@ const ThemeToggle = ({ isDark, onToggle }) => (
 
 // Background Grid Component with Dynamic Effects
 const BackgroundPattern = ({ isDark = true }) => {
-  // Generate consistent random values that don't change on re-renders
-  const verticalLines = Array.from({ length: 25 }, (_, i) => ({
-    id: i,
-    duration: 4 + (Math.sin(i * 0.1) + 1) * 1, // Consistent pseudo-random based on index
-    delay: (Math.sin(i * 0.3) + 1) * 1.5 // Consistent pseudo-random based on index
-  }));
+  // Function to get different gray tones
+  const getGrayColor = (tone, isDark) => {
+    const grayShades = isDark 
+      ? ['#374151', '#4b5563', '#6b7280', '#9ca3af', '#d1d5db'] // Dark mode grays
+      : ['#f3f4f6', '#e5e7eb', '#d1d5db', '#9ca3af', '#6b7280']; // Light mode grays
+    return grayShades[tone] || grayShades[2];
+  };
+  // Generate fewer lines with better distribution
+  const verticalLines = Array.from({ length: 20 }, (_, i) => {
+    const grayTone = Math.floor(Math.sin(i * 0.3) * 3) + 2;
+    return {
+      id: i,
+      position: (i / 19) * 95,
+      duration: 6 + (Math.sin(i * 0.1) + 1) * 6, // Más variación en duración
+      delay: (Math.sin(i * 0.3) + 1) * 4,
+      opacity: 0.2 + Math.sin(i * 0.4) * 0.3, // Más variación en opacidad
+      grayTone,
+      appearing: Math.random() > 0.3 // 70% probabilidad de aparecer
+    };
+  });
   
-  const horizontalLines = Array.from({ length: 20 }, (_, i) => ({
-    id: i,
-    duration: 4 + (Math.cos(i * 0.15) + 1) * 1,
-    delay: (Math.cos(i * 0.25) + 1) * 1.5
-  }));
+  const horizontalLines = Array.from({ length: 16 }, (_, i) => {
+    const grayTone = Math.floor(Math.cos(i * 0.4) * 3) + 2;
+    return {
+      id: i,
+      position: (i / 15) * 95,
+      duration: 6 + (Math.cos(i * 0.15) + 1) * 6, // Más variación en duración
+      delay: (Math.cos(i * 0.25) + 1) * 4,
+      opacity: 0.2 + Math.cos(i * 0.5) * 0.3, // Más variación en opacidad
+      grayTone,
+      appearing: Math.random() > 0.4 // 60% probabilidad de aparecer
+    };
+  });
 
   return (
   <div style={{
@@ -228,7 +249,7 @@ const BackgroundPattern = ({ isDark = true }) => {
   }}>
     {/* Enhanced Grid Layer */}
     <div style={{ 
-      opacity: 0.08,
+      opacity: 0.4,
       transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
     }}>
       {/* Vertical Lines */}
@@ -237,11 +258,13 @@ const BackgroundPattern = ({ isDark = true }) => {
           key={`vertical-${line.id}`}
           style={{
             position: 'absolute',
-            left: `${line.id * 4}%`,
+            left: `${line.position}%`,
             top: 0,
             width: '1px',
             height: '100%',
-            background: `linear-gradient(180deg, transparent, ${isDark ? '#00ff88' : '#2d3748'}, transparent)`,
+            background: `linear-gradient(180deg, transparent, ${getGrayColor(line.grayTone, isDark)}, transparent)`,
+            display: line.appearing ? 'block' : 'none',
+            opacity: line.opacity,
             animation: `gridFlow ${line.duration}s ease-in-out infinite`,
             animationDelay: `${line.delay}s`,
             transition: 'background 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -254,11 +277,13 @@ const BackgroundPattern = ({ isDark = true }) => {
           key={`horizontal-${line.id}`}
           style={{
             position: 'absolute',
-            top: `${line.id * 5}%`,
+            top: `${line.position}%`,
             left: 0,
             width: '100%',
             height: '1px',
-            background: `linear-gradient(90deg, transparent, ${isDark ? '#00ff88' : '#2d3748'}, transparent)`,
+            background: `linear-gradient(90deg, transparent, ${getGrayColor(line.grayTone, isDark)}, transparent)`,
+            display: line.appearing ? 'block' : 'none',
+            opacity: line.opacity,
             animation: `gridFlow ${line.duration}s ease-in-out infinite`,
             animationDelay: `${line.delay}s`,
             transition: 'background 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -378,7 +403,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '6px',
+            gap: '-6px',
             marginBottom: '20px',
           }}>
             <ZigzagLogo size={52} color={theme.greenPrimary} sloganGlow={sloganGlow} isDarkMode={isDarkMode} />
@@ -572,7 +597,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                       border: `1px solid ${theme.border}`,
                       borderRadius: '10px',
                       color: theme.textPrimary,
-                      fontSize: 'clamp(13px, 3.2vw, 15px)',
+                      fontSize: 'clamp(11px, 2.8vw, 13px)',
                       outline: 'none',
                       transition: 'all 0.2s ease',
                       boxSizing: 'border-box',
@@ -617,7 +642,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                       border: `1px solid ${theme.border}`,
                       borderRadius: '10px',
                       color: theme.textPrimary,
-                      fontSize: 'clamp(13px, 3.2vw, 15px)',
+                      fontSize: 'clamp(11px, 2.8vw, 13px)',
                       outline: 'none',
                       transition: 'all 0.2s ease',
                       boxSizing: 'border-box',
