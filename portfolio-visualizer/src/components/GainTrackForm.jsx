@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // Zigzag Logo Component with Moving Bright Point
 // Puedes controlar la frecuencia (cada cuánto aparece el punto) con "intervaloFrecuenciaMs"
@@ -124,20 +124,20 @@ const ZigzagLogo = ({
         <div
           style={{
             position: 'absolute',
-            left: `calc(${(punto.x / 32) * 100}% - 2.8px)`,
+            left: `calc(${(punto.x / 32) * 100}% - 4px)`,
             // Ajuste vertical: restamos 1.5px para subir el punto
-            top: `calc(${(punto.y / 32) * 100}% - 2.8px - ${ajusteVerticalPx}px)`,
-            width: '5.6px',
-            height: '5.6px',
-            background: 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.9) 40%, rgba(0,255,136,0.5) 70%, transparent 100%)',
+            top: `calc(${(punto.y / 32) * 100}% - 4px - ${ajusteVerticalPx}px)`,
+            width: '8px',
+            height: '8px',
+            background: 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 25%, rgba(0,255,136,1) 50%, rgba(0,255,136,0.8) 75%, rgba(0,255,136,0.4) 90%, transparent 100%)',
             borderRadius: '50%',
-            filter: 'blur(2px) drop-shadow(0 0 8px #ffffff) drop-shadow(0 0 12px rgba(0,255,136,0.6))',
+            filter: 'blur(2px) drop-shadow(0 0 16px #ffffff) drop-shadow(0 0 24px rgba(0,255,136,1)) drop-shadow(0 0 32px rgba(0,255,136,0.8)) drop-shadow(0 0 40px rgba(0,255,136,0.4))',
             opacity: fade ? 0 : 1,
             transition: fade
               ? 'opacity 0.4s cubic-bezier(0.4,0,0.2,1)'
               : 'opacity 0.15s cubic-bezier(0.4,0,0.2,1)',
             zIndex: 10,
-            boxShadow: '0 0 6px rgba(255,255,255,0.8), inset 0 0 4px rgba(255,255,255,0.3)',
+            boxShadow: '0 0 15px rgba(255,255,255,1), 0 0 30px rgba(0,255,136,0.8), 0 0 45px rgba(0,255,136,0.6), inset 0 0 8px rgba(255,255,255,0.7)',
             pointerEvents: 'none'
           }}
         />
@@ -201,7 +201,7 @@ const ThemeToggle = ({ isDark, onToggle }) => (
 );
 
 // Background Grid Component with Dynamic Effects
-const BackgroundPattern = ({ isDark = true }) => {
+const BackgroundPattern = React.memo(({ isDark = true }) => {
   // Function to get different gray tones
   const getGrayColor = (tone, isDark) => {
     const grayShades = isDark 
@@ -209,32 +209,31 @@ const BackgroundPattern = ({ isDark = true }) => {
       : ['#f3f4f6', '#e5e7eb', '#d1d5db', '#9ca3af', '#6b7280']; // Light mode grays
     return grayShades[tone] || grayShades[2];
   };
-  // Generate fewer lines with better distribution
-  const verticalLines = Array.from({ length: 20 }, (_, i) => {
-    const grayTone = Math.floor(Math.sin(i * 0.3) * 3) + 2;
-    return {
-      id: i,
-      position: (i / 19) * 95,
-      duration: 6 + (Math.sin(i * 0.1) + 1) * 6, // Más variación en duración
-      delay: (Math.sin(i * 0.3) + 1) * 4,
-      opacity: 0.2 + Math.sin(i * 0.4) * 0.3, // Más variación en opacidad
-      grayTone,
-      appearing: Math.random() > 0.3 // 70% probabilidad de aparecer
-    };
-  });
   
-  const horizontalLines = Array.from({ length: 16 }, (_, i) => {
-    const grayTone = Math.floor(Math.cos(i * 0.4) * 3) + 2;
-    return {
+  // Generate static lines - no random values to prevent re-renders
+  const verticalLines = React.useMemo(() => 
+    Array.from({ length: 18 }, (_, i) => ({
       id: i,
-      position: (i / 15) * 95,
-      duration: 6 + (Math.cos(i * 0.15) + 1) * 6, // Más variación en duración
-      delay: (Math.cos(i * 0.25) + 1) * 4,
-      opacity: 0.2 + Math.cos(i * 0.5) * 0.3, // Más variación en opacidad
-      grayTone,
-      appearing: Math.random() > 0.4 // 60% probabilidad de aparecer
-    };
-  });
+      position: (i / 17) * 90,
+      duration: 8,
+      delay: i * 0.4,
+      opacity: 0.3,
+      grayTone: 2,
+      appearing: i % 3 !== 0 // Show 2 out of every 3 lines
+    })), []
+  );
+  
+  const horizontalLines = React.useMemo(() => 
+    Array.from({ length: 14 }, (_, i) => ({
+      id: i,
+      position: (i / 13) * 90,
+      duration: 8,
+      delay: i * 0.3,
+      opacity: 0.25,
+      grayTone: 2,
+      appearing: i % 2 !== 0 // Show every other line
+    })), []
+  );
 
   return (
   <div style={{
@@ -294,7 +293,7 @@ const BackgroundPattern = ({ isDark = true }) => {
     
   </div>
   );
-};
+});
 
 const GainTrackForm = ({ onSubmit, isLoading, error }) => {
   const [formData, setFormData] = useState({
@@ -304,10 +303,29 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
   const [activeMethod, setActiveMethod] = useState('api');
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [sloganGlow, setSloganGlow] = useState(false);
+  const [validationError, setValidationError] = useState('');
+  const [csvFile, setCsvFile] = useState(null);
+  const [csvUploadSuccess, setCsvUploadSuccess] = useState(false);
+  const [csvProgress, setCsvProgress] = useState(0);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    setValidationError('');
+    
+    if (activeMethod === 'api') {
+      if (!formData.apiKey.trim() || !formData.secretKey.trim()) {
+        setValidationError('⚠️ Please complete both fields to continue');
+        return;
+      }
+      onSubmit(formData);
+    } else {
+      if (!csvFile) {
+        setValidationError('📊 Please select a CSV file to continue');
+        return;
+      }
+      // Procesar CSV
+      processCsvFile(csvFile);
+    }
   };
 
   const handleChange = (e) => {
@@ -317,17 +335,90 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
     });
   };
 
+  const processCsvFile = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('csv_file', file);
+      
+      const response = await fetch('http://localhost:8000/api/portfolio/csv', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        setValidationError(data.error);
+        return;
+      }
+      
+      // Llamar a onSubmit con los datos procesados del CSV
+      onSubmit({ csvData: data });
+    } catch (error) {
+      setValidationError('Error processing CSV file. Please try again.');
+    }
+  };
+
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (file && (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv'))) {
-      console.log('CSV file selected:', file.name);
-      // CSV processing logic would go here
+      setCsvFile(file);
+      setValidationError('');
+      setCsvUploadSuccess(true);
+      setCsvProgress(0);
+      
+      // Simular progreso de carga
+      const progressInterval = setInterval(() => {
+        setCsvProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(progressInterval);
+            setTimeout(() => {
+              setCsvUploadSuccess(false);
+              setCsvProgress(0);
+            }, 1000);
+            return 100;
+          }
+          return prev + 10;
+        });
+      }, 100);
+    } else {
+      setValidationError('❌ Invalid file format. Please select a CSV');
     }
   };
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
   };
+
+  // Limpiar errores cuando se cambia de método (pero mantener CSV)
+  useEffect(() => {
+    setValidationError('');
+    setCsvUploadSuccess(false);
+    setCsvProgress(0);
+  }, [activeMethod]);
+
+  // Auto-hide error messages after 4 seconds
+  useEffect(() => {
+    if (validationError) {
+      const timer = setTimeout(() => {
+        setValidationError('');
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [validationError]);
+
+  // Auto-hide backend errors after 6 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        // Clear error from parent component by calling a callback if available
+        if (typeof onClearError === 'function') {
+          onClearError();
+        }
+      }, 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   // Efecto glow del slogan sincronizado con el logo
   useEffect(() => {
@@ -340,6 +431,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
 
     return () => clearInterval(interval);
   }, []);
+
 
   // Colores de tema basados en el sistema de marca
   const theme = isDarkMode ? {
@@ -372,22 +464,23 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100vh',
       background: theme.bg,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '16px',
+      padding: 'clamp(0.5rem, 1.5vw, 0.75rem)',
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
       position: 'relative',
       transition: 'background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-      zoom: '1'
+      zoom: '1.0',
+      overflow: 'hidden'
     }}>
       <ThemeToggle isDark={isDarkMode} onToggle={toggleTheme} />
       <BackgroundPattern isDark={isDarkMode} />
       <div style={{
         width: '100%',
-        maxWidth: '308px',
+        maxWidth: 'clamp(18.7rem, 75vw, 20.9rem)',
         position: 'relative',
         zIndex: 1,
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -395,7 +488,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         {/* Header */}
         <div style={{ 
           textAlign: 'center', 
-          marginBottom: '26px',
+          marginBottom: 'clamp(1.25rem, 3vw, 1.5rem)',
         }}>
           {/* Logo */}
           <div style={{
@@ -403,15 +496,16 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '-6px',
-            marginBottom: '20px',
+            gap: '0px',
+            marginBottom: 'clamp(0.5rem, 1.5vw, 0.625rem)',
           }}>
-            <ZigzagLogo size={52} color={theme.greenPrimary} sloganGlow={sloganGlow} isDarkMode={isDarkMode} />
+            <ZigzagLogo size={68} color={theme.greenPrimary} sloganGlow={sloganGlow} isDarkMode={isDarkMode} />
             <h1 style={{
-              fontSize: 'clamp(26px, 6.5vw, 32px)',
+              fontSize: 'clamp(24px, 6vw, 31px)',
               fontWeight: '700',
               color: theme.textPrimary,
               margin: '0',
+              marginTop: '-25px',
               fontFamily: "'Space Grotesk', sans-serif",
               letterSpacing: '-0.02em',
               transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -424,7 +518,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           {/* Subtitle */}
           <p style={{
             color: theme.textSecondary,
-            fontSize: 'clamp(12px, 2.9vw, 13px)',
+            fontSize: 'clamp(0.77rem, 2.75vw, 0.85rem)',
             margin: '0',
             fontWeight: '500',
             lineHeight: '1.5',
@@ -474,7 +568,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           background: theme.bgElevated,
           border: `1px solid ${theme.border}`,
           borderRadius: '13px',
-          padding: 'clamp(16px, 4vw, 23px)',
+          padding: 'clamp(14px, 3.5vw, 20px)',
           position: 'relative',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           ...(isDarkMode ? {} : {
@@ -487,7 +581,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             background: theme.bgContainer,
             borderRadius: '12px',
             padding: '4px',
-            marginBottom: 'clamp(16px, 4vw, 23px)',
+            marginBottom: 'clamp(14px, 3.5vw, 20px)',
             border: `1px solid ${theme.borderLight}`,
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}>
@@ -555,7 +649,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
 
           {/* Input Section with Content Transition */}
           <div style={{
-            minHeight: 'clamp(122px, 16.2vw, 130px)',
+            minHeight: 'clamp(110px, 14vw, 120px)',
             position: 'relative'
           }}>
             {/* API Method - Only Inputs */}
@@ -681,70 +775,129 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                 style={{ display: 'none' }}
               />
               
-              <div 
-                onClick={() => document.getElementById('csvFile').click()}
-                style={{
-                  border: `2px dashed ${isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)'}`,
-                  borderRadius: '12px',
-                  padding: 'clamp(16px, 4vw, 23px) clamp(13px, 3.2vw, 16px)',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  background: isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)',
-                  height: 'clamp(122px, 16.2vw, 130px)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                  alignItems: 'center'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.5)' : 'rgba(16, 185, 129, 0.4)';
-                  e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.05)' : 'rgba(16, 185, 129, 0.03)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)';
-                  e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)';
-                }}
-              >
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  background: isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(16, 185, 129, 0.08)',
-                  borderRadius: '10px',
-                  margin: '0 auto 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '18px'
-                }}>
-                  📊
+              {csvFile ? (
+                <div 
+                  onClick={() => document.getElementById('csvFile').click()}
+                  style={{
+                    border: `2px solid ${isDarkMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(22, 163, 74, 0.2)'}`,
+                    borderRadius: '12px',
+                    padding: 'clamp(16px, 4vw, 23px) clamp(13px, 3.2vw, 16px)',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    background: isDarkMode ? 'rgba(34, 197, 94, 0.05)' : 'rgba(22, 163, 74, 0.02)',
+                    height: 'clamp(122px, 16.2vw, 130px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.borderColor = isDarkMode ? 'rgba(34, 197, 94, 0.5)' : 'rgba(22, 163, 74, 0.4)';
+                    e.target.style.background = isDarkMode ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.04)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.borderColor = isDarkMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(22, 163, 74, 0.2)';
+                    e.target.style.background = isDarkMode ? 'rgba(34, 197, 94, 0.05)' : 'rgba(22, 163, 74, 0.02)';
+                  }}
+                >
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    background: isDarkMode ? 'rgba(34, 197, 94, 0.15)' : 'rgba(22, 163, 74, 0.1)',
+                    borderRadius: '10px',
+                    margin: '0 auto 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '18px'
+                  }}>
+                    📄
+                  </div>
+                  <h3 style={{
+                    fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)',
+                    fontWeight: '600',
+                    color: isDarkMode ? '#4ade80' : '#16a34a',
+                    margin: '0 0 6px',
+                    fontFamily: "'Space Grotesk', sans-serif"
+                  }}>
+                    {csvFile.name}
+                  </h3>
+                  <p style={{
+                    fontSize: 'clamp(11px, 2.5vw, 13px)',
+                    color: theme.textSecondary,
+                    margin: '0',
+                    lineHeight: '1.4'
+                  }}>
+                    <span style={{ color: isDarkMode ? '#4ade80' : '#16a34a' }}>Click to change file</span>
+                  </p>
                 </div>
-                <h3 style={{
-                  fontSize: 'clamp(12px, 2.9vw, 13px)',
-                  fontWeight: '600',
-                  color: theme.textPrimary,
-                  margin: '0 0 6px',
-                  fontFamily: "'Space Grotesk', sans-serif"
-                }}>
-                  Upload Trading Data
-                </h3>
-                <p style={{
-                  fontSize: 'clamp(11px, 2.5vw, 13px)',
-                  color: theme.textSecondary,
-                  margin: '0',
-                  lineHeight: '1.4'
-                }}>
-                  Drop your Kraken CSV export here
-                  <br />
-                  <span style={{ color: theme.greenPrimary }}>or click to browse</span>
-                </p>
-              </div>
+              ) : (
+                <div 
+                  onClick={() => document.getElementById('csvFile').click()}
+                  style={{
+                    border: `2px dashed ${isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)'}`,
+                    borderRadius: '12px',
+                    padding: 'clamp(16px, 4vw, 23px) clamp(13px, 3.2vw, 16px)',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    background: isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)',
+                    height: 'clamp(122px, 16.2vw, 130px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.5)' : 'rgba(16, 185, 129, 0.4)';
+                    e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.05)' : 'rgba(16, 185, 129, 0.03)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)';
+                    e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)';
+                  }}
+                >
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    background: isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(16, 185, 129, 0.08)',
+                    borderRadius: '10px',
+                    margin: '0 auto 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '18px'
+                  }}>
+                    📊
+                  </div>
+                  <h3 style={{
+                    fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)',
+                    fontWeight: '600',
+                    color: theme.textPrimary,
+                    margin: '0 0 6px',
+                    fontFamily: "'Space Grotesk', sans-serif"
+                  }}>
+                    Upload Trading Data
+                  </h3>
+                  <p style={{
+                    fontSize: 'clamp(11px, 2.5vw, 13px)',
+                    color: theme.textSecondary,
+                    margin: '0',
+                    lineHeight: '1.4'
+                  }}>
+                    Drop your Kraken CSV export here
+                    <br />
+                    <span style={{ color: theme.greenPrimary }}>or click to browse</span>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Submit Button - Always at bottom */}
           <button
-            onClick={activeMethod === 'api' ? handleSubmit : () => document.getElementById('csvFile').click()}
+            onClick={handleSubmit}
             disabled={isLoading}
             style={{
               width: '100%',
@@ -753,7 +906,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               color: isLoading ? theme.textMuted : theme.greenPrimary,
               border: isLoading ? `2px solid ${theme.border}` : `2px solid ${theme.greenPrimary}`,
               borderRadius: '10px',
-              fontSize: 'clamp(12px, 2.9vw, 13px)',
+              fontSize: 'clamp(0.7rem, 2.5vw, 0.75rem)',
               fontWeight: '600',
               cursor: isLoading ? 'not-allowed' : 'pointer',
               transition: 'all 0.2s ease',
@@ -762,8 +915,8 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              marginTop: 'clamp(45px, 9vw, 54px)',
-              marginBottom: 'clamp(13px, 3.2vw, 16px)'
+              marginTop: 'clamp(35px, 7vw, 45px)',
+              marginBottom: 'clamp(10px, 2.5vw, 14px)'
             }}
             onMouseEnter={(e) => {
               if (!isLoading) {
@@ -798,44 +951,30 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           </button>
 
 
-          {/* Error Display */}
-          {error && (
-            <div style={{
-              marginTop: '16px',
-              padding: 'clamp(10px, 2.5vw, 12px) clamp(12px, 3vw, 16px)',
-              background: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(220, 38, 38, 0.05)',
-              border: isDarkMode ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(220, 38, 38, 0.2)',
-              borderRadius: '8px',
-              color: isDarkMode ? '#fca5a5' : '#dc2626',
-              fontSize: 'clamp(12px, 3vw, 14px)'
-            }}>
-              {error}
-            </div>
-          )}
         </div>
 
         {/* Footer */}
         <div style={{
           textAlign: 'center',
-          marginTop: 'clamp(16px, 4vw, 23px)'
+          marginTop: 'clamp(14px, 3.5vw, 20px)'
         }}>
           <p style={{
-            fontSize: 'clamp(8px, 2.1vw, 10px)',
-            color: theme.textMuted,
+            fontSize: 'clamp(8.8px, 2.3vw, 11px)',
+            color: theme.textPrimary,
             margin: '0 0 8px 0',
             fontWeight: '500',
             textAlign: 'center',
-            background: isDarkMode ? 'rgba(113, 113, 122, 0.08)' : 'rgba(156, 163, 175, 0.08)',
+            background: isDarkMode ? 'rgba(113, 113, 122, 0.15)' : 'rgba(156, 163, 175, 0.15)',
             padding: '8px 16px',
             borderRadius: '8px',
-            border: `1px solid ${isDarkMode ? 'rgba(113, 113, 122, 0.15)' : 'rgba(156, 163, 175, 0.15)'}`,
+            border: `1px solid ${isDarkMode ? 'rgba(113, 113, 122, 0.25)' : 'rgba(156, 163, 175, 0.25)'}`,
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}>
             🔒 Your data is processed locally and never stored on our servers
           </p>
           <p style={{
-            fontSize: 'clamp(8px, 2.1vw, 10px)',
-            color: theme.textMuted,
+            fontSize: 'clamp(8.8px, 2.3vw, 11px)',
+            color: theme.textPrimary,
             margin: '0',
             transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}>
@@ -854,25 +993,24 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         {/* Contact Us Button */}
         <div style={{
           position: 'fixed',
-          bottom: 'clamp(14px, 3.6vw, 22px)',
-          right: 'clamp(14px, 3.6vw, 22px)',
+          bottom: 'clamp(10px, 2.5vw, 16px)',
+          right: 'clamp(10px, 2.5vw, 16px)',
           zIndex: 100
         }}>
           <button
             onClick={() => window.open('mailto:contact@gaintrack.app', '_blank')}
             style={{
-              padding: 'clamp(7px, 1.8vw, 11px) clamp(11px, 2.7vw, 14px)',
-              background: 'transparent',
+              padding: 'clamp(6px, 1.5vw, 9px) clamp(9px, 2.2vw, 12px)',
+              background: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.8)',
               color: theme.textSecondary,
               border: `1px solid ${theme.border}`,
               borderRadius: '8px',
-              fontSize: 'clamp(10px, 2.3vw, 12px)',
+              fontSize: 'clamp(9px, 2vw, 11px)',
               fontWeight: '500',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               fontFamily: "'Inter', sans-serif",
-              backdropFilter: 'blur(8px)',
-              background: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.8)'
+              backdropFilter: 'blur(8px)'
             }}
             onMouseEnter={(e) => {
               e.target.style.color = theme.textPrimary;
@@ -888,22 +1026,126 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             Contact Us
           </button>
         </div>
+      
+      {/* Floating notifications - bottom right */}
+      <div style={{
+        position: 'fixed',
+        bottom: '80px',
+        right: '20px',
+        zIndex: 999,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        alignItems: 'flex-end'
+      }}>
+        {/* CSV Upload Success Message */}
+        {csvUploadSuccess && (
+          <div style={{
+            padding: '10px 14px',
+            background: isDarkMode ? 'rgba(34, 197, 94, 0.15)' : 'rgba(22, 163, 74, 0.1)',
+            border: isDarkMode ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(22, 163, 74, 0.25)',
+            borderRadius: '8px',
+            color: isDarkMode ? '#4ade80' : '#16a34a',
+            fontSize: '13px',
+            fontWeight: '500',
+            backdropFilter: 'blur(8px)',
+            maxWidth: '280px',
+            animation: 'slideInRight 0.3s ease-out'
+          }}>
+            <div style={{ marginBottom: '6px' }}>
+              CSV loaded: {csvFile?.name}
+            </div>
+            {/* Progress bar */}
+            <div style={{
+              width: '100%',
+              height: '2px',
+              background: isDarkMode ? 'rgba(34, 197, 94, 0.2)' : 'rgba(22, 163, 74, 0.15)',
+              borderRadius: '1px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                height: '100%',
+                background: isDarkMode ? '#22c55e' : '#15803d',
+                width: `${csvProgress}%`,
+                transition: 'width 0.1s ease-out'
+              }}></div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {(error || validationError) && (
+          <div style={{
+            padding: '10px 14px',
+            background: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(220, 38, 38, 0.1)',
+            border: isDarkMode ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(220, 38, 38, 0.25)',
+            borderRadius: '8px',
+            color: isDarkMode ? '#fca5a5' : '#dc2626',
+            fontSize: '13px',
+            fontWeight: '500',
+            backdropFilter: 'blur(8px)',
+            maxWidth: '280px',
+            animation: 'slideInRight 0.3s ease-out'
+          }}>
+            <div style={{ marginBottom: '6px' }}>
+              {error || validationError}
+            </div>
+            {/* Error progress bar */}
+            <div style={{
+              width: '100%',
+              height: '2px',
+              background: isDarkMode ? 'rgba(239, 68, 68, 0.2)' : 'rgba(220, 38, 38, 0.15)',
+              borderRadius: '1px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                height: '100%',
+                background: isDarkMode ? '#ef4444' : '#dc2626',
+                width: '100%',
+                animation: 'errorProgress 4s linear'
+              }}></div>
+            </div>
+          </div>
+        )}
+      </div>
       </div>
 
       <style jsx>{`
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        @keyframes errorProgress {
+          from {
+            width: 100%;
+          }
+          to {
+            width: 0%;
+          }
+        }
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
         
         @keyframes gridFlow {
-          0%, 100% { 
+          0% { 
             opacity: 0.3;
             transform: scale(1);
           }
           50% { 
             opacity: 1;
             transform: scale(1.02);
+          }
+          100% { 
+            opacity: 0.3;
+            transform: scale(1);
           }
         }
         
@@ -945,37 +1187,37 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
           }
           15% {
             color: rgba(0, 255, 136, 1);
-            text-shadow: 0 0 8px rgba(0, 255, 136, 0.6), 0 0 16px rgba(0, 255, 136, 0.4);
-            filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.5));
+            text-shadow: 0 0 12px rgba(0, 255, 136, 1), 0 0 24px rgba(0, 255, 136, 0.8), 0 0 36px rgba(0, 255, 136, 0.6);
+            filter: drop-shadow(0 0 12px rgba(0, 255, 136, 0.8));
           }
           35% {
             color: rgba(0, 255, 136, 1);
-            text-shadow: 0 0 8px rgba(0, 255, 136, 0.6), 0 0 16px rgba(0, 255, 136, 0.4);
-            filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.5));
+            text-shadow: 0 0 12px rgba(0, 255, 136, 1), 0 0 24px rgba(0, 255, 136, 0.8), 0 0 36px rgba(0, 255, 136, 0.6);
+            filter: drop-shadow(0 0 12px rgba(0, 255, 136, 0.8));
           }
           60% {
-            color: rgba(0, 255, 136, 0.8);
-            text-shadow: 0 0 6px rgba(0, 255, 136, 0.4), 0 0 12px rgba(0, 255, 136, 0.3);
-            filter: drop-shadow(0 0 4px rgba(0, 255, 136, 0.4));
+            color: rgba(0, 255, 136, 0.9);
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.8), 0 0 20px rgba(0, 255, 136, 0.6), 0 0 30px rgba(0, 255, 136, 0.4);
+            filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.6));
           }
           75% {
-            color: rgba(0, 255, 136, 0.6);
-            text-shadow: 0 0 4px rgba(0, 255, 136, 0.3), 0 0 8px rgba(0, 255, 136, 0.2);
-            filter: drop-shadow(0 0 3px rgba(0, 255, 136, 0.3));
+            color: rgba(0, 255, 136, 0.7);
+            text-shadow: 0 0 8px rgba(0, 255, 136, 0.6), 0 0 16px rgba(0, 255, 136, 0.4), 0 0 24px rgba(0, 255, 136, 0.2);
+            filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.4));
           }
           85% {
-            color: rgba(0, 255, 136, 0.4);
-            text-shadow: 0 0 3px rgba(0, 255, 136, 0.2), 0 0 6px rgba(0, 255, 136, 0.1);
-            filter: drop-shadow(0 0 2px rgba(0, 255, 136, 0.2));
+            color: rgba(0, 255, 136, 0.5);
+            text-shadow: 0 0 6px rgba(0, 255, 136, 0.4), 0 0 12px rgba(0, 255, 136, 0.2);
+            filter: drop-shadow(0 0 4px rgba(0, 255, 136, 0.3));
           }
           92% {
-            color: rgba(0, 255, 136, 0.2);
-            text-shadow: 0 0 2px rgba(0, 255, 136, 0.1);
-            filter: drop-shadow(0 0 1px rgba(0, 255, 136, 0.1));
+            color: rgba(0, 255, 136, 0.3);
+            text-shadow: 0 0 4px rgba(0, 255, 136, 0.2);
+            filter: drop-shadow(0 0 2px rgba(0, 255, 136, 0.2));
           }
           97% {
             color: rgba(0, 255, 136, 0.1);
-            text-shadow: 0 0 1px rgba(0, 255, 136, 0.05);
+            text-shadow: 0 0 2px rgba(0, 255, 136, 0.1);
             filter: none;
           }
           100% {

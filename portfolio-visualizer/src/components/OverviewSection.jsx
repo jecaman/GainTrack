@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title } from 'chart.js';
+import { Doughnut, Bar, Line } from 'react-chartjs-2';
+import { centerTextPlugin, assetLabelMap } from '../utils/chartUtils';
+import { getAssetColorsArray, getThemeAssetColor } from '../utils/assetColors';
 
-// Zigzag Logo Component (reutilizado del original)
+// Register Chart.js components
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title);
+
+// ZigzagLogo Component
 const ZigzagLogo = ({
   size = 32,
   color = "#00ff88",
@@ -162,9 +169,8 @@ const ThemeToggle = ({ isDark, onToggle }) => (
   </div>
 );
 
-// Background Pattern Component - Estático con difuminado amplio
+// Background Pattern Component
 const BackgroundPattern = ({ isDark }) => {
-  // Generate consistent lines like in form but static - más líneas para cuadriculas más pequeñas
   const verticalLines = Array.from({ length: 35 }, (_, i) => ({
     id: i,
     position: (i / 34) * 95
@@ -191,7 +197,6 @@ const BackgroundPattern = ({ isDark }) => {
           opacity: isDark ? 0.6 : 0.5,
           transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
         }}>
-          {/* Vertical Lines */}
           {verticalLines.map((line) => (
             <div
               key={`vertical-${line.id}`}
@@ -206,7 +211,6 @@ const BackgroundPattern = ({ isDark }) => {
               }}
             />
           ))}
-          {/* Horizontal Lines */}
           {horizontalLines.map((line) => (
             <div
               key={`horizontal-${line.id}`}
@@ -224,7 +228,6 @@ const BackgroundPattern = ({ isDark }) => {
         </div>
       </div>
       
-      {/* Difuminado radial más amplio hacia el centro */}
       <div style={{
         position: 'fixed',
         top: 0,
@@ -236,12 +239,28 @@ const BackgroundPattern = ({ isDark }) => {
         transition: 'background 0.5s ease'
       }}
       />
+      
+      {/* Blur effect for middle section with charts */}
+      <div style={{
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        width: '80%',
+        height: '60%',
+        transform: 'translate(-50%, -50%)',
+        background: `radial-gradient(ellipse at center, ${isDark ? 'rgba(0,0,0,0.3)' : 'rgba(246,247,248,0.3)'} 0%, transparent 70%)`,
+        filter: 'blur(120px)',
+        pointerEvents: 'none',
+        transition: 'background 0.5s ease',
+        zIndex: 0
+      }}
+      />
     </>
   );
 };
 
 // KPI Card Component
-const KPICard = ({ label, value, change, changePercent, isPositive, theme, showChange = false }) => {
+const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false }) => {
   return (
     <div 
       style={{
@@ -264,7 +283,6 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
         e.currentTarget.style.boxShadow = '0 -0.75rem 0.75rem rgba(0, 255, 136, 0.2), 0 0.75rem 0.75rem rgba(0, 255, 136, 0.2), 0.375rem 0 0.75rem rgba(0, 255, 136, 0.2)';
         e.currentTarget.style.background = theme.bgContainer;
         
-        // Make label white and bold
         const label = e.currentTarget.querySelector('[data-kpi-label]');
         if (label) {
           label.style.color = '#ffffff';
@@ -278,7 +296,6 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
         e.currentTarget.style.boxShadow = theme.bg === '#000000' ? 'none' : '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)';
         e.currentTarget.style.background = theme.bgElevated;
         
-        // Reset label styling
         const label = e.currentTarget.querySelector('[data-kpi-label]');
         if (label) {
           label.style.color = '#ffffff';
@@ -287,7 +304,6 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
         }
       }}
     >
-      {/* Label */}
       <div 
         data-kpi-label
         style={{
@@ -305,7 +321,6 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
         {label}
       </div>
 
-      {/* Value */}
       <div style={{
         color: showChange ? 
           (parseFloat(changePercent) === 0 ? theme.textMuted : (isPositive ? theme.greenPrimary : '#ef4444')) 
@@ -320,7 +335,6 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
         {value}
       </div>
 
-      {/* Change */}
       {showChange && changePercent && (
         <div style={{
           color: parseFloat(changePercent) === 0 ? theme.textMuted : (isPositive ? theme.greenPrimary : '#ef4444'),
@@ -334,6 +348,35 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
     </div>
   );
 };
+
+// Chart Container Component
+const ChartContainer = ({ title, children, theme, height = "300px" }) => (
+  <div style={{
+    background: theme.bgElevated,
+    border: `1px solid ${theme.border}`,
+    borderRadius: '12px',
+    padding: '20px',
+    height: height,
+    display: 'flex',
+    flexDirection: 'column',
+    ...(theme.bg === '#000000' ? {} : {
+      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)'
+    })
+  }}>
+    <h3 style={{
+      color: theme.textPrimary,
+      fontSize: '16px',
+      fontWeight: '600',
+      margin: '0 0 16px 0',
+      textAlign: 'center'
+    }}>
+      {title}
+    </h3>
+    <div style={{ flex: 1, minHeight: 0 }}>
+      {children}
+    </div>
+  </div>
+);
 
 // Sidebar Component
 const Sidebar = ({ isOpen, onClose, theme, portfolioData }) => {
@@ -662,17 +705,16 @@ const Sidebar = ({ isOpen, onClose, theme, portfolioData }) => {
   );
 };
 
-// Main Component
-const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack = null }) => {
+
+// Main Overview Component
+const OverviewSection = ({ portfolioData, isLoading = false, error = null, onBack = null }) => {
   const [isDarkMode, setIsDarkMode] = useState(true);
-  const [sloganGlow, setSloganGlow] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTabPulse, setShowTabPulse] = useState(true);
   const [activeFilters, setActiveFilters] = useState(0);
   const tabButtonRef = useRef(null);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
 
-  // Hide pulse after 8 seconds (more subtle)
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowTabPulse(false);
@@ -680,23 +722,58 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
     return () => clearTimeout(timer);
   }, []);
 
-  // Keyboard shortcut
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyPress = (e) => {
       if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        setSidebarOpen(true);
-        setShowTabPulse(false);
+        if (!sidebarOpen) {
+          setSidebarOpen(true);
+          setShowTabPulse(false);
+        }
       }
       if (e.key === 'Escape') {
         setSidebarOpen(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
-  // Colores de tema
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [sidebarOpen]);
+
+  const handleTabClick = () => {
+    setSidebarOpen(!sidebarOpen);
+    setShowTabPulse(false);
+    setIsTabHoverDisabled(true);
+    setTimeout(() => setIsTabHoverDisabled(false), 300);
+  };
+
+  // Add CSS animations
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes tabPulse {
+        0% { 
+          box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1); 
+          border-color: ${isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'};
+        }
+        50% { 
+          box-shadow: 3px 0 12px rgba(0, 255, 136, 0.15); 
+          border-color: rgba(0, 255, 136, 0.3);
+        }
+        100% { 
+          box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1); 
+          border-color: ${isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)'};
+        }
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, [isDarkMode]);
+
+  // Theme configuration
   const theme = isDarkMode ? {
     bg: '#000000',
     bgElevated: '#111111',
@@ -721,145 +798,7 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
     textMuted: '#737373'
   };
 
-  // Reset tab button styles when sidebar state changes (but not if user is hovering)
-  useEffect(() => {
-    if (tabButtonRef.current) {
-      const button = tabButtonRef.current;
-      // Only reset if not currently being hovered and hover is not disabled
-      if (!button.matches(':hover') || isTabHoverDisabled) {
-        button.style.background = theme.bgElevated;
-        button.style.borderColor = theme.border;
-        button.style.color = theme.textSecondary;
-        button.style.transform = 'translateX(0)';
-        button.style.boxShadow = '2px 0 8px rgba(0, 0, 0, 0.1)';
-        
-        // Remove any extension and blocker elements
-        const extension = button.querySelector('.tab-extension');
-        if (extension) {
-          extension.remove();
-        }
-        const blocker = button.querySelector('.glow-blocker');
-        if (blocker) {
-          blocker.remove();
-        }
-      }
-    }
-  }, [sidebarOpen, theme, isTabHoverDisabled]);
-
-  // Efecto glow del slogan sincronizado con el logo - DESHABILITADO
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     setSloganGlow(true);
-  //     setTimeout(() => setSloganGlow(false), 2700);
-  //   }, 12900);
-  //   return () => clearInterval(interval);
-  // }, []);
-
-  // Estilos CSS para animaciones
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.textContent = `
-      @keyframes letterGlow {
-        0% {
-          text-shadow: 0 0 0px #00ff88;
-          transform: scale(1) translateY(0);
-        }
-        30% {
-          text-shadow: 0 0 5px #00ff88, 0 0 10px #00ff88, 0 0 15px #00ff88;
-          transform: scale(1.05) translateY(-1px);
-        }
-        100% {
-          text-shadow: 0 0 0px #00ff88;
-          transform: scale(1) translateY(0);
-        }
-      }
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      .fade-in-up {
-        animation: fadeInUp 0.6s ease-out;
-      }
-      @keyframes pulse {
-        0% { opacity: 0.4; }
-        50% { opacity: 0.8; }
-        100% { opacity: 0.4; }
-      }
-      .pulse {
-        animation: pulse 2s infinite;
-      }
-      @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-      }
-      @keyframes tabPulse {
-        0% { 
-          box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1); 
-          border-color: ${theme.border};
-        }
-        50% { 
-          box-shadow: 3px 0 12px rgba(0, 255, 136, 0.15); 
-          border-color: rgba(0, 255, 136, 0.3);
-        }
-        100% { 
-          box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1); 
-          border-color: ${theme.border};
-        }
-      }
-      @keyframes slideInRight {
-        from {
-          transform: translateX(-100%);
-          opacity: 0;
-        }
-        to {
-          transform: translateX(0);
-          opacity: 1;
-        }
-      }
-      @keyframes slideOutLeft {
-        from {
-          transform: translateX(0);
-          opacity: 1;
-        }
-        to {
-          transform: translateX(-100%);
-          opacity: 0;
-        }
-      }
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-        }
-        to {
-          opacity: 1;
-        }
-      }
-      @keyframes zoomIn {
-        from {
-          transform: scale(1);
-          opacity: 0;
-        }
-        to {
-          transform: scale(1.4);
-          opacity: 1;
-        }
-      }
-    `;
-    document.head.appendChild(style);
-    return () => document.head.removeChild(style);
-  }, []);
-
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
-  // Procesar datos de KPIs
+  // Process KPI data
   const getKPIData = () => {
     if (!portfolioData?.kpis) {
       return {
@@ -887,7 +826,526 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
     };
   };
 
+  // Create Asset Allocation Chart Data
+  const createAssetAllocationData = () => {
+    if (!portfolioData?.portfolio_data) return null;
+
+    const labels = [];
+    const values = [];
+    const assets = [];
+
+    portfolioData.portfolio_data.forEach(asset => {
+      if (asset.current_value > 1) { // Solo mostrar assets con valor > 1€
+        // DEBUG: Ver qué asset está llegando
+        console.log('Asset original:', asset.asset);
+        
+        // Forzar limpieza si no hay mapeo
+        const cleanName = assetLabelMap[asset.asset] || (() => {
+          let name = asset.asset
+            .replace(/ZEUR$/, '')       // Quitar ZEUR del final PRIMERO
+            .replace(/EUR$/, '')        // Quitar EUR del final
+            .replace(/USD$/, '')        // Quitar USD del final
+            .replace(/\/$/, '');        // Quitar / del final
+          
+          console.log('Después de limpiar sufijos:', name);
+          
+          // Casos específicos para assets problemáticos
+          if (name === 'XXRP') {
+            console.log('XXRP -> XRP');
+            return 'XRP';
+          }
+          if (name === 'XXBT') {
+            console.log('XXBT -> BTC');
+            return 'BTC';
+          }
+          if (name === 'XETH') {
+            console.log('XETH -> ETH');
+            return 'ETH';
+          }
+          
+          // Para otros assets que empiezan con XX, quitar solo una X
+          if (name.startsWith('XX') && name.length > 2) {
+            const result = name.substring(1);
+            console.log(`${name} -> ${result} (quitando una X)`);
+            return result;
+          }
+          
+          // Para assets que empiezan con X, quitar la X
+          if (name.startsWith('X') && name.length > 1) {
+            const result = name.substring(1);
+            console.log(`${name} -> ${result} (quitando X)`);
+            return result;
+          }
+          
+          // Para assets que empiezan con Z (fiat), quitar la Z
+          if (name.startsWith('Z') && name.length > 1) {
+            const result = name.substring(1);
+            console.log(`${name} -> ${result} (quitando Z)`);
+            return result;
+          }
+          
+          console.log('Sin cambios:', name);
+          return name;
+        })();
+        labels.push(cleanName);
+        values.push(asset.current_value);
+        assets.push(asset.asset);
+      }
+    });
+
+    // Get theme-appropriate colors for assets
+    const colors = assets.map(asset => getThemeAssetColor(asset, isDarkMode));
+
+    return {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0, // Remove border for cleaner look
+        hoverBorderWidth: 3,
+        hoverBorderColor: theme.greenPrimary,
+        hoverBackgroundColor: colors.map(color => color + 'CC') // Add transparency on hover
+      }]
+    };
+  };
+
+  // Asset Heatmap Component
+const AssetHeatmap = ({ portfolioData, theme }) => {
+  const MAX_ASSETS_HEATMAP = 20;
+
+  // Process and prepare heatmap data
+  const processHeatmapData = () => {
+    if (!portfolioData?.portfolio_data) return [];
+
+    // Filter assets with significant value and calculate profit percentage
+    const assetsWithProfit = portfolioData.portfolio_data
+      .filter(asset => asset.current_value > 0.5) // Filter very small assets
+      .map(asset => {
+        // Use the correct fields for profit calculation
+        let profitPercent = 0;
+        
+        if (asset.pnl_percent !== undefined) {
+          // Use the already calculated pnl_percent from backend
+          profitPercent = asset.pnl_percent;
+        } else if (asset.total_invested && asset.total_invested > 0) {
+          // Fallback calculation if pnl_percent not available
+          const totalCost = asset.total_invested + (asset.fees_paid || 0);
+          profitPercent = ((asset.current_value - totalCost) / totalCost) * 100;
+        }
+        
+        return {
+          ...asset,
+          profit_percentage: profitPercent,
+          portfolio_percentage: (asset.current_value / portfolioData.kpis.current_value) * 100
+        };
+      })
+      .sort((a, b) => b.current_value - a.current_value);
+
+    // If more than MAX_ASSETS_HEATMAP, group smaller ones
+    if (assetsWithProfit.length > MAX_ASSETS_HEATMAP) {
+      const topAssets = assetsWithProfit.slice(0, MAX_ASSETS_HEATMAP - 1);
+      const remainingAssets = assetsWithProfit.slice(MAX_ASSETS_HEATMAP - 1);
+      
+      const othersValue = remainingAssets.reduce((sum, asset) => sum + asset.current_value, 0);
+      const othersCost = remainingAssets.reduce((sum, asset) => sum + asset.cost, 0);
+      const othersProfit = othersCost > 0 ? ((othersValue - othersCost) / othersCost) * 100 : 0;
+      
+      const othersGroup = {
+        asset: 'OTHERS',
+        current_value: othersValue,
+        cost: othersCost,
+        profit_percentage: othersProfit,
+        portfolio_percentage: (othersValue / portfolioData.kpis.current_value) * 100,
+        count: remainingAssets.length,
+        isGroup: true
+      };
+      
+      return [...topAssets, othersGroup];
+    }
+
+    return assetsWithProfit;
+  };
+
+  // Scientific color scale for performance visualization
+  const getHeatmapColor = (profitPercent) => {
+    // 1. Range clamping: Cap extremes to prevent outlier distortion
+    const clampedPercent = Math.max(-30, Math.min(30, profitPercent));
+    
+    // 2. Non-linear scaling: More sensitivity around 0%, less at extremes
+    const scaledPercent = Math.sign(clampedPercent) * Math.pow(Math.abs(clampedPercent) / 30, 0.7) * 30;
+    
+    // 3. Color interpolation function
+    const interpolateColor = (percent) => {
+      if (percent >= 0) {
+        // Green progression: neutral to positive (toned down)
+        const intensity = percent / 30; // 0 to 1
+        const red = Math.floor(110 - (40 * intensity));     // 110 to 70
+        const green = Math.floor(130 + (50 * intensity));   // 130 to 180
+        const blue = Math.floor(110 - (50 * intensity));    // 110 to 60
+        return `rgb(${red}, ${green}, ${blue})`;
+      } else {
+        // Red progression: neutral to negative
+        const intensity = Math.abs(percent) / 30; // 0 to 1
+        const red = Math.floor(140 + (80 * intensity));     // 140 to 220
+        const green = Math.floor(120 - (80 * intensity));   // 120 to 40
+        const blue = Math.floor(120 - (60 * intensity));    // 120 to 60
+        return `rgb(${red}, ${green}, ${blue})`;
+      }
+    };
+    
+    // 4. Dead zone for near-zero values
+    if (Math.abs(profitPercent) < 0.5) {
+      return '#78828a'; // Neutral gray for flat performance
+    }
+    
+    return interpolateColor(scaledPercent);
+  };
+
+  // Calculate cell size based on portfolio percentage to match donut area
+  const calculateCellSize = (portfolioPercent, totalCells) => {
+    // Target total area much larger to match donut visual presence
+    const targetTotalArea = 150000; // Increased significantly
+    const cellArea = (targetTotalArea * portfolioPercent) / 100;
+    const cellSize = Math.sqrt(cellArea);
+    
+    // Set more generous bounds for larger presence
+    const minSize = 50;
+    const maxSize = 250;
+    return Math.max(minSize, Math.min(maxSize, cellSize));
+  };
+
+  // Clean asset name for display
+  const getDisplayName = (asset) => {
+    if (asset.isGroup) return `Others (+${asset.count})`;
+    
+    // Use existing assetLabelMap logic
+    const cleanName = assetLabelMap[asset.asset] || (() => {
+      let name = asset.asset
+        .replace(/ZEUR$/, '')
+        .replace(/EUR$/, '')
+        .replace(/USD$/, '')
+        .replace(/\/$/, '');
+      
+      if (name === 'XXRP') return 'XRP';
+      if (name === 'XXBT') return 'BTC';
+      if (name === 'XETH') return 'ETH';
+      
+      if (name.startsWith('XX') && name.length > 2) return name.substring(1);
+      if (name.startsWith('X') && name.length > 1) return name.substring(1);
+      if (name.startsWith('Z') && name.length > 1) return name.substring(1);
+      
+      return name;
+    })();
+    
+    return cleanName;
+  };
+
+  const heatmapData = processHeatmapData();
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '8px',
+      padding: '16px',
+      justifyContent: 'center',
+      alignItems: 'flex-start',
+      height: '100%',
+      alignContent: 'flex-start'
+    }}>
+      {heatmapData.map((asset, index) => {
+        const cellSize = calculateCellSize(asset.portfolio_percentage, heatmapData.length);
+        const displayName = getDisplayName(asset);
+        const color = getHeatmapColor(asset.profit_percentage);
+        const profitText = `${asset.profit_percentage >= 0 ? '+' : ''}${asset.profit_percentage.toFixed(1)}%`;
+        const isSmallCell = cellSize < 80;
+        
+        return (
+          <div
+            key={asset.asset + index}
+            style={{
+              width: `${cellSize}px`,
+              height: `${cellSize}px`,
+              backgroundColor: color,
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              border: `2px solid transparent`,
+              position: 'relative',
+              overflow: 'hidden',
+              padding: '4px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = theme.greenPrimary;
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.zIndex = '10';
+              e.currentTarget.style.boxShadow = `0 4px 20px ${color}40`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'transparent';
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.zIndex = '1';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+            title={isSmallCell ? profitText : undefined}
+          >
+            {!isSmallCell && (
+              <>
+                <span style={{
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  fontSize: cellSize > 200 ? '38px' : cellSize > 150 ? '32px' : cellSize > 100 ? '26px' : cellSize > 80 ? '20px' : '16px',
+                  fontFamily: "'Inter', sans-serif",
+                  textAlign: 'center',
+                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)',
+                  letterSpacing: cellSize > 150 ? '1px' : cellSize > 100 ? '0.5px' : '0px',
+                  lineHeight: '0.9',
+                  maxWidth: '95%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  marginBottom: cellSize > 150 ? '6px' : '4px'
+                }}>
+                  {displayName}
+                </span>
+                
+                <span style={{
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  fontSize: cellSize > 200 ? '24px' : cellSize > 150 ? '20px' : cellSize > 100 ? '16px' : cellSize > 80 ? '14px' : '12px',
+                  fontFamily: "'Inter', sans-serif",
+                  textAlign: 'center',
+                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)',
+                  opacity: 0.95,
+                  letterSpacing: '0.5px'
+                }}>
+                  {profitText}
+                </span>
+              </>
+            )}
+            
+            {isSmallCell && (
+              <span style={{
+                color: '#ffffff',
+                fontWeight: '700',
+                fontSize: '16px',
+                fontFamily: "'Inter', sans-serif",
+                textAlign: 'center',
+                textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)',
+                letterSpacing: '0.5px'
+              }}>
+                {displayName}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// Create Timeline Chart Data
+  const createTimelineData = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return null;
+
+    const timelineData = portfolioData.timeline;
+    const labels = timelineData.map(entry => {
+      const date = new Date(entry.date);
+      return date.toLocaleDateString('es-ES', { 
+        day: '2-digit', 
+        month: '2-digit',
+        year: '2-digit'
+      });
+    });
+
+    const portfolioValues = timelineData.map(entry => entry.value || 0);
+    const investedValues = timelineData.map(entry => entry.cost || 0);
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Valor del Portfolio',
+          data: portfolioValues,
+          borderColor: theme.greenPrimary,
+          backgroundColor: theme.greenPrimary + '20', // Muy transparente
+          fill: false,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          pointBackgroundColor: theme.greenPrimary,
+          pointBorderColor: theme.bg,
+          pointBorderWidth: 2
+        },
+        {
+          label: 'Total Invertido',
+          data: investedValues,
+          borderColor: theme.textSecondary,
+          backgroundColor: theme.textSecondary + '20',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          pointBackgroundColor: theme.textSecondary,
+          pointBorderColor: theme.bg,
+          pointBorderWidth: 2,
+          borderDash: [5, 5] // Línea discontinua
+        }
+      ]
+    };
+  };
+
+  // Timeline Chart options
+  const timelineOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false
+    },
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          color: theme.textSecondary,
+          font: {
+            size: 13,
+            family: "'Inter', sans-serif"
+          },
+          padding: 20,
+          usePointStyle: true,
+          pointStyle: 'circle'
+        }
+      },
+      tooltip: {
+        backgroundColor: theme.bgContainer,
+        titleColor: theme.textPrimary,
+        bodyColor: theme.textSecondary,
+        borderColor: theme.border,
+        borderWidth: 1,
+        cornerRadius: 8,
+        padding: 12,
+        titleFont: {
+          size: 14,
+          family: "'Inter', sans-serif"
+        },
+        bodyFont: {
+          size: 13,
+          family: "'Inter', sans-serif"
+        },
+        callbacks: {
+          label: function(context) {
+            return `${context.dataset.label}: €${Math.round(context.parsed.y)}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: theme.textSecondary,
+          font: {
+            size: 11,
+            family: "'Inter', sans-serif"
+          },
+          maxTicksLimit: 8 // Limitar número de labels para evitar solapamiento
+        },
+        grid: {
+          display: false
+        }
+      },
+      y: {
+        ticks: {
+          color: theme.textSecondary,
+          font: {
+            size: 12,
+            family: "'Inter', sans-serif"
+          },
+          callback: function(value) {
+            return '€' + Math.round(value);
+          }
+        },
+        grid: {
+          color: theme.border + '40',
+          lineWidth: 1
+        }
+      }
+    },
+    elements: {
+      line: {
+        borderWidth: 3
+      },
+      point: {
+        hoverBorderWidth: 3
+      }
+    }
+  };
+
+  const doughnutOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          color: theme.textSecondary,
+          padding: 20,
+          font: {
+            size: 14,
+            family: "'Inter', sans-serif"
+          },
+          usePointStyle: true,
+          pointStyle: 'circle'
+        }
+      },
+      tooltip: {
+        backgroundColor: theme.bgContainer,
+        titleColor: theme.textPrimary,
+        bodyColor: theme.textSecondary,
+        borderColor: theme.border,
+        borderWidth: 1,
+        cornerRadius: 8,
+        padding: 12,
+        titleFont: {
+          size: 14,
+          family: "'Inter', sans-serif",
+          weight: 'bold'
+        },
+        bodyFont: {
+          size: 13,
+          family: "'Inter', sans-serif",
+          weight: 'bold'
+        },
+        displayColors: false, // Remove legend colors
+        callbacks: {
+          title: function(context) {
+            return context[0].label; // Show asset name as title
+          },
+          label: function(context) {
+            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+            const percentage = ((context.parsed / total) * 100).toFixed(1);
+            return `€${Math.round(context.parsed)} (${percentage}%)`;
+          }
+        }
+      },
+      centerText: {
+        symbol: '€'
+      }
+    },
+    cutout: '60%', // Increased cutout to give more space for center text
+    elements: {
+      arc: {
+        borderWidth: 0
+      }
+    }
+  };
+
   const kpiData = getKPIData();
+  const assetAllocationData = createAssetAllocationData();
+  const timelineData = createTimelineData();
 
   if (isLoading) {
     return (
@@ -900,13 +1358,13 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
         transition: 'background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
-        <ThemeToggle isDark={isDarkMode} onToggle={toggleTheme} />
+        <ThemeToggle isDark={isDarkMode} onToggle={() => setIsDarkMode(!isDarkMode)} />
         <BackgroundPattern isDark={isDarkMode} />
         <div style={{
           textAlign: 'center',
           color: theme.textSecondary
         }}>
-          <div className="pulse" style={{
+          <div style={{
             width: '40px',
             height: '40px',
             border: `3px solid ${theme.greenPrimary}`,
@@ -925,13 +1383,21 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
     <div style={{
       minHeight: '100vh',
       background: theme.bg,
-      padding: 'clamp(13.2px, 3.3vw, 19.8px)',
+      padding: sidebarOpen ? 'clamp(13.2px, 3.3vw, 19.8px) clamp(13.2px, 3.3vw, 19.8px) clamp(13.2px, 3.3vw, 19.8px) 420px' : 'clamp(13.2px, 3.3vw, 19.8px)',
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      transition: 'background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+      transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
     }}>
-      <ThemeToggle isDark={isDarkMode} onToggle={toggleTheme} />
+      <ThemeToggle isDark={isDarkMode} onToggle={() => setIsDarkMode(!isDarkMode)} />
       <BackgroundPattern isDark={isDarkMode} />
       
+      {/* Sidebar */}
+      <Sidebar 
+        isOpen={sidebarOpen} 
+        onClose={() => setSidebarOpen(false)} 
+        theme={theme}
+        portfolioData={portfolioData}
+      />
+
       {/* Lateral Tab Trigger */}
       <div 
         style={{
@@ -957,16 +1423,6 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
             e.target.style.color = theme.textSecondary;
             e.target.style.transform = 'translateX(0)';
             e.target.style.boxShadow = '0.125rem 0 0.5rem rgba(0, 0, 0, 0.1)';
-            
-            // Remove extension and blocker
-            const extension = e.target.querySelector('.tab-extension');
-            if (extension) {
-              extension.remove();
-            }
-            const blocker = e.target.querySelector('.glow-blocker');
-            if (blocker) {
-              blocker.remove();
-            }
             
             // Temporarily disable hover to prevent glow persistence
             setIsTabHoverDisabled(true);
@@ -995,7 +1451,6 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
             left: '-0.375rem'
           }}
           onMouseEnter={(e) => {
-            // Only apply hover styles if not temporarily disabled
             if (!isTabHoverDisabled) {
               e.target.style.background = theme.bgContainer;
               e.target.style.borderColor = theme.greenPrimary;
@@ -1006,7 +1461,6 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
             setShowTabPulse(false);
           }}
           onMouseLeave={(e) => {
-            // Always reset styles on mouse leave, regardless of sidebar state
             e.target.style.background = theme.bgElevated;
             e.target.style.borderColor = theme.border;
             e.target.style.color = theme.textSecondary;
@@ -1060,29 +1514,18 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
         </button>
       </div>
       
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        onClose={() => setSidebarOpen(false)} 
-        theme={theme} 
-        portfolioData={portfolioData}
-      />
-      
       <div style={{
         maxWidth: '1200px',
         margin: '0 auto',
         position: 'relative',
         zIndex: 1,
-        paddingTop: 'clamp(1.1rem, 3.3vw, 2.2rem)',
-        paddingLeft: sidebarOpen ? 'clamp(2.2rem, 6.6vw, 4.4rem)' : '0',
-        paddingRight: 'clamp(0.825rem, 2.75vw, 1.375rem)',
-        transition: 'padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+        paddingTop: 'clamp(1.1rem, 3.3vw, 2.2rem)'
       }}>
         {/* Header */}
         <div style={{ 
           textAlign: 'center', 
           marginBottom: '26px',
         }}>
-          {/* Logo */}
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -1103,11 +1546,10 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
               transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
               lineHeight: '1'
             }}>
-              GainTrack
+              Portfolio Overview
             </h1>
           </div>
           
-          {/* Subtitle */}
           <p style={{
             color: theme.textSecondary,
             fontSize: 'clamp(12.1px, 2.75vw, 13.2px)',
@@ -1118,22 +1560,13 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
             fontFamily: "'Space Grotesk', sans-serif",
             letterSpacing: '0.01em'
           }}>
-            Track your portfolio performance
-            <br />
-            <span style={{ 
-              color: theme.greenPrimary, 
-              fontWeight: '600',
-              display: 'inline-block',
-              transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
-            }}>
-              Simple. Secure. Precise.
-            </span>
+            Complete overview of your portfolio performance
           </p>
         </div>
 
         {/* Error State */}
         {error && (
-          <div className="fade-in-up" style={{
+          <div style={{
             background: 'rgba(239, 68, 68, 0.1)',
             border: '1px solid rgba(239, 68, 68, 0.2)',
             borderRadius: '12px',
@@ -1146,17 +1579,12 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
           </div>
         )}
 
-
-        {/* Controls Row */}
+        {/* Back Button */}
         <div style={{
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '24px',
-          flexWrap: 'wrap',
-          gap: '16px'
+          justifyContent: 'flex-start',
+          marginBottom: '24px'
         }}>
-          {/* Back Button */}
           <button
             onClick={onBack || (() => window.location.reload())}
             style={{
@@ -1185,13 +1613,10 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
           >
             ← Back to Form
           </button>
-
-          {/* Spacer for layout */}
-          <div></div>
         </div>
 
         {/* KPI Row */}
-        <div className="fade-in-up" style={{
+        <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: 'clamp(0.825rem, 2.75vw, 1.375rem)',
@@ -1232,6 +1657,89 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
           />
         </div>
 
+        {/* Charts Row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '2px',
+          marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)'
+        }}>
+          {/* Asset Allocation Chart */}
+          {assetAllocationData && (
+            <div style={{
+              height: "400px",
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative'
+            }}>
+              <h3 style={{
+                color: theme.textPrimary,
+                fontSize: 'clamp(22px, 5.5vw, 28px)',
+                fontWeight: '700',
+                margin: '0 0 16px 0',
+                textAlign: 'center',
+                fontFamily: "'Space Grotesk', sans-serif",
+                letterSpacing: '-0.01em'
+              }}>
+                Asset Allocation
+              </h3>
+              <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                <Doughnut 
+                  data={assetAllocationData} 
+                  options={doughnutOptions}
+                  plugins={[centerTextPlugin]}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Asset Performance Heatmap */}
+          <div style={{
+            height: "400px",
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative'
+          }}>
+            <h3 style={{
+              color: theme.textPrimary,
+              fontSize: 'clamp(22px, 5.5vw, 28px)',
+              fontWeight: '700',
+              margin: '0 0 16px 0',
+              textAlign: 'center',
+              fontFamily: "'Space Grotesk', sans-serif",
+              letterSpacing: '-0.01em'
+            }}>
+              Performance Heatmap
+            </h3>
+            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              <AssetHeatmap portfolioData={portfolioData} theme={theme} />
+            </div>
+          </div>
+
+          {/* Portfolio Timeline Chart */}
+          {timelineData && (
+            <div style={{
+              height: "400px",
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative'
+            }}>
+              <h3 style={{
+                color: theme.textPrimary,
+                fontSize: '18px',
+                fontWeight: '600',
+                margin: '0 0 20px 0',
+                textAlign: 'center'
+              }}>
+                Evolución del Portfolio
+              </h3>
+              <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                <Line data={timelineData} options={timelineOptions} />
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Footer */}
         <div style={{
           textAlign: 'center',
@@ -1250,4 +1758,4 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
   );
 };
 
-export default GainTrackKPIs;
+export default OverviewSection;
