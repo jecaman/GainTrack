@@ -49,20 +49,56 @@ public_kraken_api = None
 # Assets fiat reconocidos por Kraken
 FIAT_ASSETS = ["ZEUR", "ZUSD", "ZGBP", "ZCAD", "ZJPY", "ZCHF", "ZKRW", "ZUSDT", "ZUSDC"]
 
-# Patrones comunes de Kraken para generar pares automáticamente
-KRAKEN_PAIR_PATTERNS = [
-    # Patrones más comunes primero para optimizar
-    "XX{asset}ZEUR",    # Patrón más común: XXBTZEUR, XXRPZEUR
-    "X{asset}ZEUR",     # Segundo más común: XETHZEUR
-    "{asset}ZEUR",      # Directo: ADAZEUR
-    "{asset}/EUR",      # Formato con slash: BTC/EUR
-    "{asset}EUR",       # Sin Z: BTCEUR
-    "X{asset}EUR",      # X sin Z: XETHEUR
-    "XX{asset}EUR",     # XX sin Z: XXBTCEUR
-]
+def generate_kraken_pairs_dynamically(asset):
+    """
+    Genera posibles pares de Kraken para un asset específico basado en patrones conocidos.
+    
+    Sistema de transformación Kraken:
+    - Assets legacy (BTC, ETH, XRP, etc.): Usan prefijos XX/X y sufijo Z
+    - Assets modernos (TRUMP, PEPE, etc.): Formato directo sin prefijos
+    - El orden de patrones está optimizado por frecuencia de uso
+    """
+    if asset in DYNAMIC_PAIR_CACHE:
+        return DYNAMIC_PAIR_CACHE[asset]
+    
+    # Verificar si el asset está en la lista de deslistados
+    if asset in DELISTED_ASSETS:
+        return None
+    
+    # Patrones ordenados por probabilidad de éxito
+    patterns = [
+        f"XX{asset}ZEUR",    # Legacy mayor: XXBTZEUR, XXRPZEUR  
+        f"X{asset}ZEUR",     # Legacy medio: XETHZEUR
+        f"{asset}EUR",       # Moderno: TRUMPEUR, PEPEEUR
+        f"{asset}ZEUR",      # Híbrido: Algunos assets usan Z sin X
+        f"{asset}/EUR",      # Formato CSV original (poco común en OHLC)
+    ]
+    
+    # Verificar cada patrón contra la lista oficial de pares
+    available_pairs = get_eur_pairs()
+    
+    for pattern in patterns:
+        if pattern in available_pairs:
+            DYNAMIC_PAIR_CACHE[asset] = pattern
+            print(f"✅ Pair encontrado para {asset}: {pattern}")
+            return pattern
+    
+    # Si no se encuentra ningún patrón válido, marcar como deslistado
+    print(f"❌ No se encontró pair válido para {asset}, marcando como deslistado")
+    DELISTED_ASSETS.add(asset)
+    return None
 
 # Cache dinámico de pares exitosos (se va llenando automáticamente)
-DYNAMIC_PAIR_CACHE = {}
+DYNAMIC_PAIR_CACHE = {
+    # Pares conocidos que sabemos que funcionan
+    'BTC': 'XXBTZEUR',
+    'XRP': 'XXRPZEUR', 
+    'ETH': 'XETHZEUR',
+    'TRUMP': 'TRUMP/EUR',
+}
+
+# Assets conocidos como deslistados o problemáticos (se actualiza automáticamente)
+DELISTED_ASSETS = set()  # Empezar vacío, se llenará automáticamente si es necesario
 
 # =============================================================================
 # MODELOS DE DATOS
@@ -114,7 +150,13 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
     Obtiene precios históricos con cache público optimizado.
     Esta función usa el cache compartido entre usuarios.
     """
+    print(f"🔍 DEBUG obtener_precios_diarios_cached: {asset} desde {start_date} hasta {end_date}")
     global public_kraken_api
+    
+    # Si el asset está en la lista de deslistados, no intentar buscarlo
+    if asset in DELISTED_ASSETS:
+        print(f"⚠️ Asset {asset} está en lista de deslistados, saltando...")
+        return {}
     
     # Generar clave de cache
     cache_key = get_public_cache_key("ohlc", asset, start_date, end_date)
@@ -143,26 +185,61 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
             pairs.append(successful_pair)
             print(f"🎯 Usando par conocido para {asset_name}: {successful_pair}")
         
-        # Generar pares usando patrones comunes (ordenados por probabilidad)
-        for pattern in KRAKEN_PAIR_PATTERNS:
-            pair = pattern.format(asset=asset_name)
-            if pair not in pairs:  # Evitar duplicados
+        # Lógica inteligente para manejar diferentes tipos de assets
+        base_name = asset_name
+        
+        # Para assets que ya empiezan con X (como XRP), generar variaciones inteligentes
+        if asset_name.startswith('X') and len(asset_name) >= 3:
+            # Para XRP: generar XXRPZEUR, XRPZEUR, etc.
+            clean_name = asset_name[1:]  # RP de XRP
+            smart_patterns = [
+                f"X{asset_name}ZEUR",     # XXRPZEUR
+                f"{asset_name}ZEUR",      # XRPZEUR  
+                f"{clean_name}ZEUR",      # RPZEUR (poco probable pero intentar)
+                f"{asset_name}/EUR",      # XRP/EUR
+                f"{asset_name}EUR",       # XRPEUR
+            ]
+        else:
+            # Para assets normales, priorizar diferentes patrones según el tipo
+            if len(asset_name) <= 3:
+                # Assets cortos como BTC, ETH - usar patrones con X
+                smart_patterns = [
+                    f"XX{asset_name}ZEUR",    # XXBTCZEUR
+                    f"X{asset_name}ZEUR",     # XBTCZEUR
+                    f"{asset_name}ZEUR",      # BTCZEUR
+                    f"{asset_name}/EUR",      # BTC/EUR
+                    f"{asset_name}EUR",       # BTCEUR
+                ]
+            else:
+                # Assets largos como TRUMP - priorizar formatos simples
+                smart_patterns = [
+                    f"{asset_name}/EUR",      # TRUMP/EUR (más probable)
+                    f"{asset_name}ZEUR",      # TRUMPZEUR
+                    f"{asset_name}EUR",       # TRUMPEUR
+                    f"X{asset_name}ZEUR",     # XTRUMPZEUR (menos probable)
+                    f"XX{asset_name}ZEUR",    # XXTRUMPZEUR (menos probable)
+                ]
+        
+        # Añadir patrones inteligentes
+        for pair in smart_patterns:
+            if pair not in pairs:
                 pairs.append(pair)
         
-        # Generar también variaciones con USD y otras monedas principales
-        additional_patterns = [
-            "XX{asset}ZUSD", "X{asset}ZUSD", "{asset}ZUSD",
-            "{asset}/USD", "{asset}USD"
+        # Generar también variaciones con USD
+        usd_patterns = [
+            f"XX{asset_name}ZUSD", f"X{asset_name}ZUSD", f"{asset_name}ZUSD",
+            f"{asset_name}/USD", f"{asset_name}USD"
         ]
-        for pattern in additional_patterns:
-            pair = pattern.format(asset=asset_name)
-            if pair not in pairs:  # Evitar duplicados
+        for pair in usd_patterns:
+            if pair not in pairs:
                 pairs.append(pair)
             
         return pairs
     
     possible_pairs = generate_kraken_pairs_dynamically(asset)
     print(f"🔍 Probando pares para {asset}: {possible_pairs[:5]}...")  # Solo mostrar primeros 5
+    
+    failed_attempts = 0  # Contador de intentos fallidos
     
     for pair in possible_pairs:
         try:
@@ -196,15 +273,37 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
             
         except Exception as e:
             error_str = str(e)
+            failed_attempts += 1
             print(f"⚠️ Error con par {pair}: {error_str}")
             
-            # Si es un error de asset pair desconocido, no seguir intentando otros pares para este asset
-            if "Unknown asset pair" in error_str or "EQuery:Unknown asset pair" in error_str:
-                print(f"❌ Asset {clean_asset} no encontrado en Kraken, saltando...")
-                break
-            continue
+            # Detectar diferentes tipos de errores para actuar apropiadamente
+            if any(err in error_str for err in ["Unknown asset pair", "EQuery:Unknown asset pair"]):
+                print(f"❌ Par {pair} no existe en Kraken")
+                
+                # Si llevamos 3 intentos fallidos con "Unknown asset pair", el asset está deslistado
+                if failed_attempts >= 3:
+                    print(f"🚫 Después de {failed_attempts} intentos fallidos, {asset} parece estar deslistado")
+                    DELISTED_ASSETS.add(asset)
+                    break
+                    
+                continue  # Probar siguiente par
+            elif any(err in error_str for err in ["Connection aborted", "RemoteDisconnected", "timeout"]):
+                print(f"🌐 Error de conexión con {pair}, saltando asset...")
+                break  # No probar más pares para este asset
+            elif "public call frequency exceeded" in error_str:
+                print(f"⏳ Rate limit alcanzado, saltando asset...")
+                break  # No probar más pares para este asset
+            else:
+                print(f"❓ Error desconocido con {pair}: {error_str}")
+                continue  # Probar siguiente par
     
     print(f"❌ No se pudieron obtener precios para {asset}")
+    
+    # Si probamos varios pares y ninguno funcionó, posiblemente el asset esté deslistado
+    if len(possible_pairs) >= 3:  # Si probamos al menos 3 pares diferentes
+        print(f"🚫 Marcando {asset} como posiblemente deslistado")
+        DELISTED_ASSETS.add(asset)
+    
     # Guardar resultado vacío en cache para evitar reintentos inmediatos
     set_cached_public_data(cache_key, {})
     return {}
@@ -967,7 +1066,19 @@ def calcular_holdings_diarios_csv(trades_df):
     fecha_minima = trades_df['time'].min().date()
     fecha_maxima = trades_df['time'].max().date()
     
-    print(f"📅 Rango de fechas: {fecha_minima} -> {fecha_maxima}")
+    # MEJORA: Extender timeline hasta HOY independientemente del último trade
+    from datetime import date, timedelta
+    today = date.today()
+    if fecha_maxima > today:
+        print(f"⚠️ Fecha máxima {fecha_maxima} es futura, limitando a hoy {today}")
+        fecha_maxima = today
+    else:
+        # Extender hasta hoy para mostrar evolución completa del portfolio
+        fecha_maxima = today
+        print(f"📈 Extendiendo timeline hasta hoy para mostrar evolución completa")
+    
+    print(f"📅 Rango de fechas (extendido): {fecha_minima} -> {fecha_maxima}")
+    print(f"🔍 DEBUG: today = {today}, fecha_maxima = {fecha_maxima}")
     
     # Obtener assets únicos para precios históricos
     assets_unicos = set()
@@ -990,7 +1101,7 @@ def calcular_holdings_diarios_csv(trades_df):
             print("⏱️ Esperando 2 segundos para evitar rate limiting...")
             time.sleep(2)
         
-        precios = obtener_precios_diarios_cached(asset, fecha_minima, fecha_maxima)
+        precios = obtener_precios_diarios_cached(asset, fecha_minima, today)
         if precios:
             precios_historicos[asset] = precios
             print(f"✅ {asset}: {len(precios)} días de precios obtenidos")
@@ -1004,7 +1115,7 @@ def calcular_holdings_diarios_csv(trades_df):
     # Holdings acumulativos por asset
     holdings_por_asset = {}  # {asset: {"cantidad": float, "coste_total": float, "fees_total": float}}
     
-    while fecha_actual <= fecha_maxima:
+    while fecha_actual <= today:
         fecha_str = fecha_actual.strftime('%Y-%m-%d')
         
         # Procesar todos los trades de este día
@@ -1029,7 +1140,7 @@ def calcular_holdings_diarios_csv(trades_df):
                 holdings_por_asset[asset]["cantidad"] += vol
                 holdings_por_asset[asset]["coste_total"] += cost
                 holdings_por_asset[asset]["fees_total"] += fee
-                print(f"📈 {fecha_str}: BUY {vol} {asset} - Coste: {cost}€ - Fee: {fee}€")
+                # print(f"📈 {fecha_str}: BUY {vol} {asset} - Coste: {cost}€ - Fee: {fee}€")
             else:  # sell
                 # Para ventas, reducir cantidad proporcionalmente al coste
                 if holdings_por_asset[asset]["cantidad"] > 0:
@@ -1040,7 +1151,7 @@ def calcular_holdings_diarios_csv(trades_df):
                     holdings_por_asset[asset]["coste_total"] -= coste_reducido
                     holdings_por_asset[asset]["fees_total"] += fee
                     
-                    print(f"📉 {fecha_str}: SELL {vol} {asset} - Ratio: {ratio_vendido:.3f} - Coste reducido: {coste_reducido:.2f}€")
+                    # print(f"📉 {fecha_str}: SELL {vol} {asset} - Ratio: {ratio_vendido:.3f} - Coste reducido: {coste_reducido:.2f}€")
                 else:
                     print(f"⚠️ {fecha_str}: SELL {vol} {asset} pero no hay holdings!")
         
@@ -1050,17 +1161,23 @@ def calcular_holdings_diarios_csv(trades_df):
         
         # Calcular valor de mercado del día
         valor_mercado_dia = 0.0
+        assets_sin_precio = []
+        
         for asset, holding in holdings_por_asset.items():
             if holding["cantidad"] > 0:
                 precio_del_dia = precios_historicos.get(asset, {}).get(fecha_str)
                 if precio_del_dia:
                     valor_asset = holding["cantidad"] * precio_del_dia
                     valor_mercado_dia += valor_asset
-                    print(f"💰 {fecha_str} {asset}: {holding['cantidad']:.6f} × {precio_del_dia:.2f}€ = {valor_asset:.2f}€")
+                    # print(f"💰 {fecha_str} {asset}: {holding['cantidad']:.6f} × {precio_del_dia:.2f}€ = {valor_asset:.2f}€")
                 else:
                     # Si no tenemos precio, usar el coste como aproximación
                     valor_mercado_dia += holding["coste_total"]
-                    print(f"⚠️ {fecha_str} {asset}: Sin precio, usando coste {holding['coste_total']:.2f}€")
+                    assets_sin_precio.append(asset)
+        
+        # Log de assets sin precio solo una vez por día
+        if assets_sin_precio:
+            print(f"⚠️ {fecha_str}: Assets sin precio histórico: {assets_sin_precio} (usando coste)")
         
         # Crear snapshot del día en formato compatible con frontend
         dia_data = {
@@ -1087,6 +1204,10 @@ def calcular_holdings_diarios_csv(trades_df):
                 }
         
         timeline.append(dia_data)
+        
+        # DEBUG: Mostrar cada fecha que se procesa
+        if fecha_actual.day % 5 == 0 or fecha_actual >= today - timedelta(days=5):  # Mostrar cada 5 días o los últimos 5 días
+            print(f"📅 DEBUG: Procesando fecha {fecha_str}, valor: {valor_mercado_dia:.2f}€")
         
         # Avanzar al siguiente día
         fecha_actual += timedelta(days=1)

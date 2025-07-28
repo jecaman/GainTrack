@@ -1178,46 +1178,75 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
       labels,
       datasets: [
         {
-          label: 'Total Invertido',
+          label: 'Total Invested',
           data: investedValues,
-          borderColor: theme.textSecondary,
+          borderColor: theme.textSecondary + 'C0',
           backgroundColor: 'transparent',
           fill: false,
-          tension: 0.3,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 5,
           pointBackgroundColor: theme.textSecondary,
-          pointBorderColor: theme.bg,
+          pointBorderColor: theme.bgContainer,
           pointBorderWidth: 2,
-          borderDash: [5, 5],
-          borderWidth: 2
+          pointHoverBorderWidth: 3,
+          borderDash: [8, 4],
+          borderWidth: 2.5,
+          pointStyle: 'circle'
         },
         {
-          label: 'Valor del Portfolio',
+          label: 'Market Value',
           data: portfolioValues,
           borderColor: function(context) {
-            // Dynamic border color based on overall trend
             const chart = context.chart;
             const {ctx, chartArea} = chart;
             if (!chartArea) return '#22c55e';
             
-            // Check if most recent value is profit or loss
             const lastValue = portfolioValues[portfolioValues.length - 1];
             const lastInvested = investedValues[investedValues.length - 1] || 0;
             return lastValue >= lastInvested ? '#22c55e' : '#ef4444';
           },
-          backgroundColor: 'transparent',
-          fill: false,
-          tension: 0.3,
+          backgroundColor: function(context) {
+            const chart = context.chart;
+            const {ctx, chartArea} = chart;
+            if (!chartArea) return 'transparent';
+            
+            // Crear gradiente más suave y visible
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            
+            // Determinar si hay más ganancias o pérdidas en el portfolio
+            let profitablePoints = 0;
+            for (let i = 0; i < portfolioValues.length; i++) {
+              const value = portfolioValues[i];
+              const invested = investedValues[i] || 0;
+              if (value >= invested) profitablePoints++;
+            }
+            
+            const isOverallProfitable = profitablePoints > portfolioValues.length / 2;
+            
+            if (isOverallProfitable) {
+              gradient.addColorStop(0, 'rgba(34, 197, 94, 0.2)');   // Verde más visible
+              gradient.addColorStop(0.6, 'rgba(34, 197, 94, 0.08)');
+              gradient.addColorStop(1, 'rgba(34, 197, 94, 0.02)');
+            } else {
+              gradient.addColorStop(0, 'rgba(239, 68, 68, 0.2)');   // Rojo más visible
+              gradient.addColorStop(0.6, 'rgba(239, 68, 68, 0.08)');
+              gradient.addColorStop(1, 'rgba(239, 68, 68, 0.02)');
+            }
+            return gradient;
+          },
+          fill: '+1', // Fill to the previous dataset (Total Invested)
+          tension: 0.4,
           pointRadius: 3,
           pointHoverRadius: 6,
           pointBackgroundColor: pointColors,
-          pointBorderColor: theme.bg,
+          pointBorderColor: theme.bgContainer,
           pointBorderWidth: 2,
-          borderWidth: 3,
+          pointHoverBorderWidth: 3,
+          borderWidth: 3.5,
+          pointStyle: 'circle',
           segment: {
             borderColor: function(ctx) {
-              // Color each segment based on the starting point's profit/loss
               const startIndex = ctx.p0DataIndex;
               const startValue = portfolioValues[startIndex];
               const startInvested = investedValues[startIndex] || 0;
@@ -1237,19 +1266,20 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
       mode: 'index',
       intersect: false
     },
+    elements: {
+      point: {
+        radius: 2,
+        hoverRadius: 6,
+        borderWidth: 2,
+        hoverBorderWidth: 3
+      },
+      line: {
+        tension: 0.4
+      }
+    },
     plugins: {
       legend: {
-        position: 'bottom',
-        labels: {
-          color: theme.textSecondary,
-          font: {
-            size: 13,
-            family: "'Inter', sans-serif"
-          },
-          padding: 20,
-          usePointStyle: true,
-          pointStyle: 'circle'
-        }
+        display: false // Ocultamos la leyenda porque ya tenemos nuestra propia leyenda personalizada
       },
       tooltip: {
         backgroundColor: theme.bgContainer,
@@ -1257,19 +1287,72 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
         bodyColor: theme.textSecondary,
         borderColor: theme.border,
         borderWidth: 1,
-        cornerRadius: 8,
-        padding: 12,
+        cornerRadius: 12,
+        padding: 16,
         titleFont: {
           size: 14,
-          family: "'Inter', sans-serif"
+          family: "'Space Grotesk', sans-serif",
+          weight: '600'
         },
         bodyFont: {
           size: 13,
-          family: "'Inter', sans-serif"
+          family: "'Inter', sans-serif",
+          weight: '500'
         },
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+        displayColors: true,
+        usePointStyle: true,
         callbacks: {
+          title: function(tooltipItems) {
+            // El label viene en formato dd/mm/yy, necesitamos convertirlo correctamente
+            const labelText = tooltipItems[0].label;
+            
+            // Buscar la fecha original en los datos
+            const dataIndex = tooltipItems[0].dataIndex;
+            const originalDate = portfolioData?.timeline[dataIndex]?.date;
+            
+            if (originalDate) {
+              const date = new Date(originalDate);
+              return date.toLocaleDateString('en-US', { 
+                weekday: 'short',
+                month: 'short', 
+                day: 'numeric',
+                year: 'numeric'
+              });
+            }
+            
+            // Fallback: intentar parsear el label
+            return labelText;
+          },
           label: function(context) {
-            return `${context.dataset.label}: €${Math.round(context.parsed.y)}`;
+            const value = context.parsed.y;
+            const formatted = new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'EUR',
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0
+            }).format(value);
+            return `${context.dataset.label}: ${formatted}`;
+          },
+          afterBody: function(tooltipItems) {
+            if (tooltipItems.length === 2) {
+              const invested = tooltipItems[0].parsed.y;
+              const market = tooltipItems[1].parsed.y;
+              const profit = market - invested;
+              const profitPct = invested > 0 ? ((profit / invested) * 100) : 0;
+              const profitFormatted = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'EUR',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              }).format(Math.abs(profit));
+              
+              return [
+                '',
+                `${profit >= 0 ? '📈' : '📉'} P&L: ${profit >= 0 ? '+' : '-'}${profitFormatted} (${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(1)}%)`
+              ];
+            }
+            return [];
           }
         }
       }
@@ -1277,40 +1360,46 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
     scales: {
       x: {
         ticks: {
-          color: theme.textSecondary,
+          color: theme.textSecondary + 'B0',
           font: {
             size: 11,
-            family: "'Inter', sans-serif"
+            family: "'Inter', sans-serif",
+            weight: '500'
           },
-          maxTicksLimit: 8 // Limitar número de labels para evitar solapamiento
+          maxTicksLimit: 6,
+          padding: 8
         },
         grid: {
+          display: false // Quitar grid horizontal
+        },
+        border: {
           display: false
         }
       },
       y: {
         ticks: {
-          color: theme.textSecondary,
+          color: theme.textSecondary + 'B0',
           font: {
-            size: 12,
-            family: "'Inter', sans-serif"
+            size: 11,
+            family: "'Inter', sans-serif",
+            weight: '500'
           },
+          padding: 12,
           callback: function(value) {
+            if (value >= 1000000) {
+              return '€' + (value / 1000000).toFixed(1) + 'M';
+            } else if (value >= 1000) {
+              return '€' + (value / 1000).toFixed(1) + 'K';
+            }
             return '€' + Math.round(value);
           }
         },
         grid: {
-          color: theme.border + '40',
-          lineWidth: 1
+          display: false // Quitar grid vertical también
+        },
+        border: {
+          display: false
         }
-      }
-    },
-    elements: {
-      line: {
-        borderWidth: 3
-      },
-      point: {
-        hoverBorderWidth: 3
       }
     }
   };
@@ -1750,24 +1839,72 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
 
         {/* Portfolio Timeline Chart - Full width below */}
         <div style={{
-          height: "400px",
+          height: "500px",
           display: 'flex',
           flexDirection: 'column',
           position: 'relative',
-          marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)',
-          border: '1px solid red' // DEBUG: Para ver si el contenedor existe
+          marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)'
         }}>
-          <h3 style={{
-            color: theme.textPrimary,
-            fontSize: 'clamp(22px, 5.5vw, 28px)',
-            fontWeight: '700',
-            margin: '0 0 16px 0',
-            textAlign: 'center',
-            fontFamily: "'Space Grotesk', sans-serif",
-            letterSpacing: '-0.01em'
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '20px',
+            flexWrap: 'wrap',
+            gap: '12px'
           }}>
-            Evolución del Portfolio
-          </h3>
+            <div>
+              <h3 style={{
+                color: theme.textPrimary,
+                fontSize: 'clamp(20px, 4.5vw, 24px)',
+                fontWeight: '700',
+                margin: '0 0 4px 0',
+                fontFamily: "'Space Grotesk', sans-serif",
+                letterSpacing: '-0.025em'
+              }}>
+                Portfolio Timeline
+              </h3>
+              <p style={{
+                color: theme.textSecondary,
+                fontSize: 'clamp(12px, 2.5vw, 14px)',
+                margin: '0',
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: '400',
+                opacity: 0.8
+              }}>
+                Investment cost vs market value evolution
+              </p>
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              fontSize: 'clamp(11px, 2.2vw, 12px)',
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: '500'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{
+                  width: '12px',
+                  height: '2px',
+                  background: theme.textSecondary,
+                  opacity: 0.7,
+                  borderRadius: '1px'
+                }}></div>
+                <span style={{ color: theme.textSecondary, opacity: 0.8 }}>Total Invested</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{
+                  width: '12px',
+                  height: '3px',
+                  background: 'linear-gradient(90deg, #22c55e, #16a34a)',
+                  borderRadius: '1.5px',
+                  boxShadow: '0 0 4px rgba(34, 197, 94, 0.3)'
+                }}></div>
+                <span style={{ color: theme.textSecondary, opacity: 0.8 }}>Market Value</span>
+              </div>
+            </div>
+          </div>
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
             {timelineData ? (
               <Line data={timelineData} options={timelineOptions} />
