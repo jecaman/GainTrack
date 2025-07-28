@@ -350,7 +350,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
 };
 
 // Chart Container Component
-const ChartContainer = ({ title, children, theme, height = "300px" }) => (
+const ChartContainer = ({ title, children, theme, height = "225px" }) => (
   <div style={{
     background: theme.bgElevated,
     border: `1px solid ${theme.border}`,
@@ -1001,16 +1001,15 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
     return interpolateColor(scaledPercent);
   };
 
-  // Calculate cell size based on portfolio percentage to match donut area
-  const calculateCellSize = (portfolioPercent, totalCells) => {
-    // Target total area much larger to match donut visual presence
-    const targetTotalArea = 150000; // Increased significantly
-    const cellArea = (targetTotalArea * portfolioPercent) / 100;
+  // Calculate cell size based on portfolio percentage - TRUE proportional area
+  const calculateCellSize = (portfolioPercent, totalCells, containerArea = 100000) => {
+    // Each asset's area should be exactly its portfolio percentage of total area
+    const cellArea = (containerArea * portfolioPercent) / 100;
     const cellSize = Math.sqrt(cellArea);
     
-    // Set more generous bounds for larger presence
-    const minSize = 50;
-    const maxSize = 250;
+    // Set reasonable bounds but prioritize proportionality (reducido 25%)
+    const minSize = 30;
+    const maxSize = 225;
     return Math.max(minSize, Math.min(maxSize, cellSize));
   };
 
@@ -1058,7 +1057,7 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
         const displayName = getDisplayName(asset);
         const color = getHeatmapColor(asset.profit_percentage);
         const profitText = `${asset.profit_percentage >= 0 ? '+' : ''}${asset.profit_percentage.toFixed(1)}%`;
-        const isSmallCell = cellSize < 80;
+        const isSmallCell = cellSize < 60;
         
         return (
           <div
@@ -1098,16 +1097,16 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
                 <span style={{
                   color: '#ffffff',
                   fontWeight: '700',
-                  fontSize: cellSize > 200 ? '38px' : cellSize > 150 ? '32px' : cellSize > 100 ? '26px' : cellSize > 80 ? '20px' : '16px',
+                  fontSize: cellSize > 150 ? '29px' : cellSize > 110 ? '24px' : cellSize > 75 ? '20px' : cellSize > 60 ? '15px' : '12px',
                   fontFamily: "'Inter', sans-serif",
                   textAlign: 'center',
-                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.5)',
-                  letterSpacing: cellSize > 150 ? '1px' : cellSize > 100 ? '0.5px' : '0px',
+                  textShadow: '0 2px 4px rgba(0, 0, 0, 0.7), 0 1px 1px rgba(0, 0, 0, 0.8)',
+                  letterSpacing: cellSize > 110 ? '1px' : cellSize > 75 ? '0.5px' : '0px',
                   lineHeight: '0.9',
                   maxWidth: '95%',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  marginBottom: cellSize > 150 ? '6px' : '4px'
+                  marginBottom: cellSize > 110 ? '5px' : '3px'
                 }}>
                   {displayName}
                 </span>
@@ -1115,10 +1114,10 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
                 <span style={{
                   color: '#ffffff',
                   fontWeight: '700',
-                  fontSize: cellSize > 200 ? '24px' : cellSize > 150 ? '20px' : cellSize > 100 ? '16px' : cellSize > 80 ? '14px' : '12px',
+                  fontSize: cellSize > 150 ? '18px' : cellSize > 110 ? '15px' : cellSize > 75 ? '12px' : cellSize > 60 ? '11px' : '9px',
                   fontFamily: "'Inter', sans-serif",
                   textAlign: 'center',
-                  textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)',
+                  textShadow: '0 2px 4px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(0, 0, 0, 0.9)',
                   opacity: 0.95,
                   letterSpacing: '0.5px'
                 }}>
@@ -1134,7 +1133,7 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
                 fontSize: '16px',
                 fontFamily: "'Inter', sans-serif",
                 textAlign: 'center',
-                textShadow: '0 1px 2px rgba(0, 0, 0, 0.6)',
+                textShadow: '0 2px 4px rgba(0, 0, 0, 0.8), 0 1px 1px rgba(0, 0, 0, 0.9)',
                 letterSpacing: '0.5px'
               }}>
                 {displayName}
@@ -1147,9 +1146,14 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
   );
 };
 
-// Create Timeline Chart Data
+// Create Timeline Chart Data with conditional coloring
   const createTimelineData = () => {
-    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return null;
+    console.log('DEBUG - portfolioData.timeline:', portfolioData?.timeline);
+    
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
+      console.log('DEBUG - No timeline data available');
+      return null;
+    }
 
     const timelineData = portfolioData.timeline;
     const labels = timelineData.map(entry => {
@@ -1161,38 +1165,65 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
       });
     });
 
-    const portfolioValues = timelineData.map(entry => entry.value || 0);
     const investedValues = timelineData.map(entry => entry.cost || 0);
+    const portfolioValues = timelineData.map(entry => entry.value || 0);
+
+    // Create point colors based on profit/loss at each point
+    const pointColors = portfolioValues.map((value, index) => {
+      const invested = investedValues[index] || 0;
+      return value >= invested ? '#22c55e' : '#ef4444'; // Green if profit, red if loss
+    });
 
     return {
       labels,
       datasets: [
         {
-          label: 'Valor del Portfolio',
-          data: portfolioValues,
-          borderColor: theme.greenPrimary,
-          backgroundColor: theme.greenPrimary + '20', // Muy transparente
-          fill: false,
-          tension: 0.3,
-          pointRadius: 2,
-          pointHoverRadius: 5,
-          pointBackgroundColor: theme.greenPrimary,
-          pointBorderColor: theme.bg,
-          pointBorderWidth: 2
-        },
-        {
           label: 'Total Invertido',
           data: investedValues,
           borderColor: theme.textSecondary,
-          backgroundColor: theme.textSecondary + '20',
+          backgroundColor: 'transparent',
           fill: false,
           tension: 0.3,
-          pointRadius: 2,
-          pointHoverRadius: 5,
+          pointRadius: 1.5,
+          pointHoverRadius: 4,
           pointBackgroundColor: theme.textSecondary,
           pointBorderColor: theme.bg,
           pointBorderWidth: 2,
-          borderDash: [5, 5] // Línea discontinua
+          borderDash: [5, 5],
+          borderWidth: 2
+        },
+        {
+          label: 'Valor del Portfolio',
+          data: portfolioValues,
+          borderColor: function(context) {
+            // Dynamic border color based on overall trend
+            const chart = context.chart;
+            const {ctx, chartArea} = chart;
+            if (!chartArea) return '#22c55e';
+            
+            // Check if most recent value is profit or loss
+            const lastValue = portfolioValues[portfolioValues.length - 1];
+            const lastInvested = investedValues[investedValues.length - 1] || 0;
+            return lastValue >= lastInvested ? '#22c55e' : '#ef4444';
+          },
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          pointBackgroundColor: pointColors,
+          pointBorderColor: theme.bg,
+          pointBorderWidth: 2,
+          borderWidth: 3,
+          segment: {
+            borderColor: function(ctx) {
+              // Color each segment based on the starting point's profit/loss
+              const startIndex = ctx.p0DataIndex;
+              const startValue = portfolioValues[startIndex];
+              const startInvested = investedValues[startIndex] || 0;
+              return startValue >= startInvested ? '#22c55e' : '#ef4444';
+            }
+          }
         }
       ]
     };
@@ -1667,7 +1698,7 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
           {/* Asset Allocation Chart */}
           {assetAllocationData && (
             <div style={{
-              height: "400px",
+              height: "300px",
               display: 'flex',
               flexDirection: 'column',
               position: 'relative'
@@ -1715,29 +1746,44 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
               <AssetHeatmap portfolioData={portfolioData} theme={theme} />
             </div>
           </div>
+        </div>
 
-          {/* Portfolio Timeline Chart */}
-          {timelineData && (
-            <div style={{
-              height: "400px",
-              display: 'flex',
-              flexDirection: 'column',
-              position: 'relative'
-            }}>
-              <h3 style={{
-                color: theme.textPrimary,
-                fontSize: '18px',
-                fontWeight: '600',
-                margin: '0 0 20px 0',
-                textAlign: 'center'
+        {/* Portfolio Timeline Chart - Full width below */}
+        <div style={{
+          height: "400px",
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)',
+          border: '1px solid red' // DEBUG: Para ver si el contenedor existe
+        }}>
+          <h3 style={{
+            color: theme.textPrimary,
+            fontSize: 'clamp(22px, 5.5vw, 28px)',
+            fontWeight: '700',
+            margin: '0 0 16px 0',
+            textAlign: 'center',
+            fontFamily: "'Space Grotesk', sans-serif",
+            letterSpacing: '-0.01em'
+          }}>
+            Evolución del Portfolio
+          </h3>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+            {timelineData ? (
+              <Line data={timelineData} options={timelineOptions} />
+            ) : (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                height: '100%',
+                color: theme.textSecondary,
+                fontSize: '16px'
               }}>
-                Evolución del Portfolio
-              </h3>
-              <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-                <Line data={timelineData} options={timelineOptions} />
+                No timeline data available (portfolioData.timeline: {portfolioData?.timeline ? `exists with ${portfolioData.timeline.length} entries` : 'missing'})
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Footer */}

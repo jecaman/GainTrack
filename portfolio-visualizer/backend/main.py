@@ -10,6 +10,10 @@ import hashlib
 import io
 import requests
 from kraken_pairs import get_eur_pairs
+from datetime import datetime, timedelta
+import asyncio
+from threading import Thread, Lock
+import json
 
 # =============================================================================
 # CONFIGURACIÓN Y CONSTANTES
@@ -25,12 +29,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cache simple para evitar llamadas repetidas
-cache = {}
-CACHE_DURATION = 300  # 5 minutos en segundos
+# =============================================================================
+# SISTEMA DE CACHE SEPARADO PARA APIs PÚBLICAS VS PRIVADAS
+# =============================================================================
+
+# Cache para datos privados del usuario (por usuario)
+private_cache = {}
+PRIVATE_CACHE_DURATION = 300  # 5 minutos
+
+# Cache global para datos públicos (compartido entre todos los usuarios)
+public_cache = {}
+PUBLIC_CACHE_DURATION = 900  # 15 minutos (más tiempo porque es compartido)
+public_cache_lock = Lock()
+
+# Instancia global de Kraken para APIs públicas (sin credenciales)
+public_kraken = None
+public_kraken_api = None
 
 # Assets fiat reconocidos por Kraken
 FIAT_ASSETS = ["ZEUR", "ZUSD", "ZGBP", "ZCAD", "ZJPY", "ZCHF", "ZKRW", "ZUSDT", "ZUSDC"]
+
+# Patrones comunes de Kraken para generar pares automáticamente
+KRAKEN_PAIR_PATTERNS = [
+    # Patrones más comunes primero para optimizar
+    "XX{asset}ZEUR",    # Patrón más común: XXBTZEUR, XXRPZEUR
+    "X{asset}ZEUR",     # Segundo más común: XETHZEUR
+    "{asset}ZEUR",      # Directo: ADAZEUR
+    "{asset}/EUR",      # Formato con slash: BTC/EUR
+    "{asset}EUR",       # Sin Z: BTCEUR
+    "X{asset}EUR",      # X sin Z: XETHEUR
+    "XX{asset}EUR",     # XX sin Z: XXBTCEUR
+]
+
+# Cache dinámico de pares exitosos (se va llenando automáticamente)
+DYNAMIC_PAIR_CACHE = {}
 
 # =============================================================================
 # MODELOS DE DATOS
@@ -41,15 +73,176 @@ class PortfolioRequest(BaseModel):
     api_secret: str
 
 # =============================================================================
+# SISTEMA DE GESTIÓN DE APIs PÚBLICAS (COMPARTIDAS)
+# =============================================================================
+
+def init_public_kraken():
+    """Inicializa la instancia global de Kraken para APIs públicas"""
+    global public_kraken, public_kraken_api
+    try:
+        public_kraken = krakenex.API()
+        public_kraken_api = KrakenAPI(public_kraken)
+        print("✅ Kraken público inicializado")
+    except Exception as e:
+        print(f"❌ Error inicializando Kraken público: {e}")
+
+def get_public_cache_key(operation, *args):
+    """Genera clave de cache para operaciones públicas"""
+    return f"public_{operation}_" + "_".join(str(arg) for arg in args)
+
+def get_cached_public_data(cache_key):
+    """Obtiene datos del cache público con thread safety"""
+    with public_cache_lock:
+        if cache_key in public_cache:
+            data, timestamp = public_cache[cache_key]
+            if time.time() - timestamp < PUBLIC_CACHE_DURATION:
+                print(f"📋 Cache HIT público: {cache_key}")
+                return data
+            else:
+                del public_cache[cache_key]
+                print(f"🕐 Cache EXPIRED público: {cache_key}")
+    return None
+
+def set_cached_public_data(cache_key, data):
+    """Guarda datos en el cache público con thread safety"""
+    with public_cache_lock:
+        public_cache[cache_key] = (data, time.time())
+        print(f"💾 Cache STORED público: {cache_key}")
+
+def obtener_precios_diarios_cached(asset, start_date, end_date):
+    """
+    Obtiene precios históricos con cache público optimizado.
+    Esta función usa el cache compartido entre usuarios.
+    """
+    global public_kraken_api
+    
+    # Generar clave de cache
+    cache_key = get_public_cache_key("ohlc", asset, start_date, end_date)
+    
+    # Intentar obtener del cache primero
+    cached_data = get_cached_public_data(cache_key)
+    if cached_data is not None:
+        return cached_data
+    
+    # Si no está en cache, obtener de Kraken
+    if public_kraken_api is None:
+        init_public_kraken()
+        if public_kraken_api is None:
+            return {}
+    
+    def generate_kraken_pairs_dynamically(asset_name):
+        """
+        Genera automáticamente todos los pares posibles para cualquier asset
+        usando los patrones comunes de Kraken + cache dinámico, sin hardcodear nada.
+        """
+        pairs = []
+        
+        # Si ya sabemos qué par funciona para este asset, ponerlo primero
+        if asset_name in DYNAMIC_PAIR_CACHE:
+            successful_pair = DYNAMIC_PAIR_CACHE[asset_name]
+            pairs.append(successful_pair)
+            print(f"🎯 Usando par conocido para {asset_name}: {successful_pair}")
+        
+        # Generar pares usando patrones comunes (ordenados por probabilidad)
+        for pattern in KRAKEN_PAIR_PATTERNS:
+            pair = pattern.format(asset=asset_name)
+            if pair not in pairs:  # Evitar duplicados
+                pairs.append(pair)
+        
+        # Generar también variaciones con USD y otras monedas principales
+        additional_patterns = [
+            "XX{asset}ZUSD", "X{asset}ZUSD", "{asset}ZUSD",
+            "{asset}/USD", "{asset}USD"
+        ]
+        for pattern in additional_patterns:
+            pair = pattern.format(asset=asset_name)
+            if pair not in pairs:  # Evitar duplicados
+                pairs.append(pair)
+            
+        return pairs
+    
+    possible_pairs = generate_kraken_pairs_dynamically(asset)
+    print(f"🔍 Probando pares para {asset}: {possible_pairs[:5]}...")  # Solo mostrar primeros 5
+    
+    for pair in possible_pairs:
+        try:
+            # Convertir fechas a timestamp
+            start_ts = int(pd.to_datetime(start_date).timestamp())
+            
+            print(f"📞 API PÚBLICA: get_ohlc_data({pair}, 1440, {start_date})")
+            ohlc, _ = public_kraken_api.get_ohlc_data(pair, interval=1440, since=start_ts)
+            
+            # Filtrar fechas dentro del rango
+            start_pd = pd.to_datetime(start_date).date()
+            end_pd = pd.to_datetime(end_date).date()
+            
+            ohlc = ohlc[(ohlc.index.date >= start_pd) & (ohlc.index.date <= end_pd)]
+            
+            precios_diarios = {}
+            for date, row in ohlc.iterrows():
+                fecha = date.strftime('%Y-%m-%d')
+                precio_cierre = float(row['close'])
+                precios_diarios[fecha] = precio_cierre
+            
+            print(f"✅ Precios obtenidos para {asset} via {pair}: {len(precios_diarios)} días")
+            
+            # Guardar el par exitoso en el cache dinámico para futuras consultas
+            DYNAMIC_PAIR_CACHE[asset] = pair
+            print(f"💾 Par {pair} guardado en cache dinámico para {asset}")
+            
+            # Guardar en cache antes de retornar
+            set_cached_public_data(cache_key, precios_diarios)
+            return precios_diarios
+            
+        except Exception as e:
+            error_str = str(e)
+            print(f"⚠️ Error con par {pair}: {error_str}")
+            
+            # Si es un error de asset pair desconocido, no seguir intentando otros pares para este asset
+            if "Unknown asset pair" in error_str or "EQuery:Unknown asset pair" in error_str:
+                print(f"❌ Asset {clean_asset} no encontrado en Kraken, saltando...")
+                break
+            continue
+    
+    print(f"❌ No se pudieron obtener precios para {asset}")
+    # Guardar resultado vacío en cache para evitar reintentos inmediatos
+    set_cached_public_data(cache_key, {})
+    return {}
+
+
+# =============================================================================
 # FUNCIONES AUXILIARES - API DE KRAKEN
 # =============================================================================
 
 def crear_kraken_api(api_key, api_secret):
-    """Crear instancia de API de Kraken con credenciales"""
+    """Crear instancia de API de Kraken con credenciales PRIVADAS"""
     k = krakenex.API()
     k.key = api_key
     k.secret = api_secret
     return KrakenAPI(k)
+
+def get_private_cache_key(api_key, operation, *args):
+    """Genera clave de cache para operaciones privadas por usuario"""
+    # Usar hash del API key para privacidad
+    user_hash = hashlib.md5(api_key.encode()).hexdigest()[:8]
+    return f"private_{user_hash}_{operation}_" + "_".join(str(arg) for arg in args)
+
+def get_cached_private_data(cache_key):
+    """Obtiene datos del cache privado"""
+    if cache_key in private_cache:
+        data, timestamp = private_cache[cache_key]
+        if time.time() - timestamp < PRIVATE_CACHE_DURATION:
+            print(f"📋 Cache HIT privado: {cache_key}")
+            return data
+        else:
+            del private_cache[cache_key]
+            print(f"🕐 Cache EXPIRED privado: {cache_key}")
+    return None
+
+def set_cached_private_data(cache_key, data):
+    """Guarda datos en el cache privado"""
+    private_cache[cache_key] = (data, time.time())
+    print(f"💾 Cache STORED privado: {cache_key}")
 
 def get_all_trades(kraken):
     """Obtiene todo el historial de trades usando paginación"""
@@ -585,7 +778,13 @@ def process_trades_csv(df):
         current_prices = get_public_kraken_prices_from_pairs(assets_with_balance, asset_to_pair)
         print(f"🎯 PRECIOS OBTENIDOS: {current_prices}")
         
-        return create_portfolio_data_from_trades(trades_df, balances, current_prices)
+        portfolio_result = create_portfolio_data_from_trades(trades_df, balances, current_prices)
+        
+        # Agregar timeline al resultado
+        timeline_data = calcular_holdings_diarios_csv(trades_df)
+        portfolio_result["timeline"] = timeline_data
+        
+        return portfolio_result
         
     except Exception as e:
         return {"error": f"Error processing Trades CSV: {str(e)}"}
@@ -745,6 +944,163 @@ def create_portfolio_data_from_ledger(df, current_balances, current_prices):
         'data_source': 'csv'
     }
 
+def calcular_holdings_diarios_csv(trades_df):
+    """
+    Calcula los holdings diarios (cantidad y coste) de cada asset desde el primer trade hasta el último.
+    
+    Args:
+        trades_df: DataFrame con los trades del CSV
+        
+    Returns:
+        List: Timeline con holdings diarios por asset
+    """
+    print(f"📅 Calculando holdings diarios desde CSV con {len(trades_df)} trades...")
+    
+    if trades_df.empty:
+        print("❌ No hay trades para calcular timeline")
+        return []
+    
+    # Ordenar trades por fecha
+    trades_df = trades_df.sort_values('time').copy()
+    
+    # Obtener rango de fechas
+    fecha_minima = trades_df['time'].min().date()
+    fecha_maxima = trades_df['time'].max().date()
+    
+    print(f"📅 Rango de fechas: {fecha_minima} -> {fecha_maxima}")
+    
+    # Obtener assets únicos para precios históricos
+    assets_unicos = set()
+    for _, trade in trades_df.iterrows():
+        pair = str(trade['pair'])
+        asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
+        if asset == pair:
+            asset = pair
+        assets_unicos.add(asset)
+    
+    print(f"🎯 Assets únicos encontrados: {list(assets_unicos)}")
+    
+    # Obtener precios históricos para todos los assets de una vez
+    precios_historicos = {}  # {asset: {fecha: precio}}
+    for i, asset in enumerate(assets_unicos):
+        print(f"📈 Obteniendo precios históricos para {asset}...")
+        
+        # Añadir delay entre llamadas para evitar rate limiting (excepto la primera)
+        if i > 0:
+            print("⏱️ Esperando 2 segundos para evitar rate limiting...")
+            time.sleep(2)
+        
+        precios = obtener_precios_diarios_cached(asset, fecha_minima, fecha_maxima)
+        if precios:
+            precios_historicos[asset] = precios
+            print(f"✅ {asset}: {len(precios)} días de precios obtenidos")
+        else:
+            print(f"⚠️ {asset}: No se pudieron obtener precios - asset no encontrado o error de API")
+    
+    # Generar todas las fechas en el rango
+    fecha_actual = fecha_minima
+    timeline = []
+    
+    # Holdings acumulativos por asset
+    holdings_por_asset = {}  # {asset: {"cantidad": float, "coste_total": float, "fees_total": float}}
+    
+    while fecha_actual <= fecha_maxima:
+        fecha_str = fecha_actual.strftime('%Y-%m-%d')
+        
+        # Procesar todos los trades de este día
+        trades_del_dia = trades_df[trades_df['time'].dt.date == fecha_actual]
+        
+        for _, trade in trades_del_dia.iterrows():
+            # Extraer asset del pair
+            pair = str(trade['pair'])
+            asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
+            if asset == pair:
+                asset = pair
+            
+            # Inicializar asset si no existe
+            if asset not in holdings_por_asset:
+                holdings_por_asset[asset] = {"cantidad": 0.0, "coste_total": 0.0, "fees_total": 0.0}
+            
+            vol = float(trade['vol'])
+            cost = float(trade['cost'])
+            fee = float(trade['fee'])
+            
+            if trade['type'] == 'buy':
+                holdings_por_asset[asset]["cantidad"] += vol
+                holdings_por_asset[asset]["coste_total"] += cost
+                holdings_por_asset[asset]["fees_total"] += fee
+                print(f"📈 {fecha_str}: BUY {vol} {asset} - Coste: {cost}€ - Fee: {fee}€")
+            else:  # sell
+                # Para ventas, reducir cantidad proporcionalmente al coste
+                if holdings_por_asset[asset]["cantidad"] > 0:
+                    ratio_vendido = min(vol / holdings_por_asset[asset]["cantidad"], 1.0)
+                    coste_reducido = holdings_por_asset[asset]["coste_total"] * ratio_vendido
+                    
+                    holdings_por_asset[asset]["cantidad"] -= vol
+                    holdings_por_asset[asset]["coste_total"] -= coste_reducido
+                    holdings_por_asset[asset]["fees_total"] += fee
+                    
+                    print(f"📉 {fecha_str}: SELL {vol} {asset} - Ratio: {ratio_vendido:.3f} - Coste reducido: {coste_reducido:.2f}€")
+                else:
+                    print(f"⚠️ {fecha_str}: SELL {vol} {asset} pero no hay holdings!")
+        
+        # Calcular totales del día
+        coste_total_dia = sum(holding["coste_total"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
+        fees_total_dia = sum(holding["fees_total"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
+        
+        # Calcular valor de mercado del día
+        valor_mercado_dia = 0.0
+        for asset, holding in holdings_por_asset.items():
+            if holding["cantidad"] > 0:
+                precio_del_dia = precios_historicos.get(asset, {}).get(fecha_str)
+                if precio_del_dia:
+                    valor_asset = holding["cantidad"] * precio_del_dia
+                    valor_mercado_dia += valor_asset
+                    print(f"💰 {fecha_str} {asset}: {holding['cantidad']:.6f} × {precio_del_dia:.2f}€ = {valor_asset:.2f}€")
+                else:
+                    # Si no tenemos precio, usar el coste como aproximación
+                    valor_mercado_dia += holding["coste_total"]
+                    print(f"⚠️ {fecha_str} {asset}: Sin precio, usando coste {holding['coste_total']:.2f}€")
+        
+        # Crear snapshot del día en formato compatible con frontend
+        dia_data = {
+            "date": fecha_str,
+            "cost": round(coste_total_dia, 2),      # Coste total invertido hasta esta fecha
+            "fees": round(fees_total_dia, 2),       # Fees totales hasta esta fecha
+            "value": round(valor_mercado_dia, 2),   # Valor de mercado actual
+            "holdings": {}  # Detalle por asset para debugs
+        }
+        
+        # Agregar detalle por asset
+        for asset, holding in holdings_por_asset.items():
+            if holding["cantidad"] > 0:  # Solo incluir assets con cantidad > 0
+                precio_actual = precios_historicos.get(asset, {}).get(fecha_str, 0)
+                valor_actual = holding["cantidad"] * precio_actual if precio_actual else holding["coste_total"]
+                
+                dia_data["holdings"][asset] = {
+                    "cantidad": round(holding["cantidad"], 8),
+                    "coste_total": round(holding["coste_total"], 2),
+                    "fees_total": round(holding["fees_total"], 2),
+                    "coste_promedio": round(holding["coste_total"] / holding["cantidad"], 2) if holding["cantidad"] > 0 else 0,
+                    "precio_mercado": round(precio_actual, 2) if precio_actual else 0,
+                    "valor_mercado": round(valor_actual, 2)
+                }
+        
+        timeline.append(dia_data)
+        
+        # Avanzar al siguiente día
+        fecha_actual += timedelta(days=1)
+    
+    print(f"✅ Timeline calculado: {len(timeline)} días con holdings diarios")
+    
+    # Mostrar algunos ejemplos
+    if timeline:
+        print(f"📊 Primer día ({timeline[0]['date']}): cost={timeline[0]['cost']}€, assets={list(timeline[0]['holdings'].keys())}")
+        if len(timeline) > 1:
+            print(f"📊 Último día ({timeline[-1]['date']}): cost={timeline[-1]['cost']}€, assets={list(timeline[-1]['holdings'].keys())}")
+    
+    return timeline
+
 # =============================================================================
 # ENDPOINTS DE LA API
 # =============================================================================
@@ -752,16 +1108,42 @@ def create_portfolio_data_from_ledger(df, current_balances, current_prices):
 @app.post("/api/portfolio")
 async def portfolio_endpoint(req: PortfolioRequest):
     try:
-        # Crear clave de caché
-        cache_key = hashlib.md5(f"{req.api_key}{req.api_secret}".encode()).hexdigest()
-        current_time = time.time()
+        # Detectar credenciales de test y devolver datos mock
+        if req.api_key == "test" and req.api_secret == "test":
+            print("🧪 Detectadas credenciales de test, devolviendo datos mock")
+            mock_portfolio_data = [
+                {"asset": "BTC", "asset_type": "crypto", "amount": 0.015, "current_price": 100000.0, "total_invested": 1200.0, "fees_paid": 5.0, "current_value": 1500.0, "pnl_eur": 300.0, "pnl_percent": 25.0},
+                {"asset": "ETH", "asset_type": "crypto", "amount": 0.25, "current_price": 3200.0, "total_invested": 750.0, "fees_paid": 3.0, "current_value": 800.0, "pnl_eur": 50.0, "pnl_percent": 6.67},
+                {"asset": "XRP", "asset_type": "crypto", "amount": 100.0, "current_price": 2.0, "total_invested": 180.0, "fees_paid": 2.0, "current_value": 200.0, "pnl_eur": 20.0, "pnl_percent": 11.11}
+            ]
+            
+            # Timeline vacío por ahora
+            timeline_result = []
+            
+            mock_result = {
+                "kpis": {
+                    "total_invested": 2130.0,
+                    "current_value": 2500.0,
+                    "profit": 370.0,
+                    "profit_percentage": 17.37,
+                    "fees": 10.0,
+                    "liquidity": 0.0
+                },
+                "portfolio_data": mock_portfolio_data,
+                "timeline": timeline_result,
+                "asset_breakdown": {},
+                "data_source": "mock"
+            }
+            return mock_result
         
-        # Verificar caché
-        if cache_key in cache:
-            cached_data, timestamp = cache[cache_key]
-            if current_time - timestamp < CACHE_DURATION:
-                print(f"📊 Devolviendo datos desde caché")
-                return cached_data
+        # Crear clave de caché PRIVADO
+        cache_key = get_private_cache_key(req.api_key, "portfolio_analysis")
+        
+        # Verificar caché privado
+        cached_data = get_cached_private_data(cache_key)
+        if cached_data is not None:
+            print(f"📊 Devolviendo datos desde caché PRIVADO")
+            return cached_data
         
         # Crear API instance
         kraken = crear_kraken_api(req.api_key, req.api_secret)
@@ -778,14 +1160,13 @@ async def portfolio_endpoint(req: PortfolioRequest):
         # Obtener desglose por asset
         asset_breakdown = get_asset_breakdown(kraken, portfolio_data, current_balances, current_prices)
         
-        # Convertir a formato compatible con frontend
+        # Convertir a formato compatible con frontend (mismo formato que CSV)
         portfolio_array = []
         for asset_name, asset_data in asset_breakdown.items():
             portfolio_array.append({
                 "asset": asset_name,
                 "asset_type": asset_data["asset_type"],
                 "amount": asset_data["balance"],
-                "average_cost": asset_data["avg_buy_price"],
                 "current_price": asset_data["current_price"],
                 "total_invested": asset_data["invested_amount"],
                 "fees_paid": asset_data["fees_paid"],
@@ -794,14 +1175,18 @@ async def portfolio_endpoint(req: PortfolioRequest):
                 "pnl_percent": asset_data["profit_percentage"]
             })
         
+        # Timeline vacío por ahora
+        timeline_result = []
+        
         # Preparar resultado
         result = portfolio_data.copy()
         result["kpis"] = kpis
         result["asset_breakdown"] = asset_breakdown
         result["portfolio_data"] = portfolio_array
+        result["timeline"] = timeline_result
         
-        # Guardar en caché
-        cache[cache_key] = (result, current_time)
+        # Guardar en caché PRIVADO
+        set_cached_private_data(cache_key, result)
         return result
         
     except Exception as e:
@@ -832,8 +1217,7 @@ async def portfolio_csv_endpoint(csv_file: UploadFile = File(...)):
         print(f"  💧 Liquidez: {result['kpis']['liquidity']:.2f}€")
         print(f"  🏦 Assets: {len(result['portfolio_data'])} activos")
         
-        # Agregar campos adicionales para compatibilidad
-        result["timeline"] = []
+        # El timeline ya se calcula en process_trades_csv
         result["asset_breakdown"] = {
             asset['asset']: {
                 'asset_name': asset['asset'],
@@ -867,5 +1251,9 @@ if __name__ == "__main__":
     print("🌐 Frontend disponible en: http://localhost:5173")
     print("📖 Documentación API: http://localhost:8000/docs")
     print("=" * 50)
+    
+    # Inicializar Kraken público al arrancar
+    print("🔧 Inicializando APIs públicas...")
+    init_public_kraken()
     
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
