@@ -241,17 +241,23 @@ const BackgroundPattern = ({ isDark }) => {
 };
 
 // KPI Card Component
-const KPICard = ({ label, value, change, changePercent, isPositive, theme, showChange = false }) => {
+const KPICard = ({ label, value, change, changePercent, isPositive, theme, showChange = false, tooltip = null }) => {
   return (
     <div 
       style={{
         background: theme.bgElevated,
         border: `1px solid ${theme.border}`,
         borderRadius: '10px',
-        padding: 'clamp(0.6875rem, 2.2vw, 0.9625rem)',
+        padding: '1.25rem',
         textAlign: 'center',
-        minWidth: 'clamp(7.15rem, 19.8vw, 8.25rem)',
-        flex: '1',
+        width: '180px',
+        height: '140px',
+        flex: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         ...(theme.bg === '#000000' ? {} : {
           boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)'
@@ -271,6 +277,14 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
           label.style.fontWeight = '700';
           label.style.textShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
         }
+        
+        // Show tooltip if present
+        if (tooltip) {
+          const tooltipEl = e.currentTarget.querySelector('.kpi-tooltip');
+          if (tooltipEl) {
+            tooltipEl.style.opacity = '1';
+          }
+        }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'translateY(0) scale(1)';
@@ -285,21 +299,31 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
           label.style.fontWeight = '700';
           label.style.textShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
         }
+        
+        // Hide tooltip if present
+        if (tooltip) {
+          const tooltipEl = e.currentTarget.querySelector('.kpi-tooltip');
+          if (tooltipEl) {
+            tooltipEl.style.opacity = '0';
+          }
+        }
       }}
     >
       {/* Label */}
       <div 
         data-kpi-label
         style={{
-          color: '#ffffff',
-          fontSize: 'clamp(0.825rem, 2.75vw, 0.9625rem)',
+          color: '#ff0000',
+          fontSize: '0.875rem',
           fontWeight: '700',
           marginBottom: '0.5rem',
           fontFamily: "'Inter', sans-serif",
           letterSpacing: '0.02em',
           textTransform: 'uppercase',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+          textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+          textAlign: 'center',
+          width: '100%'
         }}
       >
         {label}
@@ -310,12 +334,18 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
         color: showChange ? 
           (parseFloat(changePercent) === 0 ? theme.textMuted : (isPositive ? theme.greenPrimary : '#ef4444')) 
           : theme.textPrimary,
-        fontSize: 'clamp(1.1rem, 3.85vw, 1.375rem)',
+        fontSize: '1.5rem',
         fontWeight: '700',
         fontFamily: "'Space Grotesk', sans-serif",
         letterSpacing: '-0.01em',
         lineHeight: '1.2',
-        marginBottom: showChange ? '4px' : '0'
+        marginBottom: showChange ? '6px' : '0',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        width: '100%',
+        minHeight: '2rem'
       }}>
         {value}
       </div>
@@ -324,12 +354,48 @@ const KPICard = ({ label, value, change, changePercent, isPositive, theme, showC
       {showChange && changePercent && (
         <div style={{
           color: parseFloat(changePercent) === 0 ? theme.textMuted : (isPositive ? theme.greenPrimary : '#ef4444'),
-          fontSize: 'clamp(0.6875rem, 2.2vw, 0.75625rem)',
+          fontSize: '0.875rem',
           fontWeight: '600',
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Inter', sans-serif",
+          marginBottom: '0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          width: '100%'
         }}>
           {parseFloat(changePercent) === 0 ? '0%' : changePercent}
         </div>
+      )}
+
+      {/* Tooltip for Net Profit */}
+      {tooltip && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: theme.bgContainer,
+          border: `1px solid ${theme.border}`,
+          borderRadius: '8px',
+          padding: '8px 12px',
+          fontSize: '0.8rem',
+          color: theme.textPrimary,
+          fontFamily: "'Inter', sans-serif",
+          whiteSpace: 'nowrap',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          zIndex: 1000,
+          opacity: 0,
+          pointerEvents: 'none',
+          transition: 'opacity 0.2s ease',
+          marginTop: '8px'
+        }}
+        className="kpi-tooltip"
+      >
+        <div style={{ fontWeight: '600', marginBottom: '4px' }}>Profit Breakdown:</div>
+        <div>Realized: {tooltip.realizedGains} ({tooltip.realizedPercent})</div>
+        <div>Unrealized: {tooltip.unrealizedGains} ({tooltip.unrealizedPercent})</div>
+      </div>
       )}
     </div>
   );
@@ -349,9 +415,9 @@ const Sidebar = ({ isOpen, onClose, theme, portfolioData }) => {
     ) : [];
 
   const sections = [
-    { id: 'filters', label: 'Filters', icon: '🎛️' },
-    { id: 'analysis', label: 'Analysis', icon: '📈' },
-    { id: 'settings', label: 'Settings', icon: '⚙️' }
+    { id: 'filters', label: 'Filters', icon: '' },
+    { id: 'analysis', label: 'Analysis', icon: '' },
+    { id: 'settings', label: 'Settings', icon: '' }
   ];
 
   const handleAssetToggle = (asset) => {
@@ -869,12 +935,40 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
         profitPercent: '0.00%',
         isPositive: false,
         liquidity: '0.00€',
-        fees: '0.00€'
+        fees: '0.00€',
+        realizedGains: '0.00€',
+        realizedIsPositive: false,
+        unrealizedGains: '0.00€',
+        unrealizedPercent: '0.00%',
+        unrealizedIsPositive: false,
+        tooltip: null
       };
     }
 
     const kpis = portfolioData.kpis;
     const isPositive = kpis.profit >= 0;
+    
+    // Nuevos KPIs mejorados
+    const realizedGains = kpis.realized_gains || 0;
+    const unrealizedGains = kpis.unrealized_gains || 0;
+    const unrealizedPercentage = kpis.unrealized_percentage || 0;
+    const totalProfit = Math.abs(kpis.profit) || 0;
+    
+    const realizedIsPositive = realizedGains >= 0;
+    const unrealizedIsPositive = unrealizedGains >= 0;
+
+    // Calcular porcentajes para el tooltip
+    const realizedPercentage = kpis.total_invested > 0 ? (realizedGains / kpis.total_invested) * 100 : 0;
+    const realizedPercentText = `${realizedIsPositive ? '+' : ''}${realizedPercentage.toFixed(2)}%`;
+    const unrealizedPercentText = `${unrealizedIsPositive ? '+' : ''}${unrealizedPercentage.toFixed(2)}%`;
+
+    // Preparar tooltip para Net Profit
+    const tooltip = {
+      realizedGains: `${realizedIsPositive ? '+' : ''}${realizedGains.toFixed(2)}€`,
+      realizedPercent: realizedPercentText,
+      unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${unrealizedGains.toFixed(2)}€`,
+      unrealizedPercent: unrealizedPercentText
+    };
 
     return {
       totalInvested: `${kpis.total_invested.toFixed(2)}€`,
@@ -883,7 +977,14 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
       profitPercent: `${isPositive ? '+' : ''}${kpis.profit_percentage.toFixed(2)}%`,
       isPositive,
       liquidity: kpis.liquidity > 0 ? `${kpis.liquidity.toFixed(2)}€` : 'N/A',
-      fees: `${kpis.fees.toFixed(2)}€`
+      fees: `${kpis.fees.toFixed(2)}€`,
+      // Nuevos KPIs
+      realizedGains: `${realizedIsPositive ? '+' : ''}${realizedGains.toFixed(2)}€`,
+      realizedIsPositive,
+      unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${unrealizedGains.toFixed(2)}€`,
+      unrealizedPercent: `${unrealizedIsPositive ? '+' : ''}${unrealizedPercentage.toFixed(2)}%`,
+      unrealizedIsPositive,
+      tooltip
     };
   };
 
@@ -1142,7 +1243,7 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
             marginBottom: '40px',
             color: '#ef4444'
           }}>
-            <p style={{ margin: '0' }}>⚠️ {error}</p>
+            <p style={{ margin: '0' }}>{error}</p>
           </div>
         )}
 
@@ -1190,16 +1291,17 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
           <div></div>
         </div>
 
-        {/* KPI Row */}
+        {/* KPI Row Principal */}
         <div className="fade-in-up" style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 'clamp(0.825rem, 2.75vw, 1.375rem)',
-          marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)',
-          justifyContent: 'center'
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '1.25rem',
+          marginBottom: '1.5rem',
+          justifyContent: 'center',
+          alignItems: 'stretch'
         }}>
           <KPICard
-            label="Portfolio Value"
+            label="Portfolio Value TEST"
             value={kpiData.currentValue}
             theme={theme}
           />
@@ -1217,12 +1319,7 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
             isPositive={kpiData.isPositive}
             theme={theme}
             showChange={true}
-          />
-          
-          <KPICard
-            label="Liquidity"
-            value={kpiData.liquidity}
-            theme={theme}
+            tooltip={kpiData.tooltip}
           />
           
           <KPICard
@@ -1230,7 +1327,14 @@ const GainTrackKPIs = ({ portfolioData, isLoading = false, error = null, onBack 
             value={kpiData.fees}
             theme={theme}
           />
+          
+          <KPICard
+            label="Liquidity"
+            value={kpiData.liquidity}
+            theme={theme}
+          />
         </div>
+
 
         {/* Footer */}
         <div style={{

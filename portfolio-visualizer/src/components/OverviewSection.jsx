@@ -259,17 +259,17 @@ const BackgroundPattern = ({ isDark }) => {
   );
 };
 
-// KPI Card Component
-const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false }) => {
+// Sub KPI Component for Net Profit breakdown
+const NetProfitCard = ({ netValue, netPercent, realizedValue, unrealizedValue, unrealizedPercent, isPositive, realizedIsPositive, unrealizedIsPositive, theme }) => {
   return (
     <div 
       style={{
         background: theme.bgElevated,
         border: `1px solid ${theme.border}`,
-        borderRadius: '10px',
-        padding: 'clamp(0.6875rem, 2.2vw, 0.9625rem)',
+        borderRadius: '8px',
+        padding: 'clamp(0.5rem, 1.8vw, 0.75rem)',
         textAlign: 'center',
-        minWidth: 'clamp(7.15rem, 19.8vw, 8.25rem)',
+        minWidth: 'clamp(6rem, 16vw, 7rem)',
         flex: '1',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         ...(theme.bg === '#000000' ? {} : {
@@ -278,9 +278,360 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         cursor: 'pointer'
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateY(-0.1875rem) scale(1.08)';
+        e.currentTarget.style.transform = 'translateY(-0.125rem)';
         e.currentTarget.style.borderColor = theme.greenPrimary;
-        e.currentTarget.style.boxShadow = '0 -0.75rem 0.75rem rgba(0, 255, 136, 0.2), 0 0.75rem 0.75rem rgba(0, 255, 136, 0.2), 0.375rem 0 0.75rem rgba(0, 255, 136, 0.2)';
+        e.currentTarget.style.boxShadow = '0 -0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0 0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0.25rem 0 0.5rem rgba(0, 255, 136, 0.15)';
+        e.currentTarget.style.background = theme.bgContainer;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.borderColor = theme.border;
+        e.currentTarget.style.boxShadow = theme.bg === '#000000' ? 'none' : '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)';
+        e.currentTarget.style.background = theme.bgElevated;
+      }}
+    >
+      {/* Main Label */}
+      <div style={{
+        color: '#ffffff',
+        fontSize: 'clamp(0.65rem, 2.2vw, 0.8rem)',
+        fontWeight: '700',
+        marginBottom: '0.25rem',
+        fontFamily: "'Inter', sans-serif",
+        letterSpacing: '0.02em',
+        textTransform: 'uppercase',
+        textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+      }}>
+        Net Profit
+      </div>
+
+      {/* Main Value */}
+      <div style={{
+        color: isPositive ? theme.greenPrimary : '#ef4444',
+        fontSize: 'clamp(0.9rem, 3.2vw, 1.15rem)',
+        fontWeight: '700',
+        fontFamily: "'Space Grotesk', sans-serif",
+        letterSpacing: '-0.01em',
+        lineHeight: '1.2',
+        marginBottom: '0.15rem'
+      }}>
+        {netValue}
+      </div>
+
+      {/* Main Percentage */}
+      <div style={{
+        color: isPositive ? theme.greenPrimary : '#ef4444',
+        fontSize: 'clamp(0.6rem, 1.8vw, 0.7rem)',
+        fontWeight: '600',
+        fontFamily: "'Inter', sans-serif",
+        marginBottom: '0.4rem'
+      }}>
+        {netPercent}
+      </div>
+
+      {/* Divider */}
+      <div style={{
+        height: '1px',
+        background: theme.border,
+        margin: '0.3rem 0'
+      }}></div>
+
+      {/* Sub KPIs */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: '0.2rem'
+      }}>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{
+            fontSize: 'clamp(0.55rem, 1.5vw, 0.65rem)',
+            color: theme.textSecondary,
+            fontWeight: '600',
+            marginBottom: '0.1rem',
+            textTransform: 'uppercase'
+          }}>
+            💎 Real
+          </div>
+          <div style={{
+            fontSize: 'clamp(0.65rem, 2vw, 0.75rem)',
+            fontWeight: '700',
+            color: realizedIsPositive ? theme.greenPrimary : '#ef4444',
+            fontFamily: "'Space Grotesk', sans-serif"
+          }}>
+            {realizedValue}
+          </div>
+        </div>
+        
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{
+            fontSize: 'clamp(0.55rem, 1.5vw, 0.65rem)',
+            color: theme.textSecondary,
+            fontWeight: '600',
+            marginBottom: '0.1rem',
+            textTransform: 'uppercase'
+          }}>
+            📈 Unreal
+          </div>
+          <div style={{
+            fontSize: 'clamp(0.65rem, 2vw, 0.75rem)',
+            fontWeight: '700',
+            color: unrealizedIsPositive ? theme.greenPrimary : '#ef4444',
+            fontFamily: "'Space Grotesk', sans-serif"
+          }}>
+            {unrealizedValue}
+          </div>
+          <div style={{
+            fontSize: 'clamp(0.5rem, 1.3vw, 0.55rem)',
+            color: unrealizedIsPositive ? theme.greenPrimary : '#ef4444',
+            fontWeight: '500'
+          }}>
+            {unrealizedPercent}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Net Profit KPI Card Component with hover split
+const NetProfitKPICard = ({ label, value, changePercent, isPositive, theme, showChange = false, realizedData, unrealizedData }) => {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <div 
+      style={{
+        background: theme.bgElevated,
+        border: `1px solid ${theme.border}`,
+        borderRadius: '8px',
+        padding: '1rem',
+        textAlign: 'center',
+        width: '100%',
+        height: '120px',
+        flex: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        ...(theme.bg === '#000000' ? {} : {
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)'
+        }),
+        cursor: 'pointer',
+        position: 'relative'
+      }}
+      onMouseEnter={(e) => {
+        setIsHovered(true);
+        e.currentTarget.style.transform = 'translateY(-0.125rem)';
+        e.currentTarget.style.borderColor = theme.greenPrimary;
+        e.currentTarget.style.boxShadow = '0 -0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0 0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0.25rem 0 0.5rem rgba(0, 255, 136, 0.15)';
+        e.currentTarget.style.background = theme.bgContainer;
+      }}
+      onMouseLeave={(e) => {
+        setIsHovered(false);
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.borderColor = theme.border;
+        e.currentTarget.style.boxShadow = theme.bg === '#000000' ? 'none' : '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)';
+        e.currentTarget.style.background = theme.bgElevated;
+      }}
+    >
+      <div style={{
+        opacity: !isHovered ? 1 : 0,
+        transform: !isHovered ? 'scale(1)' : 'scale(0.98)',
+        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: !isHovered ? 'relative' : 'absolute',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}>
+        {/* Estado normal - Net Profit */}
+        <div style={{
+            color: '#ffffff',
+            fontSize: '0.75rem',
+            fontWeight: '700',
+            marginBottom: '0.5rem',
+            fontFamily: "'Inter', sans-serif",
+            letterSpacing: '0.02em',
+            textTransform: 'uppercase',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+            textAlign: 'center',
+            width: '100%'
+          }}>
+            {label}
+          </div>
+
+          <div style={{
+            color: isPositive ? theme.greenPrimary : '#ef4444',
+            fontSize: '1.2rem',
+            fontWeight: '700',
+            fontFamily: "'Space Grotesk', sans-serif",
+            letterSpacing: '-0.01em',
+            lineHeight: '1.2',
+            marginBottom: showChange ? '6px' : '0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            width: '100%',
+            minHeight: '1.5rem'
+          }}>
+            {value}
+          </div>
+
+          {showChange && changePercent && (
+            <div style={{
+              color: parseFloat(changePercent) === 0 ? theme.textMuted : (isPositive ? theme.greenPrimary : '#ef4444'),
+              fontSize: '0.75rem',
+              fontWeight: '600',
+              fontFamily: "'Inter', sans-serif",
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              width: '100%'
+            }}>
+              {parseFloat(changePercent) === 0 ? '0%' : changePercent}
+            </div>
+          )}
+      </div>
+
+      {/* Estado hover - Realized vs Unrealized split */}
+      <div style={{
+        opacity: isHovered ? 1 : 0,
+        transform: isHovered ? 'scale(1)' : 'scale(0.98)',
+        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: isHovered ? 'relative' : 'absolute',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        gap: '0.5rem'
+      }}>
+        {/* Realized Gains */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              color: '#ffffff',
+              fontSize: '0.65rem',
+              fontWeight: '700',
+              marginBottom: '0.25rem',
+              fontFamily: "'Inter', sans-serif",
+              letterSpacing: '0.02em',
+              textTransform: 'uppercase',
+              textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+            }}>
+              Realized
+            </div>
+            <div style={{
+              color: realizedData.isPositive ? theme.greenPrimary : '#ef4444',
+              fontSize: '0.9rem',
+              fontWeight: '700',
+              fontFamily: "'Space Grotesk', sans-serif",
+              letterSpacing: '-0.01em',
+              lineHeight: '1.2',
+              marginBottom: '2px'
+            }}>
+              {realizedData.value}
+            </div>
+            <div style={{
+              color: realizedData.isPositive ? theme.greenPrimary : '#ef4444',
+              fontSize: '0.65rem',
+              fontWeight: '600',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              {realizedData.percent}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{
+            width: '1px',
+            background: theme.border,
+            alignSelf: 'stretch',
+            margin: '0.5rem 0'
+          }}></div>
+
+          {/* Unrealized Gains */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              color: '#ffffff',
+              fontSize: '0.65rem',
+              fontWeight: '700',
+              marginBottom: '0.25rem',
+              fontFamily: "'Inter', sans-serif",
+              letterSpacing: '0.02em',
+              textTransform: 'uppercase',
+              textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+            }}>
+              Unrealized
+            </div>
+            <div style={{
+              color: unrealizedData.isPositive ? theme.greenPrimary : '#ef4444',
+              fontSize: '0.9rem',
+              fontWeight: '700',
+              fontFamily: "'Space Grotesk', sans-serif",
+              letterSpacing: '-0.01em',
+              lineHeight: '1.2',
+              marginBottom: '2px'
+            }}>
+              {unrealizedData.value}
+            </div>
+            <div style={{
+              color: unrealizedData.isPositive ? theme.greenPrimary : '#ef4444',
+              fontSize: '0.65rem',
+              fontWeight: '600',
+              fontFamily: "'Inter', sans-serif"
+            }}>
+              {unrealizedData.percent}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// KPI Card Component
+const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false, tooltip = null }) => {
+  return (
+    <div 
+      style={{
+        background: theme.bgElevated,
+        border: `1px solid ${theme.border}`,
+        borderRadius: '8px',
+        padding: '1rem',
+        textAlign: 'center',
+        width: '100%',
+        height: '120px',
+        flex: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        ...(theme.bg === '#000000' ? {} : {
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)'
+        }),
+        cursor: 'pointer',
+        position: 'relative'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-0.125rem)';
+        e.currentTarget.style.borderColor = theme.greenPrimary;
+        e.currentTarget.style.boxShadow = '0 -0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0 0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0.25rem 0 0.5rem rgba(0, 255, 136, 0.15)';
         e.currentTarget.style.background = theme.bgContainer;
         
         const label = e.currentTarget.querySelector('[data-kpi-label]');
@@ -289,9 +640,17 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           label.style.fontWeight = '700';
           label.style.textShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
         }
+        
+        // Show tooltip if present
+        if (tooltip) {
+          const tooltipEl = e.currentTarget.querySelector('.kpi-tooltip');
+          if (tooltipEl) {
+            tooltipEl.style.opacity = '1';
+          }
+        }
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'translateY(0) scale(1)';
+        e.currentTarget.style.transform = 'translateY(0)';
         e.currentTarget.style.borderColor = theme.border;
         e.currentTarget.style.boxShadow = theme.bg === '#000000' ? 'none' : '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02)';
         e.currentTarget.style.background = theme.bgElevated;
@@ -302,20 +661,30 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           label.style.fontWeight = '700';
           label.style.textShadow = '0 1px 3px rgba(0, 0, 0, 0.3)';
         }
+        
+        // Hide tooltip if present
+        if (tooltip) {
+          const tooltipEl = e.currentTarget.querySelector('.kpi-tooltip');
+          if (tooltipEl) {
+            tooltipEl.style.opacity = '0';
+          }
+        }
       }}
     >
       <div 
         data-kpi-label
         style={{
           color: '#ffffff',
-          fontSize: 'clamp(0.825rem, 2.75vw, 0.9625rem)',
+          fontSize: '0.75rem',
           fontWeight: '700',
           marginBottom: '0.5rem',
           fontFamily: "'Inter', sans-serif",
           letterSpacing: '0.02em',
           textTransform: 'uppercase',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+          textShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
+          textAlign: 'center',
+          width: '100%'
         }}
       >
         {label}
@@ -325,12 +694,18 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         color: showChange ? 
           (parseFloat(changePercent) === 0 ? theme.textMuted : (isPositive ? theme.greenPrimary : '#ef4444')) 
           : theme.textPrimary,
-        fontSize: 'clamp(1.1rem, 3.85vw, 1.375rem)',
+        fontSize: '1.2rem',
         fontWeight: '700',
         fontFamily: "'Space Grotesk', sans-serif",
         letterSpacing: '-0.01em',
         lineHeight: '1.2',
-        marginBottom: showChange ? '4px' : '0'
+        marginBottom: showChange ? '6px' : '0',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        width: '100%',
+        minHeight: '1.5rem'
       }}>
         {value}
       </div>
@@ -338,11 +713,46 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
       {showChange && changePercent && (
         <div style={{
           color: parseFloat(changePercent) === 0 ? theme.textMuted : (isPositive ? theme.greenPrimary : '#ef4444'),
-          fontSize: 'clamp(0.6875rem, 2.2vw, 0.75625rem)',
+          fontSize: '0.75rem',
           fontWeight: '600',
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Inter', sans-serif",
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          width: '100%'
         }}>
           {parseFloat(changePercent) === 0 ? '0%' : changePercent}
+        </div>
+      )}
+
+      {/* Tooltip for Net Profit */}
+      {tooltip && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: theme.bgContainer,
+          border: `1px solid ${theme.border}`,
+          borderRadius: '8px',
+          padding: '8px 12px',
+          fontSize: '0.8rem',
+          color: theme.textPrimary,
+          fontFamily: "'Inter', sans-serif",
+          whiteSpace: 'nowrap',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          zIndex: 1000,
+          opacity: 0,
+          pointerEvents: 'none',
+          transition: 'opacity 0.2s ease',
+          marginTop: '8px'
+        }}
+        className="kpi-tooltip"
+        >
+          <div style={{ fontWeight: '600', marginBottom: '4px' }}>Profit Breakdown:</div>
+          <div>Realized: {tooltip.realizedGains} ({tooltip.realizedPercent})</div>
+          <div>Unrealized: {tooltip.unrealizedGains} ({tooltip.unrealizedPercent})</div>
         </div>
       )}
     </div>
@@ -808,12 +1218,55 @@ const OverviewSection = ({ portfolioData, isLoading = false, error = null, onBac
         profitPercent: '0.00%',
         isPositive: false,
         liquidity: '0.00€',
-        fees: '0.00€'
+        fees: '0.00€',
+        realizedGains: '0.00€',
+        realizedIsPositive: false,
+        unrealizedGains: '0.00€',
+        unrealizedPercent: '0.00%',
+        unrealizedIsPositive: false,
+        tooltip: null,
+        realizedData: { value: '0.00€', percent: '0.00%', isPositive: false },
+        unrealizedData: { value: '0.00€', percent: '0.00%', isPositive: false }
       };
     }
 
     const kpis = portfolioData.kpis;
     const isPositive = kpis.profit >= 0;
+    
+    // Nuevos KPIs mejorados
+    const realizedGains = kpis.realized_gains || 0;
+    const unrealizedGains = kpis.unrealized_gains || 0;
+    const unrealizedPercentage = kpis.unrealized_percentage || 0;
+    
+    
+    const realizedIsPositive = realizedGains >= 0;
+    const unrealizedIsPositive = unrealizedGains >= 0;
+
+    // Calcular porcentajes para el tooltip
+    const realizedPercentage = kpis.total_invested > 0 ? (realizedGains / kpis.total_invested) * 100 : 0;
+    const realizedPercentText = `${realizedIsPositive ? '+' : ''}${realizedPercentage.toFixed(2)}%`;
+    const unrealizedPercentText = `${unrealizedIsPositive ? '+' : ''}${unrealizedPercentage.toFixed(2)}%`;
+
+    // Preparar datos para Net Profit hover split
+    const realizedData = {
+      value: `${realizedIsPositive ? '+' : ''}${realizedGains.toFixed(2)}€`,
+      percent: realizedPercentText,
+      isPositive: realizedIsPositive
+    };
+
+    const unrealizedData = {
+      value: `${unrealizedIsPositive ? '+' : ''}${unrealizedGains.toFixed(2)}€`,
+      percent: unrealizedPercentText,
+      isPositive: unrealizedIsPositive
+    };
+
+    // Preparar tooltip para Net Profit (mantener compatibilidad)
+    const tooltip = {
+      realizedGains: realizedData.value,
+      realizedPercent: realizedData.percent,
+      unrealizedGains: unrealizedData.value,
+      unrealizedPercent: unrealizedData.percent
+    };
 
     return {
       totalInvested: `${kpis.total_invested.toFixed(2)}€`,
@@ -822,7 +1275,16 @@ const OverviewSection = ({ portfolioData, isLoading = false, error = null, onBac
       profitPercent: `${isPositive ? '+' : ''}${kpis.profit_percentage.toFixed(2)}%`,
       isPositive,
       liquidity: kpis.liquidity > 0 ? `${kpis.liquidity.toFixed(2)}€` : 'N/A',
-      fees: `${kpis.fees.toFixed(2)}€`
+      fees: `${kpis.fees.toFixed(2)}€`,
+      // Nuevos KPIs
+      realizedGains: `${realizedIsPositive ? '+' : ''}${realizedGains.toFixed(2)}€`,
+      realizedIsPositive,
+      unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${unrealizedGains.toFixed(2)}€`,
+      unrealizedPercent: `${unrealizedIsPositive ? '+' : ''}${unrealizedPercentage.toFixed(2)}%`,
+      unrealizedIsPositive,
+      tooltip,
+      realizedData,
+      unrealizedData
     };
   };
 
@@ -1735,55 +2197,71 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
           </button>
         </div>
 
-        {/* KPI Row */}
+        {/* Unified Layout Grid - KPIs y Charts en misma estructura */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 'clamp(0.825rem, 2.75vw, 1.375rem)',
-          marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)',
-          justifyContent: 'center'
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '1.5rem',
+          marginBottom: '3rem',
+          justifyContent: 'center',
+          maxWidth: '1200px',
+          margin: '0 auto 3rem auto'
         }}>
-          <KPICard
-            label="Portfolio Value"
-            value={kpiData.currentValue}
-            theme={theme}
-          />
-          
-          <KPICard
-            label="Total Invested"
-            value={kpiData.totalInvested}
-            theme={theme}
-          />
-          
-          <KPICard
-            label="Net Profit"
-            value={kpiData.profit}
-            changePercent={kpiData.profitPercent}
-            isPositive={kpiData.isPositive}
-            theme={theme}
-            showChange={true}
-          />
-          
-          <KPICard
-            label="Liquidity"
-            value={kpiData.liquidity}
-            theme={theme}
-          />
-          
-          <KPICard
-            label="Total Fees"
-            value={kpiData.fees}
-            theme={theme}
-          />
-        </div>
+          {/* KPIs Section */}
+          <div style={{
+            height: "300px",
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            maxWidth: '400px',
+            margin: '0 auto',
+            justifySelf: 'center'
+          }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '1rem',
+              flex: 1,
+              alignContent: 'center',
+              padding: '1rem',
+              background: theme.bgElevated,
+              border: `1px solid ${theme.border}`,
+              borderRadius: '12px',
+              ...(theme.bg === '#000000' ? {} : {
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+              })
+            }}>
+            <KPICard
+              label="Portfolio Value"
+              value={kpiData.currentValue}
+              theme={theme}
+            />
+            
+            <KPICard
+              label="Total Invested"
+              value={kpiData.totalInvested}
+              theme={theme}
+            />
+            
+            <NetProfitKPICard
+              label="Net Profit"
+              value={kpiData.profit}
+              changePercent={kpiData.profitPercent}
+              isPositive={kpiData.isPositive}
+              theme={theme}
+              showChange={true}
+              realizedData={kpiData.realizedData}
+              unrealizedData={kpiData.unrealizedData}
+            />
+            
+            <KPICard
+              label="Total Fees"
+              value={kpiData.fees}
+              theme={theme}
+            />
+            </div>
+          </div>
 
-        {/* Charts Row */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '2px',
-          marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)'
-        }}>
           {/* Asset Allocation Chart */}
           {assetAllocationData && (
             <div style={{
@@ -1792,17 +2270,6 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
               flexDirection: 'column',
               position: 'relative'
             }}>
-              <h3 style={{
-                color: theme.textPrimary,
-                fontSize: 'clamp(22px, 5.5vw, 28px)',
-                fontWeight: '700',
-                margin: '0 0 16px 0',
-                textAlign: 'center',
-                fontFamily: "'Space Grotesk', sans-serif",
-                letterSpacing: '-0.01em'
-              }}>
-                Asset Allocation
-              </h3>
               <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
                 <Doughnut 
                   data={assetAllocationData} 
@@ -1813,24 +2280,13 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
             </div>
           )}
 
-          {/* Asset Performance Heatmap */}
+          {/* Performance Heatmap */}
           <div style={{
-            height: "400px",
+            height: "300px",
             display: 'flex',
             flexDirection: 'column',
             position: 'relative'
           }}>
-            <h3 style={{
-              color: theme.textPrimary,
-              fontSize: 'clamp(22px, 5.5vw, 28px)',
-              fontWeight: '700',
-              margin: '0 0 16px 0',
-              textAlign: 'center',
-              fontFamily: "'Space Grotesk', sans-serif",
-              letterSpacing: '-0.01em'
-            }}>
-              Performance Heatmap
-            </h3>
             <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
               <AssetHeatmap portfolioData={portfolioData} theme={theme} />
             </div>
@@ -1853,28 +2309,6 @@ const AssetHeatmap = ({ portfolioData, theme }) => {
             flexWrap: 'wrap',
             gap: '12px'
           }}>
-            <div>
-              <h3 style={{
-                color: theme.textPrimary,
-                fontSize: 'clamp(20px, 4.5vw, 24px)',
-                fontWeight: '700',
-                margin: '0 0 4px 0',
-                fontFamily: "'Space Grotesk', sans-serif",
-                letterSpacing: '-0.025em'
-              }}>
-                Portfolio Timeline
-              </h3>
-              <p style={{
-                color: theme.textSecondary,
-                fontSize: 'clamp(12px, 2.5vw, 14px)',
-                margin: '0',
-                fontFamily: "'Inter', sans-serif",
-                fontWeight: '400',
-                opacity: 0.8
-              }}>
-                Investment cost vs market value evolution
-              </p>
-            </div>
             <div style={{
               display: 'flex',
               alignItems: 'center',
