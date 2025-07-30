@@ -32,72 +32,49 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
     label: assetLabelMap[asset.asset] || asset.asset
   }));
 
-  // Create asset-specific chart data
-  const createAssetPerformanceData = () => {
-    if (selectedAsset === 'ALL') {
-      const labels = filteredAssets.map(asset => assetLabelMap[asset.asset] || asset.asset);
-      const profitData = filteredAssets.map(asset => asset.pnl_eur || 0);
-      const profitPercentData = filteredAssets.map(asset => asset.pnl_percent || 0);
+  // Create donut chart data for portfolio allocation
+  const createDonutChartData = () => {
+    const labels = filteredAssets.map(asset => assetLabelMap[asset.asset] || asset.asset);
+    const data = filteredAssets.map(asset => asset.current_value || 0);
+    
+    return {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: chartColors.slice(0, filteredAssets.length),
+        borderColor: chartColors.slice(0, filteredAssets.length).map(color => color.replace('0.8', '1')),
+        borderWidth: 2,
+        hoverOffset: 4
+      }]
+    };
+  };
 
-      return {
-        labels,
-        datasets: [
-          {
-            label: 'Profit (€)',
-            data: profitData,
-            backgroundColor: profitData.map(profit => profit >= 0 ? '#10b981' : '#ef4444'),
-            borderColor: profitData.map(profit => profit >= 0 ? '#059669' : '#dc2626'),
-            borderWidth: 2,
-            borderRadius: 8,
-            yAxisID: 'y'
-          },
-          {
-            label: 'Profit (%)',
-            data: profitPercentData,
-            type: 'line',
-            borderColor: '#8b5cf6',
-            backgroundColor: 'rgba(139, 92, 246, 0.1)',
-            tension: 0.4,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            pointBackgroundColor: '#8b5cf6',
-            pointBorderColor: '#6d28d9',
-            pointBorderWidth: 2,
-            yAxisID: 'y1'
-          }
-        ]
-      };
-    } else {
-      // Single asset analysis
-      const asset = filteredAssets[0];
-      if (!asset) return { labels: [], datasets: [] };
-
-      const labels = ['Invested', 'Current Value', 'Profit/Loss'];
-      const data = [
-        asset.total_invested || asset.current_value || 0, 
-        asset.current_value || 0, 
-        asset.pnl_eur || 0
-      ];
-
-      return {
-        labels,
-        datasets: [{
-          data,
-          backgroundColor: [
-            '#f59e0b',
-            (asset.current_value || 0) >= (asset.total_invested || 0) ? '#10b981' : '#ef4444',
-            (asset.pnl_eur || 0) >= 0 ? '#10b981' : '#ef4444'
-          ],
-          borderColor: [
-            '#d97706',
-            (asset.current_value || 0) >= (asset.total_invested || 0) ? '#059669' : '#dc2626',
-            (asset.pnl_eur || 0) >= 0 ? '#059669' : '#dc2626'
-          ],
-          borderWidth: 2,
-          borderRadius: 8
-        }]
-      };
-    }
+  // Create leaderboard data sorted by total value
+  const createLeaderboardData = () => {
+    const totalPortfolioValue = filteredAssets.reduce((sum, asset) => sum + (asset.current_value || 0), 0);
+    
+    return filteredAssets
+      .map(asset => {
+        // Usar los nuevos campos del backend
+        const realizedGains = asset.realized_gains || 0;
+        const unrealizedGains = asset.unrealized_gains || 0;
+        const netProfit = asset.net_profit || (realizedGains + unrealizedGains);
+        const netProfitPercent = asset.net_profit_percent || 0;
+        
+        return {
+          asset: assetLabelMap[asset.asset] || asset.asset,
+          portfolioPercent: totalPortfolioValue > 0 ? ((asset.current_value || 0) / totalPortfolioValue * 100) : 0,
+          fiatValue: asset.current_value || 0,
+          nativeValue: asset.amount || 0,
+          nativeSymbol: asset.asset,
+          netProfit: netProfit,
+          netProfitPercent: netProfitPercent,
+          realizedGains: realizedGains,
+          unrealizedGains: unrealizedGains,
+          originalAsset: asset
+        };
+      })
+      .sort((a, b) => b.fiatValue - a.fiatValue); // Ordenar por valor total descendente
   };
 
   const createAssetAllocationData = () => {
@@ -127,63 +104,18 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
     };
   };
 
-  // Chart options
-  const performanceOptions = {
+  // Donut chart options
+  const donutOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    interaction: {
-      mode: 'index',
-      intersect: false
-    },
-    scales: {
-      y: {
-        type: 'linear',
-        display: true,
-        position: 'left',
-        beginAtZero: true,
-        ticks: {
-          color: '#9ca3af',
-          font: { family: 'JetBrains Mono, monospace' },
-          callback: value => `€${value}`
-        },
-        grid: { color: 'rgba(156, 163, 175, 0.1)' },
-        title: {
-          display: true,
-          text: 'Profit (€)',
-          color: '#d1d5db',
-          font: { family: 'JetBrains Mono, monospace' }
-        }
-      },
-      y1: selectedAsset === 'ALL' ? {
-        type: 'linear',
-        display: true,
-        position: 'right',
-        grid: { drawOnChartArea: false },
-        ticks: {
-          color: '#9ca3af',
-          font: { family: 'JetBrains Mono, monospace' },
-          callback: value => `${value}%`
-        },
-        title: {
-          display: true,
-          text: 'Profit (%)',
-          color: '#d1d5db',
-          font: { family: 'JetBrains Mono, monospace' }
-        }
-      } : undefined,
-      x: {
-        ticks: {
-          color: '#9ca3af',
-          font: { family: 'JetBrains Mono, monospace' }
-        },
-        grid: { color: 'rgba(156, 163, 175, 0.1)' }
-      }
-    },
     plugins: {
       legend: {
+        position: 'bottom',
         labels: {
           color: '#d1d5db',
-          font: { family: 'JetBrains Mono, monospace' }
+          font: { family: 'JetBrains Mono, monospace' },
+          padding: 20,
+          usePointStyle: true
         }
       },
       tooltip: {
@@ -191,10 +123,23 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
         titleColor: '#f9fafb',
         bodyColor: '#d1d5db',
         borderColor: '#8b5cf6',
-        borderWidth: 1
+        borderWidth: 1,
+        callbacks: {
+          label: function(context) {
+            const label = context.label || '';
+            const value = context.parsed || 0;
+            const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+            const percentage = total > 0 ? ((value / total) * 100).toFixed(2) : '0.00';
+            return `${label}: ${symbol}${value.toFixed(2)} (${percentage}%)`;
+          }
+        }
       }
-    }
+    },
+    cutout: '60%',
+    radius: '80%'
   };
+
+  const leaderboardData = createLeaderboardData();
 
   const allocationOptions = {
     responsive: true,
@@ -384,21 +329,66 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
         </div>
       )}
 
-      {/* Charts - Pantalla Completa */}
+      {/* Leaderboard and Donut Chart */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* Performance Chart */}
+        {/* Asset Leaderboard */}
         <div className="group relative">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-green-600 to-blue-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
           <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-green-500">
             <h3 className="text-2xl font-bold text-white mb-6 font-mono flex items-center">
-              <span className="mr-2">📈</span>
-              {selectedAsset === 'ALL' ? 'Assets Performance Comparison' : `${assetLabelMap[selectedAsset] || selectedAsset} Analysis`}
+              <span className="mr-2">🏆</span>
+              Asset Leaderboard
             </h3>
-            <div className="h-96 lg:h-[32rem]">
+            <div className="overflow-x-auto max-h-[32rem] overflow-y-auto">
+              <table className="min-w-full text-white font-mono">
+                <thead className="bg-gray-800 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Activo</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">% Portfolio</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Valor Fiat</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Cantidad</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Net Profit</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">% Net Profit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {leaderboardData.map((row, index) => (
+                    <tr key={row.asset} className="hover:bg-gray-800 transition-colors duration-200">
+                      <td className="px-3 py-2 text-sm font-medium text-cyan-400">{row.asset}</td>
+                      <td className="px-3 py-2 text-sm text-right">{row.portfolioPercent.toFixed(2)}%</td>
+                      <td className="px-3 py-2 text-sm text-right">{symbol}{row.fiatValue.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-sm text-right">{row.nativeValue.toFixed(4)} {row.nativeSymbol}</td>
+                      <td className={`px-3 py-2 text-sm text-right font-semibold ${
+                        row.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {row.netProfit >= 0 ? '+' : ''}{symbol}{row.netProfit.toFixed(2)}
+                      </td>
+                      <td className={`px-3 py-2 text-sm text-right font-semibold ${
+                        row.netProfitPercent >= 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {row.netProfitPercent >= 0 ? '+' : ''}{row.netProfitPercent.toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Donut Chart */}
+        <div className="group relative">
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
+          <div className="relative bg-gray-900 border border-gray-700 rounded-2xl p-6 transition-all duration-300 hover:border-purple-500">
+            <h3 className="text-2xl font-bold text-white mb-6 font-mono flex items-center">
+              <span className="mr-2">🍩</span>
+              Portfolio Allocation
+            </h3>
+            <div className="h-96 lg:h-[32rem] flex items-center justify-center">
               <Chart
-                type={selectedAsset === 'ALL' ? 'bar' : 'bar'}
-                data={createAssetPerformanceData()}
-                options={performanceOptions}
+                type="doughnut"
+                data={createDonutChartData()}
+                options={donutOptions}
               />
             </div>
           </div>

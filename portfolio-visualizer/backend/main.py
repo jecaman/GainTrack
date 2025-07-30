@@ -309,15 +309,17 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
     trades_df.to_csv(csv_buffer, index=False)
     csv_content = csv_buffer.getvalue()
     
-    # Calcular Realized Gains
+    # Calcular Realized Gains por activo
     realized_result = calcular_realized_gains_fifo(csv_content)
-    realized_gains = realized_result.get('totales', {}).get('total_realized_gains', 0) if 'error' not in realized_result else 0
+    realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0) if 'error' not in realized_result else 0
+    realized_gains_by_asset = realized_result.get('assets', {}) if 'error' not in realized_result else {}
     
-    # Calcular Unrealized Gains  
+    # Calcular Unrealized Gains por activo  
     unrealized_result = calcular_unrealized_gains_fifo(csv_content)
-    unrealized_gains = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0) if 'error' not in unrealized_result else 0
+    unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0) if 'error' not in unrealized_result else 0
     portfolio_value = unrealized_result.get('totales', {}).get('total_portfolio_value', 0) if 'error' not in unrealized_result else 0
     total_invested_fifo = unrealized_result.get('totales', {}).get('total_invested', 0) if 'error' not in unrealized_result else 0
+    unrealized_gains_by_asset = unrealized_result.get('assets', {}) if 'error' not in unrealized_result else {}
     
     # Crear datos usando método FIFO original para compatibilidad
     asset_data = {}
@@ -344,7 +346,7 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
         process_trade_fifo(asset_data[asset], row['type'], vol, cost, timestamp)
         asset_data[asset]['fees'] += fee
     
-    # Crear portfolio array
+    # Crear portfolio array con realized/unrealized gains por activo
     portfolio_array = []
     for asset, balance in balances.items():
         current_price = current_prices.get(asset, 1.0 if asset in FIAT_ASSETS else 0)
@@ -352,6 +354,14 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
         
         invested = asset_data.get(asset, {}).get('total_invested', 0)
         fees = asset_data.get(asset, {}).get('fees', 0)
+        
+        # Obtener realized_gains y unrealized_gains por activo individual
+        realized_gains_asset = realized_gains_by_asset.get(asset, {}).get('realized_gains', 0)
+        unrealized_gains_asset = unrealized_gains_by_asset.get(asset, {}).get('unrealized_gains', 0)
+        
+        # Net profit por activo = realized + unrealized
+        net_profit_asset = realized_gains_asset + unrealized_gains_asset
+        net_profit_percent_asset = (net_profit_asset / invested * 100) if invested > 0 else 0
         
         portfolio_array.append({
             'asset': asset,
@@ -361,8 +371,13 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
             'total_invested': invested,
             'fees_paid': fees,
             'current_value': current_value,
-            'pnl_eur': current_value - invested - fees,
-            'pnl_percent': ((current_value - invested - fees) / (invested + fees) * 100) if (invested + fees) > 0 else 0
+            'pnl_eur': current_value - invested - fees,  # Mantener compatibilidad
+            'pnl_percent': ((current_value - invested - fees) / (invested + fees) * 100) if (invested + fees) > 0 else 0,
+            # Nuevos campos por activo
+            'realized_gains': realized_gains_asset,
+            'unrealized_gains': unrealized_gains_asset,
+            'net_profit': net_profit_asset,
+            'net_profit_percent': net_profit_percent_asset
         })
     
     # Calcular KPIs tradicionales
@@ -372,7 +387,7 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
     current_value = crypto_value + liquidity
     
     # Net Profit = Realized + Unrealized
-    net_profit = realized_gains + unrealized_gains
+    net_profit = realized_gains_total + unrealized_gains_total
     net_profit_percentage = (net_profit / total_invested_fifo * 100) if total_invested_fifo > 0 else 0
     
     return {
@@ -385,9 +400,9 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
             'fees': total_fees,
             'liquidity': liquidity,
             # Nuevos KPIs detallados
-            'realized_gains': realized_gains,
-            'unrealized_gains': unrealized_gains,
-            'unrealized_percentage': (unrealized_gains / total_invested_fifo * 100) if total_invested_fifo > 0 else 0
+            'realized_gains': realized_gains_total,
+            'unrealized_gains': unrealized_gains_total,
+            'unrealized_percentage': (unrealized_gains_total / total_invested_fifo * 100) if total_invested_fifo > 0 else 0
         },
         'data_source': 'csv'
     }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import './GainTrackForm.css';
 
 // Zigzag Logo Component with Moving Bright Point
 // Puedes controlar la frecuencia (cada cuánto aparece el punto) con "intervaloFrecuenciaMs"
@@ -477,7 +478,6 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
       overflow: 'hidden'
     }}>
       <ThemeToggle isDark={isDarkMode} onToggle={toggleTheme} />
-      <BackgroundPattern isDark={isDarkMode} />
       <div style={{
         width: '100%',
         maxWidth: 'clamp(18.7rem, 75vw, 20.9rem)',
@@ -1110,123 +1110,6 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
       </div>
       </div>
 
-      <style jsx>{`
-        @keyframes slideInRight {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        @keyframes errorProgress {
-          from {
-            width: 100%;
-          }
-          to {
-            width: 0%;
-          }
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        
-        @keyframes gridFlow {
-          0% { 
-            opacity: 0.3;
-            transform: scale(1);
-          }
-          50% { 
-            opacity: 1;
-            transform: scale(1.02);
-          }
-          100% { 
-            opacity: 0.3;
-            transform: scale(1);
-          }
-        }
-        
-        /* Responsive breakpoints */
-        @media (max-width: 480px) {
-          .container {
-            padding: 12px;
-            max-width: 100%;
-          }
-          .header {
-            margin-bottom: 20px;
-          }
-          .logo-container {
-            gap: 8px;
-            margin-bottom: 16px;
-          }
-        }
-        
-        @media (max-width: 768px) {
-          .container {
-            padding: 14px;
-          }
-          .header {
-            margin-bottom: 24px;
-          }
-        }
-        
-        @media (min-width: 1200px) {
-          .container {
-            max-width: 420px;
-          }
-        }
-        
-        @keyframes letterGlow {
-          0% {
-            color: inherit;
-            text-shadow: none;
-            filter: none;
-          }
-          15% {
-            color: rgba(0, 255, 136, 1);
-            text-shadow: 0 0 12px rgba(0, 255, 136, 1), 0 0 24px rgba(0, 255, 136, 0.8), 0 0 36px rgba(0, 255, 136, 0.6);
-            filter: drop-shadow(0 0 12px rgba(0, 255, 136, 0.8));
-          }
-          35% {
-            color: rgba(0, 255, 136, 1);
-            text-shadow: 0 0 12px rgba(0, 255, 136, 1), 0 0 24px rgba(0, 255, 136, 0.8), 0 0 36px rgba(0, 255, 136, 0.6);
-            filter: drop-shadow(0 0 12px rgba(0, 255, 136, 0.8));
-          }
-          60% {
-            color: rgba(0, 255, 136, 0.9);
-            text-shadow: 0 0 10px rgba(0, 255, 136, 0.8), 0 0 20px rgba(0, 255, 136, 0.6), 0 0 30px rgba(0, 255, 136, 0.4);
-            filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.6));
-          }
-          75% {
-            color: rgba(0, 255, 136, 0.7);
-            text-shadow: 0 0 8px rgba(0, 255, 136, 0.6), 0 0 16px rgba(0, 255, 136, 0.4), 0 0 24px rgba(0, 255, 136, 0.2);
-            filter: drop-shadow(0 0 6px rgba(0, 255, 136, 0.4));
-          }
-          85% {
-            color: rgba(0, 255, 136, 0.5);
-            text-shadow: 0 0 6px rgba(0, 255, 136, 0.4), 0 0 12px rgba(0, 255, 136, 0.2);
-            filter: drop-shadow(0 0 4px rgba(0, 255, 136, 0.3));
-          }
-          92% {
-            color: rgba(0, 255, 136, 0.3);
-            text-shadow: 0 0 4px rgba(0, 255, 136, 0.2);
-            filter: drop-shadow(0 0 2px rgba(0, 255, 136, 0.2));
-          }
-          97% {
-            color: rgba(0, 255, 136, 0.1);
-            text-shadow: 0 0 2px rgba(0, 255, 136, 0.1);
-            filter: none;
-          }
-          100% {
-            color: inherit;
-            text-shadow: none;
-            filter: none;
-          }
-        }
-      `}</style>
     </div>
   );
 };

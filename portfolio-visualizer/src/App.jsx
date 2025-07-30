@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import GainTrackFormPage from './components/GainTrackFormPage';
-import OverviewSection from './components/OverviewSection';
+import Dashboard from './components/Dashboard';
 import GainTrackKPIs from './components/GainTrackKPIs';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
@@ -134,12 +135,31 @@ function App() {
         pointerEvents: showPortfolio ? 'auto' : 'none',
         zIndex: showPortfolio ? 2 : 1
       }}>
-        <OverviewSection
-          portfolioData={fullPortfolioData}
-          isLoading={isLoading}
-          error={error}
-          onBack={handleBackToForm}
-        />
+        <ErrorBoundary>
+          <Dashboard
+            portfolioData={fullPortfolioData}
+            isLoading={isLoading}
+            isVisible={showPortfolio}
+            theme={{
+              bg: '#000000',
+              textPrimary: '#ffffff',
+              textSecondary: '#9ca3af',
+              textMuted: '#6b7280',
+              bgContainer: '#1a1a1a',
+              bgElevated: '#2a2a2a',
+              borderColor: '#374151',
+              borderColorStrong: '#4b5563',
+              accentPrimary: '#00ff88',
+              accentSecondary: '#8b5cf6',
+              greenPrimary: '#22c55e',
+              greenSecondary: '#16a34a',
+              redPrimary: '#ef4444',
+              redSecondary: '#dc2626',
+              cardBackground: '#1a1a1a'
+            }}
+            onShowGainTrack={handleBackToForm}
+          />
+        </ErrorBoundary>
       </div>
     </div>
   );

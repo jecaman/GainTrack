@@ -1,5 +1,51 @@
 # Tareas Completadas - Portfolio Visualizer
 
+## 2025-01-30
+
+### 🏗️ Reestructuración Arquitectural Completa
+- ✅ **Implementación de Dashboard modular**
+  - Creado componente Dashboard.jsx como contenedor principal
+  - Separación de responsabilidades: Dashboard gestiona navegación, filtros globales
+  - OverviewSection ahora es una sección dentro del Dashboard
+  - Preparado para futuras secciones (Analytics, Trades)
+
+- ✅ **Modularización de componentes Overview**
+  - Creada estructura Overview/components/ con componentes independientes:
+    - KPIGrid.jsx: 4 KPIs con hover interactivo en Net Profit
+    - AssetLeaderboard.jsx: tabla de activos con P&L realized/unrealized
+    - DonutChart.jsx: gráfico de allocation con colores por asset
+    - TimelineChart.jsx: gráfico temporal de rendimiento
+  - Cada componente totalmente independiente y reutilizable
+
+- ✅ **Reemplazo Heatmap → Donut Chart + Leaderboard**
+  - Eliminado heatmap complejo por donut chart más claro
+  - Agregada tabla leaderboard con columnas específicas:
+    - Activo, % del portfolio, Valor en Fiat, Cantidad, Net P&L, %
+  - Cálculo FIFO para realized/unrealized gains
+
+- ✅ **Resolución de errores de rendering**
+  - ErrorBoundary simplificado con JSX normal (sin React.createElement)
+  - Eliminadas claves duplicadas en assetColors.js (AVAX, MATIC)
+  - Corregida función getAssetColorsArray para manejar números
+  - Removidas importaciones no utilizadas
+
+- ✅ **Sistema de navegación preparado**
+  - Botones de sección en sidebar izquierdo
+  - Filtros globales en sidebar derecho
+  - Arquitectura escalable para nuevas secciones
+  - Estado de navegación centralizado en Dashboard
+
+### 🎨 Mejoras UI/UX
+- ✅ **KPIs interactivos mejorados**
+  - Net Profit con hover que muestra breakdown realized/unrealized
+  - Animaciones suaves y efectos visuales
+  - Colores temáticos consistentes
+
+- ✅ **Tabla de assets optimizada**
+  - Columnas específicas pedidas por usuario
+  - Ordenación por valor total descendente
+  - Formatting consistente de monedas y porcentajes
+
 ## 2025-01-09
 
 ### 🔧 Fixes Críticos Completados

@@ -68,10 +68,8 @@ export const assetColors = {
   // Staking/DeFi tokens - Purple/Blue spectrum
   'CAKE': '#8b5cf6',     // PancakeSwap - Purple
   'LUNA': '#7c3aed',     // Terra - Deep purple
-  'AVAX': '#6d28d9',     // Avalanche - Rich purple
   'FTM': '#5b21b6',      // Fantom - Dark purple
   'ONE': '#4c1d95',      // Harmony - Deep violet
-  'MATIC': '#3730a3',    // Polygon - Indigo
   'BNB': '#1e1b4b',      // Binance Coin - Deep indigo
   
   // Meme coins - Bright colors
@@ -139,8 +137,25 @@ export const getAssetColor = (asset) => {
 };
 
 // Function to get colors array for multiple assets
-export const getAssetColorsArray = (assets) => {
-  return assets.map(asset => getAssetColor(asset));
+export const getAssetColorsArray = (assetsOrCount) => {
+  // If it's a number, return default colors
+  if (typeof assetsOrCount === 'number') {
+    const count = assetsOrCount;
+    const defaultColors = [
+      assetColors.DEFAULT_1, assetColors.DEFAULT_2, assetColors.DEFAULT_3,
+      assetColors.DEFAULT_4, assetColors.DEFAULT_5, assetColors.DEFAULT_6,
+      assetColors.DEFAULT_7, assetColors.DEFAULT_8, assetColors.DEFAULT_9,
+      assetColors.DEFAULT_10
+    ];
+    const colors = [];
+    for (let i = 0; i < count; i++) {
+      colors.push(defaultColors[i % defaultColors.length]);
+    }
+    return colors;
+  }
+  
+  // If it's an array, map each asset to its color
+  return assetsOrCount.map(asset => getAssetColor(asset));
 };
 
 // Dark theme specific colors (higher contrast)
