@@ -88,8 +88,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
     setShowTabPulse(false);
     setIsTabHoverDisabled(true);
     
-    // Disable hover during the sidebar animation (450ms)
-    setTimeout(() => setIsTabHoverDisabled(false), 500);
+    // Disable hover during the sidebar animation (300ms)
+    setTimeout(() => setIsTabHoverDisabled(false), 300);
     
     // Notify Dashboard about sidebar state change
     if (onSidebarToggle) {
@@ -128,7 +128,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             color: theme.textSecondary,
             fontSize: '12px',
             cursor: 'pointer',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1), right 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.3s ease',
             boxShadow: 'none',
             display: 'flex',
             flexDirection: 'column',
@@ -137,8 +137,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             height: '100px',
             width: '68px',
             position: 'fixed',
-            top: '150px',
-            right: isOpen ? '320px' : '-30px',
+            top: '125px',
+            right: '-30px',
             animation: showTabPulse ? 'tabPulse 2s ease-in-out infinite' : 'none',
             fontFamily: "'Inter', sans-serif",
             userSelect: 'none',
@@ -148,7 +148,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             WebkitTouchCallout: 'none',
             WebkitTapHighlightColor: 'transparent',
             outline: 'none',
-            zIndex: 999998,
+            zIndex: 1000000,
             pointerEvents: 'auto',
           }}
           onMouseEnter={(e) => {
@@ -227,7 +227,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
           boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.15)',
           zIndex: 999999,
           transform: isOpen ? 'translateX(0)' : 'translateX(350px)',
-          transition: 'transform 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
+          transition: 'transform 0.3s linear',
           pointerEvents: 'auto'
         }}>
           {/* Header */}

@@ -1,4 +1,4 @@
-import { assetLabelMap } from '../../../utils/chartUtils';
+import { assetLabelMap } from '../../../../../utils/chartUtils';
 
 const AssetLeaderboard = ({ portfolioData, theme }) => {
   const getFiatSymbol = () => '€';

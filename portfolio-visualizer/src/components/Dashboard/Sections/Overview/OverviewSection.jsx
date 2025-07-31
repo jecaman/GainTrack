@@ -242,33 +242,6 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       fontFamily: "'Inter', sans-serif"
     }}>
 
-      {/* Overview Section Header */}
-      <div style={{
-        marginBottom: '3rem',
-        paddingTop: '2rem',
-        textAlign: 'center'
-      }}>
-        <h2 style={{
-          margin: 0,
-          fontSize: '24px',
-          fontWeight: '600',
-          color: theme.textPrimary,
-          fontFamily: "'Space Grotesk', sans-serif",
-          letterSpacing: '-0.02em',
-          marginBottom: '1rem'
-        }}>
-          Portfolio Overview
-        </h2>
-        
-        {/* Subtle line below title */}
-        <div style={{
-          width: '60px',
-          height: '2px',
-          background: theme.borderColor,
-          margin: '0 auto',
-          opacity: 0.6
-        }}></div>
-      </div>
 
       {/* Main Content Grid */}
       <div style={{

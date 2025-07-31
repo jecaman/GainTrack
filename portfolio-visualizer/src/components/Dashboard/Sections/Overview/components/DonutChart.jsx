@@ -1,6 +1,6 @@
 import { Doughnut } from 'react-chartjs-2';
-import { assetLabelMap } from '../../../utils/chartUtils';
-import { getAssetColor } from '../../../utils/assetColors';
+import { assetLabelMap } from '../../../../../utils/chartUtils';
+import { getAssetColor } from '../../../../../utils/assetColors';
 
 const DonutChart = ({ portfolioData, theme }) => {
   // Process portfolio data for donut chart

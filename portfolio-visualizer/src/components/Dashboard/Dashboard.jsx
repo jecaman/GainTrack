@@ -1,6 +1,9 @@
 import { useState } from 'react';
-import OverviewSection from './Overview/OverviewSection';
-import Filters from './Filters';
+import OverviewSection from './Sections/Overview/OverviewSection';
+import AnalyticsSection from './Sections/Analytics/AnalyticsSection';
+import PortfolioSection from './Sections/Portfolio/PortfolioSection';
+import SectionTabs from './Navigation/SectionTabs';
+import Filters from '../Filters';
 
 
 // Simple zigzag logo for dashboard header
@@ -26,10 +29,48 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     profitOnly: false
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState('overview');
 
   const handleFiltersChange = (newFilters) => {
     setFilters(newFilters);
     console.log('Dashboard filters changed:', newFilters);
+  };
+
+  const handleSectionChange = (sectionId) => {
+    setActiveSection(sectionId);
+  };
+
+  const renderCurrentSection = () => {
+    switch (activeSection) {
+      case 'overview':
+        return (
+          <OverviewSection
+            portfolioData={portfolioData}
+            isLoading={isLoading}
+            theme={theme}
+            onShowGainTrack={onShowGainTrack}
+            filters={filters}
+          />
+        );
+      case 'analytics':
+        return (
+          <AnalyticsSection
+            portfolioData={portfolioData}
+            theme={theme}
+            filters={filters}
+          />
+        );
+      case 'portfolio':
+        return (
+          <PortfolioSection
+            portfolioData={portfolioData}
+            theme={theme}
+            filters={filters}
+          />
+        );
+      default:
+        return null;
+    }
   };
 
   return (
@@ -54,7 +95,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       
       {/* Dashboard Header */}
       <div style={{
-        padding: '4rem 2rem 2rem 2rem',
+        padding: '3rem 2rem 2rem 2rem',
         textAlign: 'center',
         position: 'relative'
       }}>
@@ -160,7 +201,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
           <ZigzagLogo size={68} color={theme.accentPrimary} />
           <h1 style={{
             margin: 0,
-            marginTop: '-25px',
+            marginTop: '-15px',
             fontSize: '32px',
             fontWeight: '700',
             color: theme.textPrimary,
@@ -186,13 +227,12 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
 
       {/* Main Content Area */}
       <div style={{ padding: '0 2rem' }}>
-        <OverviewSection
-          portfolioData={portfolioData}
-          isLoading={isLoading}
+        <SectionTabs
+          activeSection={activeSection}
+          onSectionChange={handleSectionChange}
           theme={theme}
-          onShowGainTrack={onShowGainTrack}
-          filters={filters}
         />
+        {renderCurrentSection()}
       </div>
     </div>
   );

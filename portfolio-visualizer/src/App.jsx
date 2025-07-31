@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import GainTrackFormPage from './components/GainTrackFormPage';
-import Dashboard from './components/Dashboard';
+import Dashboard from './components/Dashboard/Dashboard';
 import GainTrackKPIs from './components/GainTrackKPIs';
 import ErrorBoundary from './components/ErrorBoundary';
 
