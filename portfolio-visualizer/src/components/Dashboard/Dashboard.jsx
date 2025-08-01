@@ -1,25 +1,14 @@
 import { useState } from 'react';
+import { RotateCcw } from 'lucide-react';
 import OverviewSection from './Sections/Overview/OverviewSection';
 import AnalyticsSection from './Sections/Analytics/AnalyticsSection';
 import PortfolioSection from './Sections/Portfolio/PortfolioSection';
 import SectionTabs from './Navigation/SectionTabs';
 import Filters from '../Filters';
+import AppHeader from '../AppHeader';
+import GainTrackBrand from '../GainTrackBrand';
 
 
-// Simple zigzag logo for dashboard header
-const ZigzagLogo = ({ size = 32, color = "#00ff88" }) => {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <path
-        d="M2 16L8 6L14 12L20 4L26 10L30 2"
-        stroke={color}
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-};
 
 const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, isVisible = true }) => {
   const [filters, setFilters] = useState({
@@ -93,145 +82,222 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         />
       )}
       
-      {/* Dashboard Header */}
+      {/* Header simple y moderno */}
       <div style={{
-        padding: '3rem 2rem 2rem 2rem',
-        textAlign: 'center',
-        position: 'relative'
+        padding: '6rem 2rem 0.5rem 2rem',
+        background: `linear-gradient(180deg, ${theme.bg}00 0%, ${theme.bg}05 100%)`
       }}>
-        {/* Back to Form Button - Top Left */}
-        <button
-          onClick={onBackToForm || (() => console.log('Back to form clicked'))}
-          style={{
+        {/* Navegación centrada */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center'
+        }}>
+          <SectionTabs
+            activeSection={activeSection}
+            onSectionChange={handleSectionChange}
+            theme={theme}
+            onBackToForm={onBackToForm}
+            onToggleTheme={onToggleTheme}
+            sidebarOpen={sidebarOpen}
+          />
+        </div>
+
+        {/* Línea inferior: Logo + Subtítulo + Status */}
+        <div style={{
+          transform: 'translateY(-130px)',
+          position: 'relative',
+          height: '220px'
+        }}>
+          {/* Logo con subtítulo a la izquierda */}
+          <div style={{ 
             position: 'absolute',
-            top: '3rem',
-            left: '2rem',
-            background: 'transparent',
-            border: `1px solid ${theme.borderColor}`,
-            borderRadius: '8px',
-            padding: '8px 16px',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            color: theme.textSecondary,
-            fontFamily: "'Inter', sans-serif",
-            zIndex: 9999,
-            backdropFilter: 'blur(10px)'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.borderColor = theme.accentPrimary;
-            e.target.style.color = theme.textPrimary;
-            e.target.style.background = `${theme.accentPrimary}10`;
-            e.target.style.transform = 'translateY(-1px)';
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.borderColor = theme.borderColor;
-            e.target.style.color = theme.textSecondary;
-            e.target.style.background = 'transparent';
-            e.target.style.transform = 'translateY(0)';
-          }}
-        >
-          <span style={{ fontSize: '16px' }}>←</span>
-          Back to Form
-        </button>
-
-        {/* Theme Toggle Button - Top Right */}
-        <div style={{
-          position: 'absolute',
-          top: '3rem',
-          right: '2rem',
-          zIndex: 9999
-        }}>
-          <button
-            onClick={onToggleTheme || (() => console.log('Theme toggle clicked'))}
-            style={{
-              width: '65px',
-              height: '36px',
-              background: theme.bg === '#000000' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-              border: `2px solid ${theme.bg === '#000000' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'}`,
-              borderRadius: '20px',
-              cursor: 'pointer',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              position: 'relative',
-              padding: '2px',
-              display: 'flex',
-              alignItems: 'center',
-              backdropFilter: 'blur(8px)'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.background = theme.bg === '#000000' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
-              e.target.style.transform = 'scale(1.05)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = theme.bg === '#000000' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-              e.target.style.transform = 'scale(1)';
-            }}
-          >
-            {/* Toggle circle */}
-            <div style={{
-              width: '29px',
-              height: '29px',
-              background: theme.bg === '#000000' ? '#6b7280' : '#4b5563',
-              borderRadius: '50%',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              transform: theme.bg === '#000000' ? 'translateX(0)' : 'translateX(29px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '13px',
-              filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))'
-            }}>
-              {theme.bg === '#000000' ? '🌙' : '☀️'}
-            </div>
-          </button>
-        </div>
-
-        {/* Logo and Title with same spacing as form */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '0px',
-          marginBottom: '8px'
-        }}>
-          <ZigzagLogo size={68} color={theme.accentPrimary} />
-          <h1 style={{
-            margin: 0,
-            marginTop: '-15px',
-            fontSize: '32px',
-            fontWeight: '700',
-            color: theme.textPrimary,
-            fontFamily: "'Space Grotesk', sans-serif",
-            letterSpacing: '-0.02em',
-            lineHeight: '1'
+            left: '0',
+            bottom: '40%',
+            display: 'flex', 
+            alignItems: 'flex-end', 
+            gap: '1.5rem'
           }}>
-            GainTrack Dashboard
-          </h1>
+            <GainTrackBrand
+              logoSize={42}
+              titleSize="26px"
+              color="#00FF99"
+              titleColor={theme.textPrimary}
+              sloganGlow={true}
+              isDarkMode={theme.bg === '#000000'}
+              layout="horizontal"
+              logoRotation={4}
+              spacing="6px"
+              style={{
+                fontFamily: "'Space Grotesk', sans-serif",
+                letterSpacing: '-0.005em'
+              }}
+            />
+            
+            {/* Subtítulo a la derecha del branding */}
+            <div style={{
+              fontSize: '14px',
+              color: theme.textSecondary,
+              opacity: 0.8,
+              fontFamily: "'Inter', sans-serif",
+              letterSpacing: '0.3px',
+              paddingLeft: '1rem',
+              borderLeft: `1px solid ${theme.borderColor}`
+            }}>
+              <div style={{ 
+                fontSize: '11px', 
+                opacity: 0.6, 
+                textTransform: 'uppercase', 
+                letterSpacing: '0.5px',
+                marginBottom: '2px'
+              }}>
+                Portfolio Dashboard
+              </div>
+              <div style={{ 
+                fontSize: '13px', 
+                fontWeight: '500', 
+                color: theme.textPrimary 
+              }}>
+                Real-time Analytics
+              </div>
+            </div>
+          </div>
+
+          {/* Status line a la derecha */}
+          <div style={{
+            position: 'absolute',
+            right: '0px',
+            bottom: '40%',
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: '0.5rem',
+            fontSize: '12px',
+            color: theme.textSecondary
+          }}>
+            {/* Connection Type */}
+            <span style={{ 
+              fontSize: '12px', 
+              fontWeight: '500', 
+              color: theme.textPrimary,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}>
+              API Connection
+            </span>
+
+            {/* Separador */}
+            <div style={{
+              width: '1px',
+              height: '16px',
+              background: theme.borderColor,
+              opacity: 1
+            }} />
+
+            {/* Last Sync */}
+            <span style={{ 
+              fontSize: '12px', 
+              color: theme.textSecondary 
+            }}>
+              LAST SYNC: {new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}
+            </span>
+
+            {/* Separador */}
+            <div style={{
+              width: '1px',
+              height: '16px',
+              background: theme.borderColor,
+              opacity: 1
+            }} />
+
+            {/* Kraken Status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#00FF99',
+                boxShadow: '0 0 6px rgba(0,255,153,0.6)'
+              }} />
+              <span style={{ 
+                fontSize: '12px', 
+                fontWeight: '500', 
+                color: '#00FF99',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                KRAKEN
+              </span>
+            </div>
+
+            {/* Separador */}
+            <div style={{
+              width: '1px',
+              height: '16px',
+              background: theme.borderColor,
+              opacity: 1
+            }} />
+
+            {/* Refresh Button Circular */}
+            <button
+              onClick={() => console.log('Refresh clicked')}
+              style={{
+                background: 'transparent',
+                border: `1px solid ${theme.borderColor}60`,
+                borderRadius: '50%',
+                width: '24px',
+                height: '24px',
+                cursor: 'pointer',
+                color: theme.textSecondary,
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                transform: 'translateY(4px)',
+                padding: '6px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#00FF99';
+                e.currentTarget.style.color = '#00FF99';
+                e.currentTarget.style.background = 'rgba(0,255,153,0.05)';
+                e.currentTarget.style.transform = 'translateY(4px) rotate(-90deg)';
+                e.currentTarget.querySelector('svg').style.color = '#00FF99';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = theme.borderColor + '60';
+                e.currentTarget.style.color = theme.textSecondary;
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateY(4px) rotate(0deg)';
+                e.currentTarget.querySelector('svg').style.color = 'white';
+              }}
+            >
+              <div style={{ 
+                background: 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <RotateCcw size={12} color="white" />
+              </div>
+            </button>
+          </div>
         </div>
-        
-        {/* Subtitle */}
-        <p style={{
-          margin: 0,
-          fontSize: '14px',
-          color: theme.textSecondary,
-          fontFamily: "'Inter', sans-serif",
-          opacity: 0.8
-        }}>
-          Powered by Kraken API • Real-time portfolio analytics
-        </p>
+
+        {/* Línea divisora */}
+        <div style={{
+          borderBottom: `2px solid ${theme.borderColor}60`,
+          transform: 'translateY(-210px)'
+        }} />
       </div>
+
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.2); }
+        }
+      `}</style>
 
       {/* Main Content Area */}
       <div style={{ padding: '0 2rem' }}>
-        <SectionTabs
-          activeSection={activeSection}
-          onSectionChange={handleSectionChange}
-          theme={theme}
-        />
         {renderCurrentSection()}
       </div>
     </div>

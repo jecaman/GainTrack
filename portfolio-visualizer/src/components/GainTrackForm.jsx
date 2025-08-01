@@ -1,151 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './GainTrackForm.css';
+import GainTrackBrand from './GainTrackBrand';
 
-// Zigzag Logo Component with Moving Bright Point
-// Puedes controlar la frecuencia (cada cuánto aparece el punto) con "intervaloFrecuenciaMs"
-// y la velocidad (cuánto tarda en recorrer el zigzag) con "duracionAnimacionMs"
-const ZigzagLogo = ({
-  size = 32,
-  color = "#00ff88",
-  sloganGlow = false,
-  isDarkMode = true
-}) => {
-  const [visible, setVisible] = useState(false);
-  const [fade, setFade] = useState(false); // Nuevo estado para controlar el fade
-  const timeoutRef = useRef(null);
-  const fadeTimeoutRef = useRef(null);
-
-  // Sincronizar con el estado del slogan
-  useEffect(() => {
-    if (sloganGlow) {
-      setVisible(true);
-      setFade(false);
-      // Logo debe completar su recorrido en 2 segundos y luego fade por 0.4 segundos
-      const timer = setTimeout(() => {
-        setFade(true);
-        setTimeout(() => setVisible(false), 400); // Fade out de 0.4 segundos
-      }, 2000); // 2 segundos para completar el recorrido completo
-
-      return () => clearTimeout(timer);
-    } else {
-      setVisible(false);
-      setFade(false);
-    }
-  }, [sloganGlow]);
-
-  // El path del zigzag para la animación (coincide con el SVG)
-  const path = [
-    { x: 2, y: 16 },
-    { x: 8, y: 6 },
-    { x: 14, y: 12 },
-    { x: 20, y: 4 },
-    { x: 26, y: 10 },
-    { x: 30, y: 2 }
-  ];
-
-  // Calcula la posición del punto a lo largo del path según el progreso de la animación
-  const getPointPosition = (progress) => {
-    // progress: 0 (inicio) a 1 (fin)
-    let totalDist = 0;
-    const segDists = [];
-    for (let i = 0; i < path.length - 1; i++) {
-      const dx = path[i + 1].x - path[i].x;
-      const dy = path[i + 1].y - path[i].y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      segDists.push(dist);
-      totalDist += dist;
-    }
-    let targetDist = progress * totalDist;
-    for (let i = 0; i < segDists.length; i++) {
-      if (targetDist > segDists[i]) {
-        targetDist -= segDists[i];
-      } else {
-        const ratio = targetDist / segDists[i];
-        const x = path[i].x + (path[i + 1].x - path[i].x) * ratio;
-        const y = path[i].y + (path[i + 1].y - path[i].y) * ratio;
-        return { x, y };
-      }
-    }
-    // Si por alguna razón no se encuentra, retorna el último punto
-    return path[path.length - 1];
-  };
-
-  // Estado para animar el punto a lo largo del path
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    if (!visible) {
-      setProgress(0);
-      return;
-    }
-    let start = null;
-    let rafId = null;
-    const animate = (timestamp) => {
-      if (!start) start = timestamp;
-      const elapsed = timestamp - start;
-      let p = Math.min(elapsed / 2000, 1); // 2 segundos para recorrer el path completo
-      setProgress(p);
-      if (p < 1) {
-        rafId = requestAnimationFrame(animate);
-      }
-    };
-    rafId = requestAnimationFrame(animate);
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, [visible]);
-
-  // Calcula la posición del punto
-  const punto = getPointPosition(progress);
-
-  // Ajuste: el punto estaba ligeramente más abajo de lo que debería.
-  // Para corregirlo, restamos un pequeño valor al cálculo de la posición top.
-  // Por ejemplo, restamos 1.5px para subirlo un poco.
-  const ajusteVerticalPx = 1.5;
-
-  return (
-    <div style={{ 
-      position: 'relative', 
-      display: 'inline-block',
-      transform: sloganGlow && !isDarkMode ? 'scale(1.2)' : 'scale(1)',
-      transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
-    }}>
-      <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-        {/* Base logo */}
-        <path
-          d="M2 16L8 6L14 12L20 4L26 10L30 2"
-          stroke={color}
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      {/* Moving bright point - only in dark mode */}
-      {visible && isDarkMode && (
-        <div
-          style={{
-            position: 'absolute',
-            left: `calc(${(punto.x / 32) * 100}% - 4px)`,
-            // Ajuste vertical: restamos 1.5px para subir el punto
-            top: `calc(${(punto.y / 32) * 100}% - 4px - ${ajusteVerticalPx}px)`,
-            width: '8px',
-            height: '8px',
-            background: 'radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 25%, rgba(0,255,136,1) 50%, rgba(0,255,136,0.8) 75%, rgba(0,255,136,0.4) 90%, transparent 100%)',
-            borderRadius: '50%',
-            filter: 'blur(2px) drop-shadow(0 0 16px #ffffff) drop-shadow(0 0 24px rgba(0,255,136,1)) drop-shadow(0 0 32px rgba(0,255,136,0.8)) drop-shadow(0 0 40px rgba(0,255,136,0.4))',
-            opacity: fade ? 0 : 1,
-            transition: fade
-              ? 'opacity 0.4s cubic-bezier(0.4,0,0.2,1)'
-              : 'opacity 0.15s cubic-bezier(0.4,0,0.2,1)',
-            zIndex: 10,
-            boxShadow: '0 0 15px rgba(255,255,255,1), 0 0 30px rgba(0,255,136,0.8), 0 0 45px rgba(0,255,136,0.6), inset 0 0 8px rgba(255,255,255,0.7)',
-            pointerEvents: 'none'
-          }}
-        />
-      )}
-    </div>
-  );
-};
 
 
 // Theme Toggle Button Component  
@@ -492,27 +348,25 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
         }}>
           {/* Logo */}
           <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0px',
             marginBottom: 'clamp(0.5rem, 1.5vw, 0.625rem)',
           }}>
-            <ZigzagLogo size={68} color={theme.greenPrimary} sloganGlow={sloganGlow} isDarkMode={isDarkMode} />
-            <h1 style={{
-              fontSize: 'clamp(24px, 6vw, 31px)',
-              fontWeight: '700',
-              color: theme.textPrimary,
-              margin: '0',
-              marginTop: '-25px',
-              fontFamily: "'Space Grotesk', sans-serif",
-              letterSpacing: '-0.02em',
-              transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              lineHeight: '1'
-            }}>
-              GainTrack
-            </h1>
+            <GainTrackBrand 
+              logoSize={50}
+              titleSize="clamp(24px, 6vw, 31px)"
+              color={theme.greenPrimary}
+              titleColor={theme.textPrimary}
+              sloganGlow={sloganGlow}
+              isDarkMode={isDarkMode}
+              layout="horizontal"
+              logoRotation={8}
+              spacing="2px"
+              style={{
+                fontFamily: "'Space Grotesk', sans-serif",
+                letterSpacing: '-0.02em',
+                transition: 'color 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                lineHeight: '1'
+              }}
+            />
           </div>
           
           {/* Subtitle */}

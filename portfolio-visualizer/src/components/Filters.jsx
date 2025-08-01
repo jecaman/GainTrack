@@ -20,9 +20,9 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
       .map(asset => asset.asset) : [];
 
   const sections = [
-    { id: 'filters', label: 'Filters', icon: '🎛️' },
-    { id: 'analysis', label: 'Analysis', icon: '📈' },
-    { id: 'settings', label: 'Settings', icon: '⚙️' }
+    { id: 'filters', label: 'Filters' },
+    { id: 'analysis', label: 'Analysis' },
+    { id: 'settings', label: 'Settings' }
   ];
 
   // Hide pulse after 8 seconds
@@ -107,8 +107,20 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
 
   // Create the sidebar content
   const sidebarContent = (
-    <>
-      {/* Tab Button - Always visible, independent of panel */}
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      right: 0,
+      width: '360px', // 320px panel + 50px tab
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'row',
+      transform: isOpen ? 'translateX(0)' : 'translateX(315px)',
+      transition: 'transform 0.3s linear',
+      zIndex: 999999,
+      pointerEvents: 'none'
+    }}>
+      {/* Tab Button */}
       <button
           ref={tabButtonRef}
           className="filter-tab-button"
@@ -135,10 +147,9 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             alignItems: 'center',
             justifyContent: 'center',
             height: '100px',
-            width: '68px',
-            position: 'fixed',
-            top: '125px',
-            right: '-30px',
+            width: '50px',
+            position: 'relative',
+            top: '210px',
             animation: showTabPulse ? 'tabPulse 2s ease-in-out infinite' : 'none',
             fontFamily: "'Inter', sans-serif",
             userSelect: 'none',
@@ -148,8 +159,9 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             WebkitTouchCallout: 'none',
             WebkitTapHighlightColor: 'transparent',
             outline: 'none',
-            zIndex: 1000000,
             pointerEvents: 'auto',
+            flexShrink: 0,
+            zIndex: 1
           }}
           onMouseEnter={(e) => {
             if (!isTabHoverDisabled) {
@@ -185,7 +197,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             pointerEvents: 'none',
             transform: 'rotate(-90deg)',
             whiteSpace: 'nowrap',
-            marginLeft: '-30px'
+            marginLeft: '-10px'
           }}>FILTERS</div>
           
           {/* Active filters badge */}
@@ -211,24 +223,21 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
           )}
         </button>
 
-        {/* Main Sidebar Panel - Independent positioning */}
+        {/* Main Sidebar Panel */}
         <div style={{
-          position: 'fixed',
-          top: 0,
-          right: 0,
-          width: '350px',
+          width: '320px',
           height: '100vh',
           background: theme.bgElevated,
           border: `1px solid ${theme.borderColor}`,
           borderRight: 'none',
+          borderLeft: 'none',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '-4px 0 20px rgba(0, 0, 0, 0.15)',
-          zIndex: 999999,
-          transform: isOpen ? 'translateX(0)' : 'translateX(350px)',
-          transition: 'transform 0.3s linear',
-          pointerEvents: 'auto'
+          pointerEvents: 'auto',
+          marginLeft: '-5px',
+          zIndex: 2
         }}>
           {/* Header */}
           <div style={{
@@ -277,21 +286,34 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
                 onClick={() => setActiveSection(section.id)}
                 style={{
                   flex: 1,
-                  padding: '12px 8px',
+                  padding: '16px 12px',
                   background: activeSection === section.id ? theme.bgElevated : 'transparent',
                   border: 'none',
                   color: activeSection === section.id ? theme.textPrimary : theme.textSecondary,
-                  fontSize: '12px',
-                  fontWeight: '500',
+                  fontSize: '13px',
+                  fontWeight: activeSection === section.id ? '600' : '500',
                   cursor: 'pointer',
-                  borderBottom: activeSection === section.id ? `2px solid ${theme.accentPrimary}` : 'none',
+                  borderBottom: activeSection === section.id ? `2px solid ${theme.accentPrimary}` : `2px solid transparent`,
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  transform: activeSection === section.id ? 'translateY(-1px)' : 'translateY(0)',
-                  fontFamily: "'Inter', sans-serif"
+                  position: 'relative',
+                  fontFamily: "'Inter', sans-serif",
+                  letterSpacing: '0.3px',
+                  textTransform: 'uppercase'
+                }}
+                onMouseEnter={(e) => {
+                  if (activeSection !== section.id) {
+                    e.target.style.color = theme.textPrimary;
+                    e.target.style.background = theme.bgContainer;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeSection !== section.id) {
+                    e.target.style.color = theme.textSecondary;
+                    e.target.style.background = 'transparent';
+                  }
                 }}
               >
-                <div>{section.icon}</div>
-                <div style={{ marginTop: '4px' }}>{section.label}</div>
+                {section.label}
               </button>
             ))}
           </div>
@@ -556,7 +578,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             )}
           </div>
         </div>
-    </>
+    </div>
   );
 
   // Create a dedicated portal container if it doesn't exist
