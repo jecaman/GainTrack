@@ -181,10 +181,49 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
           
           const y = centerY - 20;
           
+          // Determinar gradiente según posición
+          const getGradientForPosition = () => {
+            if (normalizedAngle === 0 || Math.abs(normalizedAngle - 360) < 1) {
+              // Centro - sin gradiente especial
+              return 'linear-gradient(90deg, rgba(160,160,160,0.6) 0%, rgba(220,220,220,0.8) 100%)';
+            } else if (Math.abs(normalizedAngle - 240) < 1) {
+              // Izquierda - más blanco hacia la derecha (hacia el centro)
+              return 'linear-gradient(90deg, rgba(120,120,120,0.5) 0%, rgba(240,240,240,0.9) 100%)';
+            } else if (Math.abs(normalizedAngle - 120) < 1) {
+              // Derecha - más blanco hacia la izquierda (hacia el centro)
+              return 'linear-gradient(90deg, rgba(240,240,240,0.9) 0%, rgba(120,120,120,0.5) 100%)';
+            }
+            return 'linear-gradient(90deg, rgba(160,160,160,0.6) 0%, rgba(220,220,220,0.8) 100%)';
+          };
+
+          const sectionGradient = getGradientForPosition();
+
           return (
             <div
               key={section.id}
               onClick={() => onSectionChange(section.id)}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  const h2 = e.currentTarget.querySelector('h2');
+                  const container = e.currentTarget;
+                  h2.style.color = '#ffffff';
+                  h2.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(0,255,153,0.6) 100%)';
+                  h2.style.WebkitBackgroundClip = 'text';
+                  h2.style.WebkitTextFillColor = 'transparent';
+                  h2.style.textShadow = '0 0 15px rgba(255,255,255,0.5), 0 0 25px rgba(0,255,153,0.4), 0 0 35px rgba(0,255,153,0.25)';
+                  
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  const h2 = e.currentTarget.querySelector('h2');
+                  h2.style.color = theme.textSecondary;
+                  h2.style.background = sectionGradient;
+                  h2.style.WebkitBackgroundClip = 'text';
+                  h2.style.WebkitTextFillColor = 'transparent';
+                  h2.style.textShadow = 'none';
+                }
+              }}
               style={{
                 position: 'absolute',
                 left: `${x}px`,
@@ -201,12 +240,20 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
               <h2 style={{
                 margin: 0,
                 fontSize: isActive ? '1.8rem' : '1.4rem',
-                fontWeight: isActive ? '500' : '400',
+                fontWeight: isActive ? '510' : '400',
                 color: isActive ? '#ffffff' : theme.textSecondary,
+                background: isActive 
+                  ? 'transparent' 
+                  : 'linear-gradient(135deg, rgba(128,128,128,0.4) 0%, rgba(192,192,192,0.2) 100%)',
+                WebkitBackgroundClip: isActive ? 'initial' : 'text',
+                WebkitTextFillColor: isActive ? '#ffffff' : 'transparent',
+                textShadow: isActive 
+                  ? '0 0 8px rgba(255,255,255,0.3), 0 0 12px rgba(255,255,255,0.2)' 
+                  : 'none',
                 fontFamily: "'Inter', sans-serif",
                 letterSpacing: isActive ? '1px' : '0.5px',
                 textTransform: 'uppercase',
-                transition: 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                transition: 'all 1s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
                 marginBottom: isActive ? '0.6rem' : '0'
               }}>
                 {section.label}
@@ -216,11 +263,13 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
               {isActive && (
                 <div style={{
                   width: '40px',
-                  height: '1px',
-                  background: '#ffffff',
+                  height: '2px',
+                  background: '#00FF99',
+                  boxShadow: '0 0 10px rgba(0,255,153,0.6), 0 0 16px rgba(0,255,153,0.4), 0 0 22px rgba(0,255,153,0.25)',
                   margin: '0 auto',
                   transition: 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                  opacity: 0.8
+                  opacity: 1,
+                  borderRadius: '1px'
                 }} />
               )}
             </div>
