@@ -6,6 +6,7 @@ import KPIGrid from './components/KPIGrid';
 import AssetLeaderboard from './components/AssetLeaderboard';
 import DonutChart from './components/DonutChart';
 import TimelineChart from './components/TimelineChart';
+import PriceTicker from './components/PriceTicker';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title);
@@ -235,36 +236,53 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
 
   return (
     <section style={{
-      minHeight: '100vh',
+      height: '100%',
       background: theme.bg,
       color: theme.textPrimary,
-      padding: 'clamp(1rem, 4vw, 2rem)',
-      fontFamily: "'Inter', sans-serif"
+      fontFamily: "'Inter', sans-serif",
+      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
+      marginTop: '0',
+      paddingTop: '0',
+      overflow: 'visible' // Permitir que el ticker salga por arriba
     }}>
-
-
-      {/* Main Content Grid */}
+      {/* Price Ticker */}
+      <PriceTicker portfolioData={portfolioData} theme={theme} />
+      
+      {/* Primera fila: KPIs y Leaderboard en la misma altura */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-        gap: 'clamp(1.5rem, 4vw, 2rem)',
-        alignItems: 'start',
-        justifyContent: 'center',
-        maxWidth: '1200px',
-        margin: '0 auto 3rem auto'
+        display: 'flex',
+        width: '100%',
+        alignItems: 'flex-start',
+        gap: '1rem', // Restaurar gap entre KPIs y leaderboard
+        marginTop: '50px' // Espacio para el ticker absoluto
       }}>
-        {/* KPIs Section */}
-        <KPIGrid portfolioData={portfolioData} theme={theme} />
-
-        {/* Asset Leaderboard */}
-        <AssetLeaderboard portfolioData={portfolioData} theme={theme} />
-
-        {/* Donut Chart */}
-        <DonutChart portfolioData={portfolioData} theme={theme} />
+        <div style={{ flex: '1' }}> {/* KPIs ocupan 1/3 del espacio */}
+          <KPIGrid portfolioData={portfolioData} theme={theme} />
+        </div>
+        <div style={{ flex: '2' }}> {/* Leaderboard ocupa 2/3 del espacio */}
+          <AssetLeaderboard portfolioData={portfolioData} theme={theme} />
+        </div>
       </div>
 
-      {/* Portfolio Timeline Chart - Full width below */}
-      <TimelineChart portfolioData={portfolioData} theme={theme} />
+      {/* Layout del resto de elementos */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0',
+        alignItems: 'flex-start',
+        flex: 1
+      }}>
+
+        {/* Segunda fila: Timeline Chart - Full width */}
+        <div style={{
+          width: '100%',
+          marginTop: '1rem' // Separación de la fila superior
+        }}>
+          <TimelineChart portfolioData={portfolioData} theme={theme} />
+        </div>
+      </div>
     </section>
   );
 };

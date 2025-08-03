@@ -4,7 +4,7 @@ import './Filters.css';
 
 const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [showTabPulse, setShowTabPulse] = useState(true);
+  const [showTabPulse, setShowTabPulse] = useState(false);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
   const [activeSection, setActiveSection] = useState('filters');
   const [selectedAssets, setSelectedAssets] = useState(new Set());
@@ -149,7 +149,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
             height: '100px',
             width: '50px',
             position: 'relative',
-            top: '210px',
+            top: '245px',
             animation: showTabPulse ? 'tabPulse 2s ease-in-out infinite' : 'none',
             fontFamily: "'Inter', sans-serif",
             userSelect: 'none',

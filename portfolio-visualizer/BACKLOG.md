@@ -69,6 +69,24 @@
   - Implementar cache persistente
 
 ### Features
+- [ ] **Filtro de assets por valor mínimo**
+  - Por defecto ocultar assets por debajo de X€ (ej: 5€)
+  - Toggle en Filters para "Mostrar assets pequeños"
+  - Evitar mostrar residuos de ventas (ej: 0.0001 TRUMP)
+  - Configuración personalizable del umbral mínimo
+
+- [ ] **Configuración de notación numérica**
+  - Toggle entre notación EU (, para decimales) y US (. para decimales)
+  - Guardar preferencia en configuración del usuario
+  - Aplicar consistentemente en toda la aplicación
+  - Configuración accesible desde panel de ajustes
+
+- [ ] **Soporte para trades crypto-to-crypto**
+  - Incluir compras hechas con activos no-fiat
+  - Calcular cost basis cuando se compra con BTC/ETH/etc
+  - Tracking de conversiones entre cryptos
+  - Histórico de swaps internos
+
 - [ ] **Agregar notificaciones**
   - Alertas de cambios significativos
   - Notificaciones push para móvil

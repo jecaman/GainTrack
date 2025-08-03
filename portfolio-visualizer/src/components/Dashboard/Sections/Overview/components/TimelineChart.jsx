@@ -278,11 +278,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
 
   return (
     <div style={{
-      height: "500px",
+      height: "fit-content",
       display: 'flex',
       flexDirection: 'column',
       position: 'relative',
-      marginBottom: 'clamp(1.375rem, 4.4vw, 2.2rem)'
+      margin: '1rem', // Margen estándar entre elementos
+      padding: '0', // Sin padding interno
+      backgroundColor: 'transparent', // Invisible
+      border: 'none' // Sin borde
     }}>
       <div style={{
         display: 'flex',
@@ -323,13 +326,12 @@ const TimelineChart = ({ portfolioData, theme }) => {
       </div>
       
       <div style={{ 
-        flex: 1, 
-        minHeight: 0, 
+        height: '400px', // Altura fija para el gráfico
+        minHeight: '400px', 
         position: 'relative',
-        background: theme.bgContainer,
-        borderRadius: '1rem',
-        border: `1px solid ${theme.borderColor}`,
-        padding: '1.5rem'
+        background: 'transparent', // Invisible
+        border: 'none', // Sin borde
+        padding: '0' // Sin padding interno
       }}>
         <Line data={timelineData} options={timelineOptions} />
       </div>

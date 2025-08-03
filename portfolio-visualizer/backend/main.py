@@ -242,7 +242,7 @@ def get_public_kraken_prices_from_pairs(assets, asset_to_pair):
 # FUNCIONES DE PROCESAMIENTO
 # =============================================================================
 
-def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp):
+def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp, fee=0):
     """
     Procesa un trade usando método FIFO y devuelve el coste invertido resultante.
     
@@ -252,18 +252,22 @@ def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp):
         vol: cantidad de la operación
         cost: coste de la operación
         timestamp: fecha de la operación
+        fee: fee de la operación (incluida en cost basis)
     
     Returns:
         float: coste actual invertido después de la operación
     """
     if trade_type == 'buy':
-        # Agregar nuevo lote de compra a la cola FIFO
+        # Agregar nuevo lote de compra a la cola FIFO (incluyendo fee en cost)
+        cost_con_fee = cost + fee
         asset_lots['buy_lots'].append({
             'vol': vol,
-            'cost': cost,
+            'cost': cost_con_fee,
+            'cost_sin_fee': cost,
+            'fee': fee,
             'timestamp': timestamp
         })
-        asset_lots['total_invested'] += cost
+        asset_lots['total_invested'] += cost_con_fee
         
     else:  # sell
         # Consumir lotes FIFO hasta completar la venta
@@ -314,8 +318,8 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
     realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0) if 'error' not in realized_result else 0
     realized_gains_by_asset = realized_result.get('assets', {}) if 'error' not in realized_result else {}
     
-    # Calcular Unrealized Gains por activo  
-    unrealized_result = calcular_unrealized_gains_fifo(csv_content)
+    # Calcular Unrealized Gains por activo
+    unrealized_result = calcular_unrealized_gains_fifo(csv_content, current_prices)
     unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0) if 'error' not in unrealized_result else 0
     portfolio_value = unrealized_result.get('totales', {}).get('total_portfolio_value', 0) if 'error' not in unrealized_result else 0
     total_invested_fifo = unrealized_result.get('totales', {}).get('total_invested', 0) if 'error' not in unrealized_result else 0
@@ -335,6 +339,7 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
             asset_data[asset] = {
                 'buy_lots': [],
                 'total_invested': 0,
+                'total_invested_historical': 0,  # Nueva: inversión total histórica
                 'fees': 0
             }
         
@@ -343,8 +348,12 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
         vol = float(row['vol'])
         timestamp = row['time']
         
-        process_trade_fifo(asset_data[asset], row['type'], vol, cost, timestamp)
+        process_trade_fifo(asset_data[asset], row['type'], vol, cost, timestamp, fee)
         asset_data[asset]['fees'] += fee
+        
+        # Rastrear inversión histórica total (solo en compras)
+        if row['type'] == 'buy':
+            asset_data[asset]['total_invested_historical'] += cost + fee
     
     # Crear portfolio array con realized/unrealized gains por activo
     portfolio_array = []
@@ -353,6 +362,7 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
         current_value = balance * current_price
         
         invested = asset_data.get(asset, {}).get('total_invested', 0)
+        invested_historical = asset_data.get(asset, {}).get('total_invested_historical', 0)
         fees = asset_data.get(asset, {}).get('fees', 0)
         
         # Obtener realized_gains y unrealized_gains por activo individual
@@ -361,7 +371,13 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
         
         # Net profit por activo = realized + unrealized
         net_profit_asset = realized_gains_asset + unrealized_gains_asset
-        net_profit_percent_asset = (net_profit_asset / invested * 100) if invested > 0 else 0
+        # Calcular porcentaje sobre inversión histórica total, no sobre inversión restante
+        if invested_historical > 0:
+            net_profit_percent_asset = (net_profit_asset / invested_historical * 100)
+            # Limitar porcentaje a un rango razonable
+            net_profit_percent_asset = max(-999.99, min(999.99, net_profit_percent_asset))
+        else:
+            net_profit_percent_asset = 0
         
         portfolio_array.append({
             'asset': asset,
@@ -371,8 +387,8 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
             'total_invested': invested,
             'fees_paid': fees,
             'current_value': current_value,
-            'pnl_eur': current_value - invested - fees,  # Mantener compatibilidad
-            'pnl_percent': ((current_value - invested - fees) / (invested + fees) * 100) if (invested + fees) > 0 else 0,
+            'pnl_eur': current_value - invested,  # Ya incluye fees en invested
+            'pnl_percent': (net_profit_asset / invested * 100) if invested > 0 else 0,
             # Nuevos campos por activo
             'realized_gains': realized_gains_asset,
             'unrealized_gains': unrealized_gains_asset,
@@ -472,6 +488,7 @@ def calcular_holdings_diarios_csv(trades_df):
                 holdings_por_asset[asset] = {
                     'buy_lots': [],
                     'total_invested': 0,
+                    'total_invested_historical': 0,
                     'fees': 0,
                     'cantidad': 0
                 }
@@ -488,6 +505,7 @@ def calcular_holdings_diarios_csv(trades_df):
             # Actualizar cantidad total (para balance)
             if trade['type'] == 'buy':
                 holdings_por_asset[asset]['cantidad'] += vol
+                holdings_por_asset[asset]['total_invested_historical'] += cost + fee
             else:
                 holdings_por_asset[asset]['cantidad'] -= vol
         

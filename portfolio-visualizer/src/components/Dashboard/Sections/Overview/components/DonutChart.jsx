@@ -74,31 +74,20 @@ const DonutChart = ({ portfolioData, theme }) => {
 
   return (
     <div style={{
-      backgroundColor: theme.bgContainer,
-      borderRadius: '12px',
-      border: `1px solid ${theme.borderColor}`,
-      padding: '16px',
+      backgroundColor: 'transparent', // Invisible
+      border: 'none', // Sin borde
+      padding: '0', // Sin padding interno
+      margin: '1rem', // Margen estándar entre elementos
       display: 'flex',
       flexDirection: 'column',
-      height: '300px'
-    }}>
-      <h3 style={{
-        color: theme.textPrimary,
-        fontFamily: "'Inter', sans-serif",
-        fontSize: '16px',
-        fontWeight: '600',
-        margin: '0 0 16px 0',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-      }}>
-        🍩 Portfolio Allocation
-      </h3>
-      
+      height: 'fit-content',
+      width: 'fit-content' // Ajustar al contenido
+    }}>      
       <div style={{
         flex: 1,
         position: 'relative',
-        minHeight: '200px'
+        minHeight: '200px',
+        width: 'fit-content' // Ajustar al contenido del donut
       }}>
         <Doughnut data={createDonutChartData()} options={donutOptions} />
       </div>

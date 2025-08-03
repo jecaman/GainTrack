@@ -40,8 +40,9 @@ const Header = ({
 
   return (
     <div style={{
-      padding: 'clamp(4rem, 8vw, 6rem) clamp(1rem, 4vw, 2rem) 0.5rem',
-      background: `linear-gradient(180deg, ${theme.bg}00 0%, ${theme.bg}05 100%)`
+      padding: 'clamp(4rem, 8vw, 6rem) clamp(1rem, 4vw, 2rem) 0',
+      background: `linear-gradient(180deg, ${theme.bg}00 0%, ${theme.bg}05 100%)`,
+      marginBottom: '0'
     }}>
       {/* Navegación centrada */}
       <div style={{ 
@@ -83,7 +84,7 @@ const Header = ({
               titleSize="clamp(20px, 4vw, 26px)"
               color="#00FF99"
               titleColor={theme.textPrimary}
-              sloganGlow={true}
+              sloganGlow={false}
               isDarkMode={theme.bg === '#000000'}
               layout="horizontal"
               logoRotation={4}
@@ -215,6 +216,7 @@ const Header = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 transform: 'translateY(18px)',
+                marginLeft: '-12px',
                 padding: '0'
               }}
             >
@@ -226,12 +228,13 @@ const Header = ({
 
       {/* Línea divisora */}
       <div style={{
-        borderBottom: `2px solid ${theme.borderColor}60`,
+        borderBottom: `1px solid ${theme.borderColor}`,
         transform: 'translateY(-230px)',
         position: 'fixed',
         left: '0',
         right: '0',
-        zIndex: '1'
+        zIndex: '1',
+        marginBottom: '0'
       }} />
     </div>
   );

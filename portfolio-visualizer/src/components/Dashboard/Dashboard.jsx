@@ -89,8 +89,14 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         sidebarOpen={sidebarOpen}
       />
 
-      {/* Main Content Area */}
-      <div style={{ padding: '0 2rem' }}>
+      {/* Main Content Area - Las secciones ocupan todo el espacio tras el header */}
+      <div style={{ 
+        padding: '0 4rem 0 4rem', // Sin margen arriba
+        marginTop: '-200px', // Compensar el espacio que deja la línea fixed
+        paddingTop: '2px', // Justo debajo de la línea divisora
+        height: 'calc(100vh - 100px)', // Ocupa todo menos el header
+        overflow: 'visible' // Permitir que el ticker salga por arriba
+      }}>
         {renderCurrentSection()}
       </div>
     </div>

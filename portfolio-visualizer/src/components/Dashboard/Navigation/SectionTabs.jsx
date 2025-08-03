@@ -145,7 +145,7 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
           
           // Ángulo base de cada sección (120° entre ellas)
           const sectionAngle = index * 120;
-          // Ángulo de rotación para centrar la sección activa
+          // Ángulo de rotación para centrar la sección activa (negativo para rotar en sentido correcto)
           const rotationOffset = activeIndex * -120;
           // Ángulo final de esta sección
           const finalAngle = sectionAngle + rotationOffset;
@@ -176,24 +176,15 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
             const angleRad = (finalAngle * Math.PI) / 180;
             x = centerX + Math.cos(angleRad) * spacing;
             scale = 0.85;
-            opacity = 0.7;
+            opacity = 0.7; // Opacidad consistente para todas las posiciones
           }
           
           const y = centerY - 20;
           
-          // Determinar gradiente según posición
+          // Gradiente simple y consistente para todas las posiciones no activas
           const getGradientForPosition = () => {
-            if (normalizedAngle === 0 || Math.abs(normalizedAngle - 360) < 1) {
-              // Centro - sin gradiente especial
-              return 'linear-gradient(90deg, rgba(160,160,160,0.6) 0%, rgba(220,220,220,0.8) 100%)';
-            } else if (Math.abs(normalizedAngle - 240) < 1) {
-              // Izquierda - más blanco hacia la derecha (hacia el centro)
-              return 'linear-gradient(90deg, rgba(120,120,120,0.5) 0%, rgba(240,240,240,0.9) 100%)';
-            } else if (Math.abs(normalizedAngle - 120) < 1) {
-              // Derecha - más blanco hacia la izquierda (hacia el centro)
-              return 'linear-gradient(90deg, rgba(240,240,240,0.9) 0%, rgba(120,120,120,0.5) 100%)';
-            }
-            return 'linear-gradient(90deg, rgba(160,160,160,0.6) 0%, rgba(220,220,220,0.8) 100%)';
+            // Todas las opciones no activas usan el mismo gradiente (más destacado)
+            return 'linear-gradient(90deg, rgba(120,120,120,0.6) 0%, rgba(200,200,200,0.85) 100%)';
           };
 
           const sectionGradient = getGradientForPosition();
@@ -205,13 +196,17 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
               onMouseEnter={(e) => {
                 if (!isActive) {
                   const h2 = e.currentTarget.querySelector('h2');
-                  const container = e.currentTarget;
-                  h2.style.color = '#ffffff';
-                  h2.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(0,255,153,0.6) 100%)';
+                  // Iluminación más intensa y gradual del degradado
+                  if (Math.abs(normalizedAngle - 240) < 1) {
+                    // Izquierda - iluminación gradual hacia blanco brillante
+                    h2.style.background = 'linear-gradient(90deg, rgba(200,200,200,0.8) 0%, rgba(255,255,255,0.95) 100%)';
+                  } else if (Math.abs(normalizedAngle - 120) < 1) {
+                    // Derecha - iluminación gradual hacia blanco brillante
+                    h2.style.background = 'linear-gradient(90deg, rgba(255,255,255,0.95) 0%, rgba(200,200,200,0.8) 100%)';
+                  }
                   h2.style.WebkitBackgroundClip = 'text';
                   h2.style.WebkitTextFillColor = 'transparent';
-                  h2.style.textShadow = '0 0 15px rgba(255,255,255,0.5), 0 0 25px rgba(0,255,153,0.4), 0 0 35px rgba(0,255,153,0.25)';
-                  
+                  h2.style.textShadow = '0 0 12px rgba(255,255,255,0.4), 0 0 20px rgba(255,255,255,0.2)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -231,7 +226,7 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
                 transform: `translate(-50%, -50%) scale(${scale})`,
                 cursor: 'pointer',
                 textAlign: 'center',
-                transition: 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                transition: 'all 1.5s cubic-bezier(0.23, 1, 0.32, 1)',
                 opacity: opacity,
                 zIndex: isActive ? 10 : 1,
                 transformStyle: 'preserve-3d'
@@ -239,12 +234,13 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
             >
               <h2 style={{
                 margin: 0,
-                fontSize: isActive ? '1.8rem' : '1.4rem',
-                fontWeight: isActive ? '510' : '400',
+                fontSize: isActive ? '2.2rem' : '1.8rem',
+                fontVariationSettings: `'wght' ${isActive ? 510 : 400}`,
+                fontWeight: 'normal',
                 color: isActive ? '#ffffff' : theme.textSecondary,
                 background: isActive 
                   ? 'transparent' 
-                  : 'linear-gradient(135deg, rgba(128,128,128,0.4) 0%, rgba(192,192,192,0.2) 100%)',
+                  : sectionGradient,
                 WebkitBackgroundClip: isActive ? 'initial' : 'text',
                 WebkitTextFillColor: isActive ? '#ffffff' : 'transparent',
                 textShadow: isActive 
@@ -253,7 +249,7 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
                 fontFamily: "'Inter', sans-serif",
                 letterSpacing: isActive ? '1px' : '0.5px',
                 textTransform: 'uppercase',
-                transition: 'all 1s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+                transition: 'all 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-variation-settings 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), background 3s cubic-bezier(0.23, 1, 0.32, 1), text-shadow 3s cubic-bezier(0.23, 1, 0.32, 1)',
                 marginBottom: isActive ? '0.6rem' : '0'
               }}>
                 {section.label}
@@ -267,7 +263,7 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
                   background: '#00FF99',
                   boxShadow: '0 0 10px rgba(0,255,153,0.6), 0 0 16px rgba(0,255,153,0.4), 0 0 22px rgba(0,255,153,0.25)',
                   margin: '0 auto',
-                  transition: 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                  transition: 'all 1.5s cubic-bezier(0.23, 1, 0.32, 1)',
                   opacity: 1,
                   borderRadius: '1px'
                 }} />
