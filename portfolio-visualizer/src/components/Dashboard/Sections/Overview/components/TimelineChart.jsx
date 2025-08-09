@@ -28,6 +28,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
     
     // Calcular balance (profit/loss) para cada punto
     const balanceValues = timelineData.map(entry => (entry.value || 0) - (entry.cost || 0));
+    
+    // DEBUG: Ver los datos
+    console.log('📊 DATOS DEBUG:');
+    console.log('Portfolio values:', portfolioValues.slice(0, 3), '...');
+    console.log('Invested values:', investedValues.slice(0, 3), '...');
+    console.log('Balance values:', balanceValues.slice(0, 3), '...');
+    console.log('View mode:', viewMode);
+    console.log('Show invested:', showTotalInvested);
 
     // Create point colors based on profit/loss at each point
     const pointColors = portfolioValues.map((value, index) => {
@@ -35,6 +43,32 @@ const TimelineChart = ({ portfolioData, theme }) => {
       return value >= invested ? '#22c55e' : '#ef4444'; // Green if profit, red if loss
     });
 
+    // PRE-CALCULAR COLORES PARA EVITAR PROBLEMAS
+    
+    // Para P&L: calcular si hay mayoría positiva
+    const positiveBalanceCount = balanceValues.filter(val => val > 0).length;
+    const balanceIsPositive = positiveBalanceCount > balanceValues.length / 2;
+    const balanceAreaColor = balanceIsPositive ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+    
+    console.log('🎯 BALANCE COLOR CALC:', positiveBalanceCount, '/', balanceValues.length, '-> isPositive:', balanceIsPositive, '-> color:', balanceAreaColor);
+    
+    // Para Full View: calcular si market gana
+    let marketWinsCount = 0;
+    if (showTotalInvested) {
+      for (let i = 0; i < portfolioValues.length; i++) {
+        if (portfolioValues[i] > investedValues[i]) {
+          marketWinsCount++;
+        }
+      }
+    } else {
+      marketWinsCount = portfolioValues.length; // Sin invested = siempre gana
+    }
+    
+    const marketIsWinning = marketWinsCount > portfolioValues.length / 2;
+    const marketAreaColor = marketIsWinning ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+    
+    console.log('🎯 MARKET COLOR CALC:', marketWinsCount, '/', portfolioValues.length, '-> isWinning:', marketIsWinning, '-> color:', marketAreaColor);
+    
     // Construir datasets según el modo de vista
     let datasets = [];
     
@@ -44,54 +78,43 @@ const TimelineChart = ({ portfolioData, theme }) => {
         label: 'Balance (P&L)',
         data: balanceValues,
         borderColor: function(context) {
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          if (!chartArea) return '#22c55e';
+          // Contar cuántos valores están por encima de 0
+          const aboveZero = balanceValues.filter(val => val > 0).length;
+          const totalPoints = balanceValues.length;
+          const isPositive = aboveZero > totalPoints / 2;
           
-          // Crear gradiente para la línea de balance
-          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+          console.log('P&L: ' + aboveZero + '/' + totalPoints + ' above zero = ' + (isPositive ? 'GREEN' : 'RED'));
           
-          const lastBalance = balanceValues[balanceValues.length - 1];
-          
-          if (lastBalance >= 0) {
-            gradient.addColorStop(0, '#10b981');
-            gradient.addColorStop(0.5, '#22c55e');
-            gradient.addColorStop(1, '#34d399');
-          } else {
-            gradient.addColorStop(0, '#dc2626');
-            gradient.addColorStop(0.5, '#ef4444');
-            gradient.addColorStop(1, '#f87171');
-          }
-          
-          return gradient;
+          return isPositive ? '#22c55e' : '#ef4444';
         },
         backgroundColor: function(context) {
           const chart = context.chart;
           const {ctx, chartArea} = chart;
-          if (!chartArea) return 'transparent';
+          if (!chartArea) return balanceAreaColor;
           
-          // Crear gradiente de fondo
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          // Crear gradiente horizontal segmentado que cambie según los valores
+          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
           
-          // Determinar si hay más ganancias o pérdidas
-          let positivePoints = 0;
+          // Dividir en segmentos según los puntos de datos
+          const segmentSize = 1 / balanceValues.length;
+          
           for (let i = 0; i < balanceValues.length; i++) {
-            if (balanceValues[i] >= 0) positivePoints++;
+            const position = i * segmentSize;
+            const nextPosition = (i + 1) * segmentSize;
+            const value = balanceValues[i];
+            
+            // Color base según el valor, con opacidad reducida para suavidad
+            const baseColor = value > 0 ? '34, 197, 94' : '239, 68, 68';
+            const color = `rgba(${baseColor}, 0.15)`;
+            
+            gradient.addColorStop(position, color);
+            if (i < balanceValues.length - 1) {
+              gradient.addColorStop(nextPosition - 0.001, color);
+            }
           }
           
-          const isOverallPositive = positivePoints > balanceValues.length / 2;
+          return gradient;
           
-          if (isOverallPositive) {
-            gradient.addColorStop(0, 'rgba(34, 197, 94, 0.3)');
-            gradient.addColorStop(0.3, 'rgba(34, 197, 94, 0.15)');
-            gradient.addColorStop(0.7, 'rgba(34, 197, 94, 0.05)');
-            gradient.addColorStop(1, 'rgba(34, 197, 94, 0.01)');
-          } else {
-            gradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
-            gradient.addColorStop(0.3, 'rgba(239, 68, 68, 0.15)');
-            gradient.addColorStop(0.7, 'rgba(239, 68, 68, 0.05)');
-            gradient.addColorStop(1, 'rgba(239, 68, 68, 0.01)');
-          }
           return gradient;
         },
         fill: 'origin', // Rellenar hasta el eje X (línea de 0)
@@ -103,10 +126,36 @@ const TimelineChart = ({ portfolioData, theme }) => {
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
         borderWidth: 4,
-        pointStyle: 'line'
+        pointStyle: 'line',
+        segment: {
+          borderColor: function(ctx) {
+            const startIndex = ctx.p0DataIndex;
+            const endIndex = ctx.p1DataIndex;
+            const startValue = balanceValues[startIndex];
+            const endValue = balanceValues[endIndex];
+            
+            // Si ambos puntos están del mismo lado de 0, usar ese color
+            if (startValue > 0 && endValue > 0) return '#22c55e';
+            if (startValue <= 0 && endValue <= 0) return '#ef4444';
+            
+            // Si cruzan el 0, determinar qué color domina el segmento
+            const zeroLine = 0;
+            const startDistance = Math.abs(startValue - zeroLine);
+            const endDistance = Math.abs(endValue - zeroLine);
+            
+            // Si el punto final está más lejos de 0, su color domina
+            if (endDistance > startDistance) {
+              return endValue > 0 ? '#22c55e' : '#ef4444';
+            } else {
+              return startValue > 0 ? '#22c55e' : '#ef4444';
+            }
+          }
+        }
       });
     } else {
-      // Modo normal: mostrar ambas líneas (con opción de ocultar Total Invested)
+      // Modo normal: líneas con sombreado simple pero visible
+      
+      // Si mostrar Total Invested
       if (showTotalInvested) {
         datasets.push({
           label: 'Total Invested',
@@ -127,84 +176,147 @@ const TimelineChart = ({ portfolioData, theme }) => {
         });
       }
       
-      datasets.push(
-        {
-          label: 'Market Value',
-          data: portfolioValues,
-          borderColor: function(context) {
-            const chart = context.chart;
-            const {ctx, chartArea} = chart;
-            if (!chartArea) return '#22c55e';
+      // Market Value con sombreado
+      datasets.push({
+        label: 'Market Value',
+        data: portfolioValues,
+        borderColor: '#22c55e', // Color base, se sobrescribe con segment
+        backgroundColor: function(context) {
+          const chart = context.chart;
+          const {ctx, chartArea} = chart;
+          if (!chartArea) return marketAreaColor;
+          
+          // Área se colorea SOLO donde la línea ya se ha dibujado (de izquierda a derecha)
+          const isAnimating = chart._animator && chart._animator.running;
+          if (showTotalInvested && isAnimating) {
+            // Calcular hasta qué punto del gráfico ha llegado la animación
+            const progress = Math.min((chart._animator.progress || 0), 1);
+            const revealedWidth = progress; // 0 = nada, 1 = todo
             
-            // Crear gradiente para la línea
+            // Crear gradiente que va de coloreado a transparente
             const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
             
-            const lastValue = portfolioValues[portfolioValues.length - 1];
-            const lastInvested = investedValues[investedValues.length - 1] || 0;
+            if (revealedWidth === 0) {
+              // Al inicio: todo transparente
+              gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+              gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              return gradient;
+            }
             
-            if (lastValue >= lastInvested) {
-              gradient.addColorStop(0, '#10b981');
-              gradient.addColorStop(0.5, '#22c55e');
-              gradient.addColorStop(1, '#34d399');
-            } else {
-              gradient.addColorStop(0, '#dc2626');
-              gradient.addColorStop(0.5, '#ef4444');
-              gradient.addColorStop(1, '#f87171');
+            // Parte ya revelada: colorear según corresponde
+            const segmentSize = 1 / portfolioValues.length;
+            let currentPos = 0;
+            
+            while (currentPos < revealedWidth && currentPos < 1) {
+              const segmentIndex = Math.floor(currentPos / segmentSize);
+              if (segmentIndex < portfolioValues.length) {
+                const marketValue = portfolioValues[segmentIndex];
+                const investedValue = investedValues[segmentIndex] || 0;
+                const baseColor = marketValue > investedValue ? '34, 197, 94' : '239, 68, 68';
+                const color = `rgba(${baseColor}, 0.15)`;
+                
+                const segmentStart = segmentIndex * segmentSize;
+                const segmentEnd = Math.min((segmentIndex + 1) * segmentSize, revealedWidth);
+                
+                gradient.addColorStop(segmentStart, color);
+                gradient.addColorStop(segmentEnd, color);
+                
+                currentPos = segmentEnd;
+              } else {
+                break;
+              }
+            }
+            
+            // Transición suave en el borde
+            if (revealedWidth < 1) {
+              gradient.addColorStop(revealedWidth, 'rgba(0, 0, 0, 0.02)');
+              gradient.addColorStop(Math.min(revealedWidth + 0.05, 1), 'rgba(0, 0, 0, 0)');
+            }
+            
+            // Resto: completamente transparente
+            if (revealedWidth < 1) {
+              gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
             }
             
             return gradient;
-          },
-          backgroundColor: function(context) {
-            const chart = context.chart;
-            const {ctx, chartArea} = chart;
-            if (!chartArea) return 'transparent';
-            
-            // Crear gradiente más suave y visible
+          }
+          
+          if (!showTotalInvested) {
+            // Sin invested = gradiente verde suave
             const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            
-            // Determinar si hay más ganancias o pérdidas en el portfolio
-            let profitablePoints = 0;
-            for (let i = 0; i < portfolioValues.length; i++) {
-              const value = portfolioValues[i];
-              const invested = investedValues[i] || 0;
-              if (value >= invested) profitablePoints++;
-            }
-            
-            const isOverallProfitable = profitablePoints > portfolioValues.length / 2;
-            
-            if (isOverallProfitable) {
-              gradient.addColorStop(0, 'rgba(34, 197, 94, 0.3)');
-              gradient.addColorStop(0.3, 'rgba(34, 197, 94, 0.15)');
-              gradient.addColorStop(0.7, 'rgba(34, 197, 94, 0.05)');
-              gradient.addColorStop(1, 'rgba(34, 197, 94, 0.01)');
-            } else {
-              gradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
-              gradient.addColorStop(0.3, 'rgba(239, 68, 68, 0.15)');
-              gradient.addColorStop(0.7, 'rgba(239, 68, 68, 0.05)');
-              gradient.addColorStop(1, 'rgba(239, 68, 68, 0.01)');
-            }
+            gradient.addColorStop(0, 'rgba(34, 197, 94, 0.25)');
+            gradient.addColorStop(0.5, 'rgba(34, 197, 94, 0.12)');
+            gradient.addColorStop(1, 'rgba(34, 197, 94, 0.03)');
             return gradient;
-          },
-          fill: '+1', // Fill to the previous dataset (Total Invested)
-          tension: 0.5,
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          pointBackgroundColor: 'transparent',
-          pointBorderColor: 'transparent',
-          pointBorderWidth: 0,
-          pointHoverBorderWidth: 0,
-          borderWidth: 4,
-          pointStyle: 'line',
-          segment: {
-            borderColor: function(ctx) {
-              const startIndex = ctx.p0DataIndex;
-              const startValue = portfolioValues[startIndex];
-              const startInvested = investedValues[startIndex] || 0;
-              return startValue >= startInvested ? '#22c55e' : '#ef4444';
+          }
+          
+          // Crear gradiente horizontal segmentado punto por punto
+          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+          
+          // Dividir en segmentos según los puntos de datos
+          const segmentSize = 1 / portfolioValues.length;
+          
+          for (let i = 0; i < portfolioValues.length; i++) {
+            const position = i * segmentSize;
+            const nextPosition = (i + 1) * segmentSize;
+            const marketValue = portfolioValues[i];
+            const investedValue = investedValues[i] || 0;
+            
+            // Color según si market gana o pierde en este punto
+            const baseColor = marketValue > investedValue ? '34, 197, 94' : '239, 68, 68';
+            const color = `rgba(${baseColor}, 0.15)`;
+            
+            gradient.addColorStop(position, color);
+            if (i < portfolioValues.length - 1) {
+              gradient.addColorStop(nextPosition - 0.001, color);
+            }
+          }
+          
+          return gradient;
+        },
+        fill: showTotalInvested ? '-1' : 'origin', // Fill to previous dataset or origin
+        tension: 0.5,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderWidth: 4,
+        pointStyle: 'line',
+        segment: {
+          borderColor: function(ctx) {
+            if (!showTotalInvested) {
+              return '#22c55e'; // Sin invested = siempre verde
+            }
+            
+            const startIndex = ctx.p0DataIndex;
+            const endIndex = ctx.p1DataIndex;
+            const startMarket = portfolioValues[startIndex];
+            const startInvested = investedValues[startIndex] || 0;
+            const endMarket = portfolioValues[endIndex];
+            const endInvested = investedValues[endIndex] || 0;
+            
+            const startIsWinning = startMarket > startInvested;
+            const endIsWinning = endMarket > endInvested;
+            
+            // Si ambos puntos están del mismo lado, usar ese color
+            if (startIsWinning && endIsWinning) return '#22c55e';
+            if (!startIsWinning && !endIsWinning) return '#ef4444';
+            
+            // Si hay cambio, determinar qué domina el segmento
+            const startGap = Math.abs(startMarket - startInvested);
+            const endGap = Math.abs(endMarket - endInvested);
+            
+            // El que tenga mayor diferencia (gap) domina el color del segmento
+            if (endGap > startGap) {
+              return endIsWinning ? '#22c55e' : '#ef4444';
+            } else {
+              return startIsWinning ? '#22c55e' : '#ef4444';
             }
           }
         }
-      );
+      });
     }
 
     return {
@@ -218,10 +330,65 @@ const TimelineChart = ({ portfolioData, theme }) => {
     responsive: true,
     maintainAspectRatio: false,
     animation: {
-      duration: 2000,
-      easing: 'easeInOutCubic',
-      animateScale: true,
-      animateRotate: true
+      duration: 420,
+      easing: 'easeOutCubic',
+      animateScale: false,
+      animateRotate: false,
+      delay: function(context) {
+        return context.dataIndex * 5;
+      }
+    },
+    animations: {
+      // Animación simple y fluida
+      y: {
+        type: 'number',
+        easing: 'easeOutQuart',
+        duration: 500,
+        delay: function(context) {
+          // Retrasar ligeramente la línea invested para efecto escalonado
+          if (context.chart.data.datasets[context.datasetIndex].label === 'Total Invested') {
+            return context.dataIndex * 8;
+          }
+          return context.dataIndex * 4;
+        }
+      }
+    },
+    transitions: {
+      active: {
+        animation: {
+          duration: 100
+        }
+      },
+      resize: {
+        animation: {
+          duration: 0
+        }
+      },
+      show: {
+        animations: {
+          y: {
+            from: 0,
+            duration: 600,
+            easing: 'easeOutQuart'
+          }
+        }
+      },
+      hide: {
+        animations: {
+          y: {
+            to: function(ctx) {
+              return ctx.chart.chartArea ? ctx.chart.chartArea.bottom : 0;
+            },
+            duration: 400,
+            easing: 'easeInQuart'
+          },
+          backgroundColor: {
+            to: 'rgba(0, 0, 0, 0)',
+            duration: 300,
+            easing: 'easeInSine'
+          }
+        }
+      }
     },
     layout: {
       padding: {
@@ -337,24 +504,20 @@ const TimelineChart = ({ portfolioData, theme }) => {
     scales: {
       x: {
         ticks: {
-          color: '#d0d0d0',
+          color: '#b5b5b5',
           font: {
-            size: 14,
+            size: 16,
             family: "'Inter', sans-serif",
             weight: '600'
           },
-          maxTicksLimit: 8,
+          maxTicksLimit: 12,
           padding: 12
         },
         grid: {
-          display: true,
-          color: 'rgba(208, 208, 208, 0.1)',
-          lineWidth: 1
+          display: false
         },
         border: {
-          display: true,
-          color: 'rgba(208, 208, 208, 0.3)',
-          width: 2
+          display: false
         },
         title: {
           display: false
@@ -362,9 +525,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
       },
       y: {
         ticks: {
-          color: '#d0d0d0',
+          color: '#b5b5b5',
           font: {
-            size: 14,
+            size: 16,
             family: "'Inter', sans-serif",
             weight: '600'
           },
@@ -379,14 +542,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
           }
         },
         grid: {
-          display: true,
-          color: 'rgba(208, 208, 208, 0.1)',
-          lineWidth: 1
+          display: false
         },
         border: {
-          display: true,
-          color: 'rgba(208, 208, 208, 0.3)',
-          width: 2
+          display: false
         },
         title: {
           display: false
@@ -435,13 +594,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
       }}>
       <div style={{
         position: 'relative',
-        marginBottom: '1rem'
+        marginBottom: '3.5rem',
+        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
         {/* Controles y Leyenda */}
         <div style={{
           position: 'absolute',
           top: '0',
-          right: '60px', // Espacio para el eje Y
+          left: '0', // Mover a la izquierda
           display: 'flex',
           alignItems: 'center',
           gap: '1rem',
@@ -450,110 +610,194 @@ const TimelineChart = ({ portfolioData, theme }) => {
           fontWeight: '600',
           zIndex: 10
         }}>
-          {/* Botones de control */}
+          {/* Botones de control mejorados */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            marginRight: '1rem'
+            gap: '10px',
+            marginRight: '1.5rem',
+            background: 'rgba(0, 0, 0, 0.4)',
+            borderRadius: '14px',
+            padding: '6px',
+            border: '2px solid rgba(255, 255, 255, 0.2)',
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)'
           }}>
-            {/* Toggle para mostrar/ocultar Total Invested */}
-            {viewMode === 'both' && (
+            {/* Selector de modo de vista con toggle fluido */}
+            <div style={{
+              position: 'relative',
+              display: 'flex',
+              background: 'transparent',
+              borderRadius: '10px',
+              padding: '0'
+            }}>
               <button
-                onClick={() => setShowTotalInvested(!showTotalInvested)}
+                onClick={() => setViewMode('both')}
                 style={{
-                  background: showTotalInvested ? 'rgba(208, 208, 208, 0.2)' : 'transparent',
-                  border: `1px solid rgba(208, 208, 208, 0.4)`,
-                  borderRadius: '4px',
-                  padding: '4px 8px',
-                  color: '#e5e5e5',
-                  fontSize: '11px',
+                  background: viewMode === 'both' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: viewMode === 'both' 
+                    ? '2px solid rgba(34, 197, 94, 0.7)' 
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '10px',
+                  padding: '8px 14px',
+                  color: viewMode === 'both' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
                   fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transform: viewMode === 'both' ? 'scale(1.02)' : 'scale(1)',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: viewMode === 'both' 
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
+                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.opacity = '0.8';
+                  if (viewMode !== 'both') {
+                    e.target.style.color = '#ffffff';
+                    e.target.style.transform = 'scale(1.03)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.15)';
+                    e.target.style.boxShadow = '0 4px 16px rgba(255, 255, 255, 0.1)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.opacity = '1';
+                  if (viewMode !== 'both') {
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                  }
                 }}
               >
-                {showTotalInvested ? 'Hide' : 'Show'} Invested
+                Full View
               </button>
-            )}
+              
+              <button
+                onClick={() => setViewMode('balance')}
+                style={{
+                  background: viewMode === 'balance' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: viewMode === 'balance' 
+                    ? '2px solid rgba(34, 197, 94, 0.7)' 
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '10px',
+                  padding: '8px 14px',
+                  color: viewMode === 'balance' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transform: viewMode === 'balance' ? 'scale(1.02)' : 'scale(1)',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: viewMode === 'balance' 
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
+                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  if (viewMode !== 'balance') {
+                    e.target.style.color = '#ffffff';
+                    e.target.style.transform = 'scale(1.03)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.15)';
+                    e.target.style.boxShadow = '0 4px 16px rgba(255, 255, 255, 0.1)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (viewMode !== 'balance') {
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                  }
+                }}
+              >
+                P&L View
+              </button>
+            </div>
             
-            {/* Toggle para cambiar entre modos */}
-            <button
-              onClick={() => setViewMode(viewMode === 'both' ? 'balance' : 'both')}
-              style={{
-                background: viewMode === 'balance' ? 'rgba(34, 197, 94, 0.2)' : 'transparent',
-                border: `1px solid ${viewMode === 'balance' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(208, 208, 208, 0.4)'}`,
-                borderRadius: '4px',
-                padding: '4px 8px',
-                color: viewMode === 'balance' ? '#22c55e' : '#e5e5e5',
-                fontSize: '11px',
-                fontFamily: "'Inter', sans-serif",
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                if (viewMode === 'balance') {
-                  e.target.style.background = 'rgba(34, 197, 94, 0.3)';
-                  e.target.style.borderColor = 'rgba(34, 197, 94, 0.6)';
-                } else {
-                  e.target.style.background = 'rgba(208, 208, 208, 0.3)';
-                  e.target.style.borderColor = 'rgba(208, 208, 208, 0.6)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (viewMode === 'balance') {
-                  e.target.style.background = 'rgba(34, 197, 94, 0.2)';
-                  e.target.style.borderColor = 'rgba(34, 197, 94, 0.4)';
-                } else {
-                  e.target.style.background = 'transparent';
-                  e.target.style.borderColor = 'rgba(208, 208, 208, 0.4)';
-                }
-              }}
-            >
-              {viewMode === 'both' ? 'Balance Only' : 'Full View'}
-            </button>
+            {/* Botón para mostrar/ocultar Total Invested - solo en modo 'both' */}
+            {viewMode === 'both' && (
+              <>
+                <div style={{
+                  width: '1px',
+                  height: '20px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  margin: '0 4px'
+                }}></div>
+                <button
+                  onClick={() => setShowTotalInvested(!showTotalInvested)}
+                  style={{
+                    background: showTotalInvested 
+                      ? 'rgba(255, 255, 255, 0.15)' 
+                      : 'rgba(255, 255, 255, 0.05)',
+                    border: showTotalInvested 
+                      ? '1px solid rgba(255, 255, 255, 0.3)' 
+                      : '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    padding: '7px 12px',
+                    color: showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)',
+                    fontSize: '12px',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: showTotalInvested 
+                      ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
+                      : '0 1px 4px rgba(0, 0, 0, 0.1)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.background = showTotalInvested 
+                      ? 'rgba(255, 255, 255, 0.2)' 
+                      : 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.color = '#ffffff';
+                    e.target.style.transform = 'scale(1.02)';
+                    e.target.style.boxShadow = '0 4px 16px rgba(255, 255, 255, 0.15)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.background = showTotalInvested 
+                      ? 'rgba(255, 255, 255, 0.15)' 
+                      : 'rgba(255, 255, 255, 0.05)';
+                    e.target.style.color = showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)';
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.boxShadow = showTotalInvested 
+                      ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
+                      : '0 1px 4px rgba(0, 0, 0, 0.1)';
+                  }}
+                >
+                  <span style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: showTotalInvested 
+                      ? 'linear-gradient(45deg, rgba(200, 200, 200, 1), rgba(255, 255, 255, 0.9))' 
+                      : 'rgba(120, 120, 120, 0.5)',
+                    transition: 'all 0.3s ease',
+                    boxShadow: showTotalInvested 
+                      ? '0 2px 8px rgba(255, 255, 255, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5)' 
+                      : 'none'
+                  }}></span>
+                  Invested
+                </button>
+              </>
+            )}
           </div>
           
-          {/* Leyenda dinámica según el modo */}
-          {viewMode === 'balance' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: '20px',
-                height: '2px',
-                background: 'linear-gradient(90deg, #10b981, #22c55e, #34d399)',
-                borderRadius: '1px',
-                boxShadow: '0 0 6px rgba(34, 197, 94, 0.3)'
-              }}></div>
-              <span style={{ 
-                color: '#e5e5e5', 
-                fontWeight: '600',
-                fontSize: '13px'
-              }}>Balance (P&L)</span>
-            </div>
-          ) : (
-            <>
-              {showTotalInvested && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{
-                    width: '20px',
-                    height: '2px',
-                    background: 'repeating-linear-gradient(to right, rgba(200, 200, 200, 0.8) 0px, rgba(200, 200, 200, 0.8) 3px, transparent 3px, transparent 6px)',
-                    borderRadius: '1px'
-                  }}></div>
-                  <span style={{ 
-                    color: '#e5e5e5', 
-                    fontWeight: '600',
-                    fontSize: '13px'
-                  }}>Total Invested</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Leyenda dinámica - solo muestra elementos activos */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            {viewMode === 'both' && (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                transition: 'all 0.3s ease'
+              }}>
                 <div style={{
                   width: '20px',
                   height: '2px',
@@ -562,22 +806,65 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   boxShadow: '0 0 6px rgba(34, 197, 94, 0.3)'
                 }}></div>
                 <span style={{ 
-                  color: '#e5e5e5', 
+                  color: '#f5f5f5', 
                   fontWeight: '600',
-                  fontSize: '13px'
+                  fontSize: '15px'
                 }}>Market Value</span>
               </div>
-            </>
-          )}
+            )}
+            
+            {viewMode === 'both' && showTotalInvested && (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                transition: 'all 0.3s ease'
+              }}>
+                <div style={{
+                  width: '20px',
+                  height: '2px',
+                  background: 'repeating-linear-gradient(to right, rgba(200, 200, 200, 0.8) 0px, rgba(200, 200, 200, 0.8) 3px, transparent 3px, transparent 6px)',
+                  borderRadius: '1px'
+                }}></div>
+                <span style={{ 
+                  color: '#f5f5f5', 
+                  fontWeight: '600',
+                  fontSize: '15px'
+                }}>Total Invested</span>
+              </div>
+            )}
+            
+            {viewMode === 'balance' && (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                transition: 'all 0.3s ease'
+              }}>
+                <div style={{
+                  width: '20px',
+                  height: '2px',
+                  background: 'linear-gradient(90deg, #10b981, #22c55e, #34d399)',
+                  borderRadius: '1px',
+                  boxShadow: '0 0 6px rgba(34, 197, 94, 0.3)'
+                }}></div>
+                <span style={{ 
+                  color: '#f5f5f5', 
+                  fontWeight: '600',
+                  fontSize: '15px'
+                }}>Balance (P&L)</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
       
       {/* Contenedor del gráfico expandido */}
       <div style={{ 
-        width: '100%', // Mismo ancho que la tabla
-        marginLeft: '0', // Sin extensión lateral
-        height: '700px',
-        minHeight: '700px', 
+        width: 'calc(100% + 140px)', // Extender más para mejor alineación
+        marginLeft: '-50px', // Ajustado para evitar que se corten los números
+        height: '800px', // Aumentar altura
+        minHeight: '800px', 
         position: 'relative',
         background: 'transparent',
         borderRadius: '0',

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title } from 'chart.js';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Filler } from 'chart.js';
 
 // Import modular components
 import KPIGrid from './components/KPIGrid';
@@ -9,7 +9,7 @@ import TimelineChart from './components/TimelineChart';
 import PriceTicker from './components/PriceTicker';
 
 // Register Chart.js components
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Filler);
 
 // ZigzagLogo Component
 const ZigzagLogo = ({
