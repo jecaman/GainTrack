@@ -68,6 +68,16 @@
   - Comprimir datos en cache
   - Implementar cache persistente
 
+### UI Improvements (Post optimización API)
+- [ ] **Cambiar formato moneda y flecha**
+  - Mejorar visualización de monedas en la aplicación
+  - Actualizar iconografía de flechas para indicadores
+
+- [ ] **Mejoras tabla AssetLeaderboard**
+  - Añadir barra de progreso visual en la columna de porcentaje (%)
+  - Agregar nueva columna "Avg Cost" con precio medio de compra
+  - Mejorar visualización de datos tabulares
+
 ### Features
 - [ ] **Filtro de assets por valor mínimo**
   - Por defecto ocultar assets por debajo de X€ (ej: 5€)

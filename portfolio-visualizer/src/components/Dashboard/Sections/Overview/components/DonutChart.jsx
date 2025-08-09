@@ -53,7 +53,7 @@ const DonutChart = ({ portfolioData, theme }) => {
       },
       tooltip: {
         backgroundColor: 'rgba(17, 24, 39, 0.95)',
-        titleColor: '#f9fafb',
+        titleColor: '#e5e5e5',
         bodyColor: '#d1d5db',
         borderColor: theme.accentSecondary,
         borderWidth: 1,

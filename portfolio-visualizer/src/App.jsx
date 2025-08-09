@@ -100,7 +100,8 @@ function App() {
     <div style={{ 
       position: 'relative', 
       minHeight: '100vh',
-      overflow: 'hidden'
+      overflowX: 'hidden', // Solo ocultar scroll horizontal
+      overflowY: 'auto' // Permitir scroll vertical
     }}>
       {/* Form Page */}
       <div style={{

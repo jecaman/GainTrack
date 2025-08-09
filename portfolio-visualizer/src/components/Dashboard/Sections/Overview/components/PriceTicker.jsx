@@ -1,4 +1,5 @@
 import { formatEuropeanCurrency, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
+import { getAssetLogo } from '../../../../../utils/krakenAssets';
 
 const PriceTicker = ({ portfolioData, theme }) => {
   // Frases profesionales para mostrar intercaladas
@@ -66,41 +67,40 @@ const PriceTicker = ({ portfolioData, theme }) => {
 
   // Procesar datos del portfolio para extraer precios
   const getTickerData = () => {
-    if (!portfolioData?.portfolio_data) return [];
+    let ownedAssets = [];
     
-    // Assets que ya tienes en el portfolio - ORDENADOS por valor (menor valor primero)
-    const ownedAssets = portfolioData.portfolio_data
-      .filter(asset => asset.current_value > 0)
-      .sort((a, b) => (a.current_value || 0) - (b.current_value || 0)) // Menor valor primero
-      .map(asset => ({
-        symbol: asset.asset,
-        price: asset.current_price || 0,
-        isOwned: true,
-        // Simular cambio 24h por ahora - después conectar con API real
-        change24h: ((Math.random() - 0.5) * 10).toFixed(2),
-        changePercent24h: ((Math.random() - 0.5) * 8).toFixed(1)
-      }));
-
-    // Si tienes menos de 8, rellenar con activos populares
-    const ownedSymbols = new Set(ownedAssets.map(asset => asset.symbol));
-    const popularToAdd = [];
-
-    if (ownedAssets.length < 8) {
-      const missingCount = 8 - ownedAssets.length;
-      const popular = popularAssets
-        .filter(asset => !ownedSymbols.has(asset.symbol))
-        .slice(0, missingCount)
+    // Si hay portfolio data, procesarla
+    if (portfolioData?.portfolio_data) {
+      // Assets que ya tienes en el portfolio - ORDENADOS por valor (menor valor primero)
+      ownedAssets = portfolioData.portfolio_data
+        .filter(asset => asset.current_value > 0)
+        .sort((a, b) => (a.current_value || 0) - (b.current_value || 0)) // Menor valor primero
         .map(asset => ({
-          symbol: asset.symbol,
-          price: asset.price,
-          isOwned: false,
-          // Simular cambio 24h para activos populares
+          symbol: asset.asset,
+          price: asset.current_price || 0,
+          isOwned: true,
+          // Simular cambio 24h por ahora - después conectar con API real
           change24h: ((Math.random() - 0.5) * 10).toFixed(2),
           changePercent24h: ((Math.random() - 0.5) * 8).toFixed(1)
         }));
-      
-      popularToAdd.push(...popular);
     }
+
+    // Siempre asegurar que hay al menos activos populares
+    const ownedSymbols = new Set(ownedAssets.map(asset => asset.symbol));
+    const targetCount = Math.max(8, ownedAssets.length); // Al menos 8 activos
+    const missingCount = targetCount - ownedAssets.length;
+    
+    const popularToAdd = popularAssets
+      .filter(asset => !ownedSymbols.has(asset.symbol))
+      .slice(0, missingCount)
+      .map(asset => ({
+        symbol: asset.symbol,
+        price: asset.price,
+        isOwned: false,
+        // Simular cambio 24h para activos populares
+        change24h: ((Math.random() - 0.5) * 10).toFixed(2),
+        changePercent24h: ((Math.random() - 0.5) * 8).toFixed(1)
+      }));
 
     // PRIMERO los populares, DESPUÉS los que tienes (menor valor primero)
     return [...popularToAdd, ...ownedAssets];
@@ -116,10 +116,10 @@ const PriceTicker = ({ portfolioData, theme }) => {
   })));
   console.log('PriceTicker - Ticker data:', tickerData);
 
-  if (tickerData.length === 0) return null;
+  // Ya no retornamos null - siempre renderizamos el ticker
 
-  // Scroll infinito súper lento - sin pausas
-  const animationDuration = 450; // 7.5 minutos por ciclo completo
+  // Scroll infinito ultra lento - bucle perfecto
+  const animationDuration = 2400; // 40 minutos por ciclo (se repite infinitamente)
 
   // Renderizar una frase profesional
   const renderQuote = (index) => {
@@ -136,7 +136,7 @@ const PriceTicker = ({ portfolioData, theme }) => {
           fontSize: '14px',
           fontFamily: "'Inter', sans-serif",
           fontStyle: 'italic',
-          color: theme.textSecondary
+          color: '#d0d0d0'
         }}
       >
         <span>"{quote}"</span>
@@ -162,10 +162,34 @@ const PriceTicker = ({ portfolioData, theme }) => {
             fontFamily: "'Inter', sans-serif"
           }}
         >
+          {/* Logo */}
+          {getAssetLogo(asset.symbol) ? (
+            <img 
+              src={getAssetLogo(asset.symbol, 'small')} 
+              alt={asset.symbol}
+              style={{
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                flexShrink: 0
+              }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '24px',
+              height: '24px',
+              flexShrink: 0
+            }} />
+          )}
+
           {/* Symbol */}
           <span style={{
             fontWeight: '600',
-            color: asset.isOwned ? theme.accentPrimary : theme.textSecondary,
+            color: asset.isOwned ? theme.accentPrimary : '#d0d0d0',
             textTransform: 'uppercase',
             opacity: asset.isOwned ? 1 : 0.7
           }}>
@@ -174,8 +198,8 @@ const PriceTicker = ({ portfolioData, theme }) => {
 
           {/* Price */}
           <span style={{
-            fontWeight: '500',
-            color: asset.isOwned ? theme.textPrimary : theme.textSecondary,
+            fontWeight: '900',
+            color: asset.isOwned ? theme.textPrimary : '#d0d0d0',
             opacity: asset.isOwned ? 1 : 0.8
           }}>
             {formatEuropeanCurrency(asset.price)}
@@ -183,9 +207,9 @@ const PriceTicker = ({ portfolioData, theme }) => {
 
           {/* 24h Change */}
           <span style={{
-            fontWeight: '500',
-            color: isPositive ? '#10b981' : '#e11d48',
-            opacity: asset.isOwned ? 1 : 0.7
+            fontWeight: '400',
+            fontStyle: 'italic',
+            color: isPositive ? '#00FF99' : '#ef4444'
           }}>
             {isPositive ? '+' : ''}{formatEuropeanPercentage(parseFloat(asset.changePercent24h))} {isPositive ? '↗' : '↘'}
           </span>
@@ -196,7 +220,7 @@ const PriceTicker = ({ portfolioData, theme }) => {
 
   return (
     <div style={{
-      height: '40px',
+      height: '50px',
       width: '100%',
       overflow: 'hidden',
       background: 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.03) 100%)',
@@ -204,10 +228,10 @@ const PriceTicker = ({ portfolioData, theme }) => {
       marginBottom: '1rem',
       marginTop: '-10px',
       position: 'absolute',
-      top: '-20px', // Cambia este valor: -10px, -20px, -30px, etc.
-      left: '-4rem', // Compensar el padding del contenedor
-      right: '-4rem', // Compensar el padding del contenedor
-      width: 'calc(100% + 8rem)', // Ancho total más el padding
+      top: '-28px', // Ajustado bajándolo 2px
+      left: '-8rem', // Extender mucho más a la izquierda
+      right: '-8rem', // Extender mucho más a la derecha
+      width: 'calc(100% + 16rem)', // Ancho total cubriendo toda la pantalla
       zIndex: 10,
       display: 'flex',
       alignItems: 'center'
@@ -242,17 +266,21 @@ const PriceTicker = ({ portfolioData, theme }) => {
         animationPlayState: 'running',
         willChange: 'transform'
       }}>
-        {/* Ciclo 1: Frase + todos los activos */}
-        {renderQuote(0)}
-        {renderAllAssets()}
+        {/* Primer conjunto completo */}
+        {Array.from({ length: 10 }, (_, i) => (
+          <div key={`set1-${i}`} style={{ display: 'flex', alignItems: 'center' }}>
+            {renderQuote(i)}
+            {renderAllAssets()}
+          </div>
+        ))}
         
-        {/* Ciclo 2: Frase + todos los activos */}
-        {renderQuote(1)}
-        {renderAllAssets()}
-        
-        {/* Ciclo 3: Frase + todos los activos */}
-        {renderQuote(2)}
-        {renderAllAssets()}
+        {/* Segundo conjunto idéntico para bucle perfecto */}
+        {Array.from({ length: 10 }, (_, i) => (
+          <div key={`set2-${i}`} style={{ display: 'flex', alignItems: 'center' }}>
+            {renderQuote(i)}
+            {renderAllAssets()}
+          </div>
+        ))}
       </div>
 
       <style>

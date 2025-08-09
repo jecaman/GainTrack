@@ -130,7 +130,7 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
             const value = context.parsed || 0;
             const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
             const percentage = total > 0 ? ((value / total) * 100).toFixed(2) : '0.00';
-            return `${label}: ${symbol}${value.toFixed(2)} (${percentage}%)`;
+            return `${label}: €${value.toFixed(2)} (${percentage}%)`;
           }
         }
       }
@@ -272,22 +272,22 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
                     <div className="text-sm text-gray-400">Total Assets</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-400 font-mono">{symbol}{stats.totalInvested.toFixed(2)}</div>
+                    <div className="text-2xl font-bold text-blue-400 font-mono">€{stats.totalInvested.toFixed(2)}</div>
                     <div className="text-sm text-gray-400">Total Invested</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-400 font-mono">{symbol}{stats.totalValue.toFixed(2)}</div>
+                    <div className="text-2xl font-bold text-green-400 font-mono">€{stats.totalValue.toFixed(2)}</div>
                     <div className="text-sm text-gray-400">Total Value</div>
                   </div>
                   <div className="text-center">
                     <div className={`text-2xl font-bold font-mono ${stats.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {symbol}{stats.totalProfit.toFixed(2)}
+                      {stats.totalProfit >= 0 ? '+' : ''}€{stats.totalProfit.toFixed(2)}
                     </div>
                     <div className="text-sm text-gray-400">Total Profit</div>
                   </div>
                   <div className="text-center">
                     <div className={`text-2xl font-bold font-mono ${stats.totalProfitPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {stats.totalProfitPercent.toFixed(2)}%
+                      {stats.totalProfitPercent >= 0 ? '+' : ''}{stats.totalProfitPercent.toFixed(2)}%
                     </div>
                     <div className="text-sm text-gray-400">Profit %</div>
                   </div>
@@ -313,7 +313,7 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
                     <div className="text-sm text-gray-400">Price Change</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-400 font-mono">{symbol}{stats.feesPaid.toFixed(2)}</div>
+                    <div className="text-2xl font-bold text-orange-400 font-mono">€{stats.feesPaid.toFixed(2)}</div>
                     <div className="text-sm text-gray-400">Fees Paid</div>
                   </div>
                   <div className="text-center">
@@ -356,16 +356,16 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
                     <tr key={row.asset} className="hover:bg-gray-800 transition-colors duration-200">
                       <td className="px-3 py-2 text-sm font-medium text-cyan-400">{row.asset}</td>
                       <td className="px-3 py-2 text-sm text-right">{row.portfolioPercent.toFixed(2)}%</td>
-                      <td className="px-3 py-2 text-sm text-right">{symbol}{row.fiatValue.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-sm text-right">€{row.fiatValue.toFixed(2)}</td>
                       <td className="px-3 py-2 text-sm text-right">{row.nativeValue.toFixed(4)} {row.nativeSymbol}</td>
-                      <td className={`px-3 py-2 text-sm text-right font-semibold ${
+                      <td className={`px-3 py-2 text-sm text-right font-black ${
                         row.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        {row.netProfit >= 0 ? '+' : ''}{symbol}{row.netProfit.toFixed(2)}
+                      }`} style={{ color: row.netProfit >= 0 ? '#00FF99' : '#ef4444' }}>
+                        {row.netProfit >= 0 ? '+' : ''}€{row.netProfit.toFixed(2)}
                       </td>
-                      <td className={`px-3 py-2 text-sm text-right font-semibold ${
+                      <td className={`px-3 py-2 text-sm text-right font-light italic ${
                         row.netProfitPercent >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}>
+                      }`} style={{ color: row.netProfitPercent >= 0 ? '#00FF99' : '#ef4444' }}>
                         {row.netProfitPercent >= 0 ? '+' : ''}{row.netProfitPercent.toFixed(2)}%
                       </td>
                     </tr>
@@ -440,19 +440,19 @@ const AssetAnalysisSection = ({ portfolioData, timeline }) => {
                         </tr>
                         <tr key={`${index}-avg`} className="hover:bg-gray-800 transition-colors duration-200">
                           <td className="px-4 py-3 text-sm">Average Cost</td>
-                          <td className="px-4 py-3 text-sm text-right">{symbol}{asset.average_cost}</td>
+                          <td className="px-4 py-3 text-sm text-right">€{asset.average_cost}</td>
                         </tr>
                         <tr key={`${index}-current`} className="hover:bg-gray-800 transition-colors duration-200">
                           <td className="px-4 py-3 text-sm">Current Price</td>
-                          <td className="px-4 py-3 text-sm text-right">{symbol}{asset.current_price}</td>
+                          <td className="px-4 py-3 text-sm text-right">€{asset.current_price}</td>
                         </tr>
                         <tr key={`${index}-invested`} className="hover:bg-gray-800 transition-colors duration-200">
                           <td className="px-4 py-3 text-sm">Total Invested</td>
-                          <td className="px-4 py-3 text-sm text-right">{symbol}{asset.total_invested}</td>
+                          <td className="px-4 py-3 text-sm text-right">€{asset.total_invested}</td>
                         </tr>
                         <tr key={`${index}-value`} className="hover:bg-gray-800 transition-colors duration-200">
                           <td className="px-4 py-3 text-sm">Current Value</td>
-                          <td className="px-4 py-3 text-sm text-right">{symbol}{asset.current_value}</td>
+                          <td className="px-4 py-3 text-sm text-right">€{asset.current_value}</td>
                         </tr>
                         <tr key={`${index}-pnl`} className="hover:bg-gray-800 transition-colors duration-200">
                           <td className="px-4 py-3 text-sm">Profit/Loss (€)</td>

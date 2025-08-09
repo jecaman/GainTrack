@@ -34,7 +34,7 @@ const Header = ({
       button.style.borderColor = theme.borderColor + '60';
       button.style.background = 'transparent';
       button.style.transform = 'translateY(18px) rotate(0deg)';
-      svg.style.color = 'white';
+      svg.style.color = '#e5e5e5';
     }
   };
 
@@ -220,7 +220,7 @@ const Header = ({
                 padding: '0'
               }}
             >
-              <RotateCcw size={12} color="white" />
+              <RotateCcw size={12} color="#e5e5e5" />
             </button>
           </div>
         </div>

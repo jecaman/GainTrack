@@ -128,6 +128,7 @@ def generate_kraken_pairs_dynamically(asset):
 
 def obtener_precios_diarios_cached(asset, start_date, end_date):
     """Obtiene precios históricos con cache público optimizado"""
+    api_start = time.time()
     global public_kraken_api
     
     # Si el asset está en la lista de deslistados, no intentar buscarlo
@@ -135,13 +136,17 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
         print(f"⚠️ Asset {asset} está en lista de deslistados, saltando...")
         return {}
     
-    # Generar clave de cache
+    # TIMING: Cache lookup
+    cache_start = time.time()
     cache_key = get_public_cache_key("ohlc", asset, start_date, end_date)
-    
-    # Intentar obtener del cache primero
     cached_data = get_cached_public_data(cache_key)
+    cache_time = time.time() - cache_start
+    
     if cached_data is not None:
+        print(f"💾 Cache HIT para {asset} ({cache_time:.3f}s)")
         return cached_data
+    
+    print(f"🌐 Cache MISS para {asset}, llamando API...")
     
     # Si no está en cache, obtener de Kraken
     if public_kraken_api is None:
@@ -150,16 +155,21 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
             return {}
     
     try:
-        # Generar par dinámicamente
+        # TIMING: Pair generation
+        pair_start = time.time()
         kraken_pair = generate_kraken_pairs_dynamically(asset)
+        pair_time = time.time() - pair_start
+        
         if not kraken_pair:
-            print(f"❌ No se pudo generar par para {asset}")
+            print(f"❌ No se pudo generar par para {asset} ({pair_time:.3f}s)")
             return {}
 
         print(f"📡 Obteniendo OHLC para {asset} usando par: {kraken_pair}")
         
-        # Llamar a la API de Kraken para obtener OHLC
+        # TIMING: API call
+        api_call_start = time.time()
         api_result = public_kraken_api.get_ohlc_data(kraken_pair, interval=1440, ascending=True)
+        api_call_time = time.time() - api_call_start
         
         # La API puede devolver una tupla (ohlc_data, last_timestamp)
         if isinstance(api_result, tuple):
@@ -168,10 +178,11 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
             ohlc_data = api_result
         
         if ohlc_data is None or ohlc_data.empty:
-            print(f"❌ No se obtuvieron datos OHLC para {asset}")
+            print(f"❌ No se obtuvieron datos OHLC para {asset} ({api_call_time:.3f}s)")
             return {}
         
-        # Convertir a diccionario de fechas -> precios
+        # TIMING: Data processing
+        processing_start = time.time()
         precios_diarios = {}
         for index, row in ohlc_data.iterrows():
             fecha = index.date()
@@ -179,12 +190,19 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
                 precio_cierre = float(row['close'])
                 precios_diarios[fecha] = precio_cierre
         
-        primera_fecha_precios = min(precios_diarios.keys())
-        ultima_fecha_precios = max(precios_diarios.keys())
-        print(f"   {asset}: {len(precios_diarios)} precios desde {primera_fecha_precios} hasta {ultima_fecha_precios}")
+        processing_time = time.time() - processing_start
+        
+        primera_fecha_precios = min(precios_diarios.keys()) if precios_diarios else None
+        ultima_fecha_precios = max(precios_diarios.keys()) if precios_diarios else None
+        
+        api_total_time = time.time() - api_start
+        print(f"   ✅ {asset}: {len(precios_diarios)} precios ({primera_fecha_precios} → {ultima_fecha_precios}) en {api_total_time:.3f}s")
+        print(f"      ├─ Pair generation: {pair_time:.3f}s")
+        print(f"      ├─ API call: {api_call_time:.3f}s")
+        print(f"      └─ Data processing: {processing_time:.3f}s")
         
         # CRÍTICO: Verificar si los precios llegan hasta hoy
-        if ultima_fecha_precios != end_date:
+        if ultima_fecha_precios and ultima_fecha_precios != end_date:
             print(f"   ⚠️ PROBLEMA: {asset} precios solo hasta {ultima_fecha_precios}, se solicitó hasta {end_date}")
         
         # Cachear el resultado
@@ -193,11 +211,87 @@ def obtener_precios_diarios_cached(asset, start_date, end_date):
         return precios_diarios
 
     except Exception as e:
-        print(f"❌ Error obteniendo precios para {asset}: {e}")
+        api_total_time = time.time() - api_start
+        print(f"❌ Error obteniendo precios para {asset}: {e} ({api_total_time:.3f}s)")
         return {}
 
-def get_public_kraken_prices_from_pairs(assets, asset_to_pair):
-    """Obtiene precios actuales usando pares específicos"""
+async def get_single_asset_price_async(session, asset):
+    """Obtiene precio de un solo asset de forma asíncrona"""
+    if asset in FIAT_ASSETS:
+        return asset, 1.0
+    
+    # Generar par dinámicamente
+    kraken_pair = generate_kraken_pairs_dynamically(asset)
+    if not kraken_pair:
+        return asset, 0.0
+    
+    try:
+        url = f"https://api.kraken.com/0/public/Ticker?pair={kraken_pair}"
+        
+        async with session.get(url, timeout=10) as response:
+            data = await response.json()
+            
+            if 'result' in data and data['result']:
+                # La respuesta de Kraken puede tener el nombre del par ligeramente diferente
+                pair_data = next(iter(data['result'].values()))
+                price = float(pair_data['c'][0])  # Precio de cierre actual
+                return asset, price
+            else:
+                return asset, 0.0
+                
+    except Exception as e:
+        print(f"❌ Error obteniendo precio para {asset}: {e}")
+        return asset, 0.0
+
+async def get_public_kraken_prices_from_pairs_async(assets, asset_to_pair):
+    """Obtiene precios actuales usando pares específicos - VERSION ASYNC"""
+    if not assets:
+        return {}
+    
+    try:
+        import aiohttp
+        
+        # Crear semáforo para rate limiting (máximo 4 requests concurrentes)
+        semaphore = asyncio.Semaphore(4)
+        
+        async def rate_limited_request(session, asset):
+            async with semaphore:
+                # Small delay for rate limiting
+                await asyncio.sleep(0.1)
+                return await get_single_asset_price_async(session, asset)
+        
+        async with aiohttp.ClientSession() as session:
+            # Crear tasks para todos los assets
+            tasks = []
+            for asset in assets:
+                task = rate_limited_request(session, asset)
+                tasks.append(task)
+            
+            # Ejecutar todas las requests en paralelo
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Procesar resultados
+            prices = {}
+            for result in results:
+                if isinstance(result, Exception):
+                    print(f"❌ Exception en request paralelo: {result}")
+                    continue
+                
+                asset, price = result
+                prices[asset] = price
+            
+            return prices
+        
+    except ImportError:
+        # Fallback a versión síncrona si aiohttp no está disponible
+        print("⚠️ aiohttp no disponible, usando versión síncrona")
+        return get_public_kraken_prices_from_pairs_sync(assets, asset_to_pair)
+    except Exception as e:
+        print(f"❌ Error en get_public_kraken_prices_from_pairs_async: {e}")
+        return {}
+
+def get_public_kraken_prices_from_pairs_sync(assets, asset_to_pair):
+    """Obtiene precios actuales usando pares específicos - VERSION SYNC (fallback)"""
     if not assets:
         return {}
     
@@ -216,7 +310,7 @@ def get_public_kraken_prices_from_pairs(assets, asset_to_pair):
                 continue
             
             try:
-                time.sleep(0.5)  # Rate limiting
+                time.sleep(0.2)  # Rate limiting
                 
                 url = f"https://api.kraken.com/0/public/Ticker?pair={kraken_pair}"
                 response = requests.get(url, timeout=10)
@@ -237,6 +331,40 @@ def get_public_kraken_prices_from_pairs(assets, asset_to_pair):
         
     except Exception as e:
         return {}
+
+def get_public_kraken_prices_from_pairs(assets, asset_to_pair):
+    """Wrapper que decide entre async y sync"""
+    start_time = time.time()
+    try:
+        print(f"📡 Iniciando obtención de precios para {len(assets)} assets...")
+        
+        # Intentar ejecutar versión async
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Si ya hay un loop corriendo, crear uno nuevo en thread
+            import concurrent.futures
+            print(f"🔄 Usando ThreadPoolExecutor para async...")
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, get_public_kraken_prices_from_pairs_async(assets, asset_to_pair))
+                result = future.result()
+        else:
+            # Si no hay loop, usar asyncio.run
+            print(f"🔄 Usando asyncio.run...")
+            result = asyncio.run(get_public_kraken_prices_from_pairs_async(assets, asset_to_pair))
+        
+        total_time = time.time() - start_time
+        successful_prices = len([p for p in result.values() if p > 0])
+        print(f"⏱️ TIMING - Precios obtenidos: {total_time:.3f}s ({successful_prices}/{len(assets)} exitosos)")
+        return result
+        
+    except Exception as e:
+        print(f"⚠️ Error ejecutando versión async, fallback a sync: {e}")
+        fallback_start = time.time()
+        result = get_public_kraken_prices_from_pairs_sync(assets, asset_to_pair)
+        fallback_time = time.time() - fallback_start
+        successful_prices = len([p for p in result.values() if p > 0])
+        print(f"⏱️ TIMING - Fallback sync: {fallback_time:.3f}s ({successful_prices}/{len(assets)} exitosos)")
+        return result
 
 # =============================================================================
 # FUNCIONES DE PROCESAMIENTO
@@ -429,10 +557,12 @@ def create_portfolio_data_from_trades(trades_df, balances, current_prices):
 
 def calcular_holdings_diarios_csv(trades_df):
     """Calcula los holdings diarios desde el primer trade hasta HOY"""
+    start_time = time.time()
     if trades_df.empty:
         return []
     
-    # Ordenar trades por fecha
+    # TIMING: Preparación inicial
+    prep_start = time.time()
     trades_df = trades_df.sort_values('time').copy()
     
     # Obtener rango de fechas - SIEMPRE hasta HOY
@@ -455,23 +585,41 @@ def calcular_holdings_diarios_csv(trades_df):
             asset = pair
         assets_unicos.add(asset)
     
-    # Obtener precios históricos para todos los assets
+    prep_time = time.time() - prep_start
+    print(f"⏱️ TIMING - Preparación timeline: {prep_time:.3f}s")
+    
+    # TIMING: Obtención de precios históricos
+    historical_prices_start = time.time()
     precios_historicos = {}
+    print(f"📡 Obteniendo precios históricos para {len(assets_unicos)} assets...")
+    
     for i, asset in enumerate(assets_unicos):
+        asset_start = time.time()
         if i > 0:
-            time.sleep(2)
+            time.sleep(0.5)
         
         precios = obtener_precios_diarios_cached(asset, fecha_minima, today)
+        asset_time = time.time() - asset_start
+        
         if precios:
             precios_historicos[asset] = precios
+            print(f"   ✅ {asset}: {len(precios)} precios obtenidos en {asset_time:.3f}s")
         else:
-            print(f"⚠️ {asset}: No se pudieron obtener precios históricos")
+            print(f"   ⚠️ {asset}: No se pudieron obtener precios históricos ({asset_time:.3f}s)")
     
-    # Generar timeline día por día hasta HOY usando FIFO
+    historical_prices_time = time.time() - historical_prices_start
+    print(f"⏱️ TIMING - Precios históricos totales: {historical_prices_time:.3f}s")
+    
+    # TIMING: Generación de timeline día por día
+    timeline_generation_start = time.time()
     fecha_actual = fecha_minima
     timeline = []
     holdings_por_asset = {}  # {asset: {'buy_lots': [], 'total_invested': 0, 'fees': 0, 'cantidad': 0}}
     
+    days_to_process = (today - fecha_minima).days + 1
+    print(f"📅 Procesando {days_to_process} días de timeline...")
+    
+    day_count = 0
     while fecha_actual <= today:
         fecha_str = fecha_actual.strftime('%Y-%m-%d')
         
@@ -532,6 +680,15 @@ def calcular_holdings_diarios_csv(trades_df):
         
         # Avanzar al siguiente día
         fecha_actual += timedelta(days=1)
+        day_count += 1
+        
+        # Progress cada 30 días
+        if day_count % 30 == 0:
+            progress = (day_count / days_to_process) * 100
+            print(f"   📅 Progreso timeline: {progress:.1f}% ({day_count}/{days_to_process} días)")
+    
+    timeline_generation_time = time.time() - timeline_generation_start
+    print(f"⏱️ TIMING - Generación timeline: {timeline_generation_time:.3f}s")
     
     # DEBUG: Verificar rango final del timeline
     if timeline:
@@ -543,11 +700,17 @@ def calcular_holdings_diarios_csv(trades_df):
         print(f"   Total días: {len(timeline)}")
         print(f"   ¿Llega hasta hoy ({today})? {ultima_fecha == today.strftime('%Y-%m-%d')}")
     
+    total_time = time.time() - start_time
+    print(f"⏱️ TIMING - TOTAL calcular_holdings_diarios_csv: {total_time:.3f}s")
+    
     return timeline
 
 def process_trades_csv(df):
     """Procesa CSV de Trades History"""
+    start_time = time.time()
     try:
+        # TIMING: Validación de columnas
+        validation_start = time.time()
         required_columns = ['txid', 'time', 'type', 'pair', 'price', 'cost', 'fee', 'vol']
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
@@ -555,9 +718,11 @@ def process_trades_csv(df):
         
         df['time'] = pd.to_datetime(df['time'])
         trades_df = df[df['type'].isin(['buy', 'sell'])].copy()
+        validation_time = time.time() - validation_start
+        print(f"⏱️ TIMING - Validación y preparación: {validation_time:.3f}s")
         
-        
-        # Calcular balances actuales a partir de trades
+        # TIMING: Cálculo de balances
+        balance_start = time.time()
         balances = {}
         asset_to_pair = {}
         
@@ -575,16 +740,34 @@ def process_trades_csv(df):
             else:
                 balances[asset] = balances.get(asset, 0) - vol
         
-        # Obtener precios actuales
+        balance_time = time.time() - balance_start
+        print(f"⏱️ TIMING - Cálculo balances: {balance_time:.3f}s")
+        
+        # TIMING: Obtención de precios actuales
+        prices_start = time.time()
         assets_with_balance = [asset for asset, balance in balances.items() if balance > 0]
+        print(f"📡 Obteniendo precios para {len(assets_with_balance)} assets...")
         current_prices = get_public_kraken_prices_from_pairs(assets_with_balance, asset_to_pair)
+        prices_time = time.time() - prices_start
+        print(f"⏱️ TIMING - Obtención precios actuales: {prices_time:.3f}s")
         
+        # TIMING: Creación de datos de portfolio
+        portfolio_start = time.time()
         portfolio_result = create_portfolio_data_from_trades(trades_df, balances, current_prices)
+        portfolio_time = time.time() - portfolio_start
+        print(f"⏱️ TIMING - Creación portfolio: {portfolio_time:.3f}s")
         
-        # Agregar timeline al resultado
+        # TIMING: Generación de timeline
+        timeline_start = time.time()
+        print(f"📈 Generando timeline histórico...")
         timeline_data = calcular_holdings_diarios_csv(trades_df)
+        timeline_time = time.time() - timeline_start
+        print(f"⏱️ TIMING - Generación timeline: {timeline_time:.3f}s")
+        
         portfolio_result["timeline"] = timeline_data
         
+        total_time = time.time() - start_time
+        print(f"⏱️ TIMING - TOTAL process_trades_csv: {total_time:.3f}s")
         return portfolio_result
         
     except Exception as e:
@@ -592,19 +775,33 @@ def process_trades_csv(df):
 
 def process_csv_data(csv_content):
     """Procesa los datos del CSV de Kraken"""
+    start_time = time.time()
     try:
+        # TIMING: Parseo del CSV
+        parse_start = time.time()
         print(f"🔍 Parseando CSV...")
         df = pd.read_csv(io.StringIO(csv_content))
+        parse_time = time.time() - parse_start
+        print(f"⏱️ TIMING - Parseo CSV: {parse_time:.3f}s")
         print(f"🔍 CSV parseado: {df.shape[0]} filas, {df.shape[1]} columnas")
         print(f"🔍 Columnas encontradas: {list(df.columns)}")
         
         # Solo soportamos Trades CSV por ahora
         if 'txid' in df.columns and 'pair' in df.columns:
             print(f"🔍 Formato de Trades detectado, procesando...")
+            
+            # TIMING: Procesamiento de trades
+            trades_start = time.time()
             result = process_trades_csv(df)
+            trades_time = time.time() - trades_start
+            print(f"⏱️ TIMING - Procesamiento trades: {trades_time:.3f}s")
+            
             print(f"🔍 Resultado del procesamiento: {type(result)}")
             if isinstance(result, dict) and "error" in result:
                 print(f"❌ Error en process_trades_csv: {result['error']}")
+            
+            total_time = time.time() - start_time
+            print(f"⏱️ TIMING - TOTAL process_csv_data: {total_time:.3f}s")
             return result
         else:
             error_msg = "Invalid CSV format. Please use Trades History export from Kraken"
@@ -650,6 +847,7 @@ async def upload_csv_debug(request: Request):
 @app.post("/api/portfolio/csv")
 async def upload_csv(csv_file: UploadFile = File()):
     """Endpoint para procesar CSV de Kraken"""
+    start_time = time.time()
     try:
         print(f"📤 INICIO - Recibiendo archivo: {csv_file.filename if csv_file else 'None'}")
         print(f"📤 Content-Type: {csv_file.content_type if csv_file else 'None'}")
@@ -662,28 +860,40 @@ async def upload_csv(csv_file: UploadFile = File()):
         if not csv_file.filename:
             print("❌ Archivo sin nombre")
             return {"error": "File has no filename"}
-            
+        
+        # TIMING: Lectura del archivo
+        read_start = time.time()    
         content = await csv_file.read()
-        print(f"📤 Contenido leído: {len(content)} bytes")
+        read_time = time.time() - read_start
+        print(f"⏱️ TIMING - Lectura archivo: {read_time:.3f}s - {len(content)} bytes")
         
         if len(content) == 0:
             print("❌ Archivo vacío")
             return {"error": "File is empty"}
         
+        # TIMING: Decodificación
+        decode_start = time.time()
         try:
             csv_content = content.decode('utf-8')
-            print(f"📤 Decodificado: {len(csv_content)} caracteres")
+            decode_time = time.time() - decode_start
+            print(f"⏱️ TIMING - Decodificación: {decode_time:.3f}s - {len(csv_content)} caracteres")
         except UnicodeDecodeError as e:
             print(f"❌ Error de decodificación: {e}")
             return {"error": f"File encoding error: {str(e)}"}
         
+        # TIMING: Procesamiento completo
+        processing_start = time.time()
         print("📤 Iniciando procesamiento...")
         result = process_csv_data(csv_content)
+        processing_time = time.time() - processing_start
+        print(f"⏱️ TIMING - Procesamiento total: {processing_time:.3f}s")
         
         if isinstance(result, dict) and "error" in result:
             print(f"❌ Error en procesamiento: {result['error']}")
             return {"error": result["error"]}
         
+        total_time = time.time() - start_time
+        print(f"⏱️ TIMING - TOTAL ENDPOINT: {total_time:.3f}s")
         print(f"✅ CSV procesado exitosamente")
         return result
         

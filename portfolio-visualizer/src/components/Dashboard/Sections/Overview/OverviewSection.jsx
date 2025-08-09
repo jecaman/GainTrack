@@ -245,25 +245,31 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       flexDirection: 'column',
       marginTop: '0',
       paddingTop: '0',
-      overflow: 'visible' // Permitir que el ticker salga por arriba
+      overflow: 'visible', // Permitir que el ticker salga por arriba
+      transform: 'scale(0.85)',
+      transformOrigin: 'top left',
+      width: '117.65%', // Compensar la escala para mantener el ancho completo
+      height: '117.65%' // Compensar la escala para mantener la altura completa
     }}>
       {/* Price Ticker */}
       <PriceTicker portfolioData={portfolioData} theme={theme} />
       
-      {/* Primera fila: KPIs y Leaderboard en la misma altura */}
+      {/* Primera línea: KPIs centrados */}
       <div style={{
         display: 'flex',
+        justifyContent: 'center',
         width: '100%',
-        alignItems: 'flex-start',
-        gap: '1rem', // Restaurar gap entre KPIs y leaderboard
         marginTop: '50px' // Espacio para el ticker absoluto
       }}>
-        <div style={{ flex: '1' }}> {/* KPIs ocupan 1/3 del espacio */}
-          <KPIGrid portfolioData={portfolioData} theme={theme} />
-        </div>
-        <div style={{ flex: '2' }}> {/* Leaderboard ocupa 2/3 del espacio */}
-          <AssetLeaderboard portfolioData={portfolioData} theme={theme} />
-        </div>
+        <KPIGrid portfolioData={portfolioData} theme={theme} />
+      </div>
+
+      {/* Segunda línea: Tabla ocupando todo el ancho */}
+      <div style={{
+        width: '100%',
+        margin: '2rem 0'
+      }}>
+        <AssetLeaderboard portfolioData={portfolioData} theme={theme} />
       </div>
 
       {/* Layout del resto de elementos */}
@@ -275,10 +281,10 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         flex: 1
       }}>
 
-        {/* Segunda fila: Timeline Chart - Full width */}
+        {/* Tercera línea: Timeline Chart - Full width */}
         <div style={{
           width: '100%',
-          marginTop: '1rem' // Separación de la fila superior
+          marginTop: '1rem' // Separación de la tabla
         }}>
           <TimelineChart portfolioData={portfolioData} theme={theme} />
         </div>
