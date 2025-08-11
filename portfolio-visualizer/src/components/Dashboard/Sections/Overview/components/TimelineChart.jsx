@@ -1,9 +1,87 @@
 import { Line } from 'react-chartjs-2';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Chart } from 'chart.js';
+
+// Plugin de brillo personalizado
+const glowPlugin = {
+  id: 'customGlow',
+  afterDraw(chart) {
+    const { ctx } = chart;
+    
+    // Obtener la posición del tooltip si está activo
+    const tooltip = chart.tooltip;
+    if (tooltip && tooltip.opacity > 0) {
+      const activeElements = chart.getActiveElements();
+      
+      if (activeElements.length > 0) {
+        // DEBUG: Ver qué datasets hay
+        console.log('🔍 DATASETS DISPONIBLES:');
+        chart.data.datasets.forEach((dataset, index) => {
+          console.log(`${index}: "${dataset.label}" - order: ${dataset.order}`);
+        });
+        
+        console.log('🔍 ELEMENTOS ACTIVOS:');
+        activeElements.forEach((el, idx) => {
+          const dataset = chart.data.datasets[el.datasetIndex];
+          console.log(`${idx}: datasetIndex=${el.datasetIndex}, label="${dataset.label}"`);
+        });
+        
+        // Buscar el dataset con el order más alto (Market Value tiene order: 3)
+        let targetElement = activeElements[0];
+        let highestOrder = -1;
+        
+        activeElements.forEach(el => {
+          const dataset = chart.data.datasets[el.datasetIndex];
+          const order = dataset.order || 0;
+          console.log(`Dataset "${dataset.label}" - order: ${order}`);
+          
+          if (order > highestOrder) {
+            highestOrder = order;
+            targetElement = el;
+          }
+        });
+        
+        const targetDataset = chart.data.datasets[targetElement.datasetIndex];
+        console.log(`✅ USANDO DATASET: "${targetDataset.label}" con order: ${targetDataset.order}`);
+        
+        const x = targetElement.element.x;
+        const y = targetElement.element.y;
+          
+          ctx.save();
+          
+          // Crear gradiente radial para efecto de brillo
+          const gradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+          gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+          gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.4)');
+          gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.2)');
+          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          
+          // Dibujar el punto con brillo
+          ctx.beginPath();
+          ctx.arc(x, y, 15, 0, Math.PI * 2);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+          
+          ctx.restore();
+      }
+    }
+  }
+};
+
+// Registrar el plugin
+Chart.register(glowPlugin);
 
 const TimelineChart = ({ portfolioData, theme }) => {
   const [showTotalInvested, setShowTotalInvested] = useState(true);
   const [viewMode, setViewMode] = useState('both'); // 'both', 'balance'
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  
+  // Manejar transición cuando cambia showTotalInvested
+  const handleInvestedToggle = () => {
+    setShowTotalInvested(!showTotalInvested);
+  };
+  
   // Create Timeline Chart Data with conditional coloring
   const createTimelineData = () => {
     console.log('DEBUG - portfolioData.timeline:', portfolioData?.timeline);
@@ -103,9 +181,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
             const nextPosition = (i + 1) * segmentSize;
             const value = balanceValues[i];
             
-            // Color base según el valor, con opacidad reducida para suavidad
+            // Color base según el valor, con opacidad más intensa
             const baseColor = value > 0 ? '34, 197, 94' : '239, 68, 68';
-            const color = `rgba(${baseColor}, 0.15)`;
+            const color = `rgba(${baseColor}, 0.3)`;
             
             gradient.addColorStop(position, color);
             if (i < balanceValues.length - 1) {
@@ -120,13 +198,13 @@ const TimelineChart = ({ portfolioData, theme }) => {
         fill: 'origin', // Rellenar hasta el eje X (línea de 0)
         tension: 0.5,
         pointRadius: 0,
-        pointHoverRadius: 0,
-        pointBackgroundColor: 'transparent',
-        pointBorderColor: 'transparent',
+        pointHoverRadius: 6,
+        pointBackgroundColor: 'rgba(255, 255, 255, 1)',
+        pointBorderColor: 'rgba(255, 255, 255, 0.3)',
         pointBorderWidth: 0,
-        pointHoverBorderWidth: 0,
+        pointHoverBorderWidth: 20,
         borderWidth: 4,
-        pointStyle: 'line',
+        pointStyle: 'circle',
         segment: {
           borderColor: function(ctx) {
             const startIndex = ctx.p0DataIndex;
@@ -155,126 +233,13 @@ const TimelineChart = ({ portfolioData, theme }) => {
     } else {
       // Modo normal: líneas con sombreado simple pero visible
       
-      // Si mostrar Total Invested
-      if (showTotalInvested) {
-        datasets.push({
-          label: 'Total Invested',
-          data: investedValues,
-          borderColor: 'rgba(208, 208, 208, 0.8)',
-          backgroundColor: 'transparent',
-          fill: false,
-          tension: 0.5,
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          pointBackgroundColor: 'transparent',
-          pointBorderColor: 'transparent',
-          pointBorderWidth: 0,
-          pointHoverBorderWidth: 0,
-          borderDash: [10, 5],
-          borderWidth: 3,
-          pointStyle: 'line'
-        });
-      }
-      
-      // Market Value con sombreado
+      // Total Invested - siempre presente, pero con transparencia condicional
       datasets.push({
-        label: 'Market Value',
-        data: portfolioValues,
-        borderColor: '#22c55e', // Color base, se sobrescribe con segment
-        backgroundColor: function(context) {
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          if (!chartArea) return marketAreaColor;
-          
-          // Área se colorea SOLO donde la línea ya se ha dibujado (de izquierda a derecha)
-          const isAnimating = chart._animator && chart._animator.running;
-          if (showTotalInvested && isAnimating) {
-            // Calcular hasta qué punto del gráfico ha llegado la animación
-            const progress = Math.min((chart._animator.progress || 0), 1);
-            const revealedWidth = progress; // 0 = nada, 1 = todo
-            
-            // Crear gradiente que va de coloreado a transparente
-            const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-            
-            if (revealedWidth === 0) {
-              // Al inicio: todo transparente
-              gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-              gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-              return gradient;
-            }
-            
-            // Parte ya revelada: colorear según corresponde
-            const segmentSize = 1 / portfolioValues.length;
-            let currentPos = 0;
-            
-            while (currentPos < revealedWidth && currentPos < 1) {
-              const segmentIndex = Math.floor(currentPos / segmentSize);
-              if (segmentIndex < portfolioValues.length) {
-                const marketValue = portfolioValues[segmentIndex];
-                const investedValue = investedValues[segmentIndex] || 0;
-                const baseColor = marketValue > investedValue ? '34, 197, 94' : '239, 68, 68';
-                const color = `rgba(${baseColor}, 0.15)`;
-                
-                const segmentStart = segmentIndex * segmentSize;
-                const segmentEnd = Math.min((segmentIndex + 1) * segmentSize, revealedWidth);
-                
-                gradient.addColorStop(segmentStart, color);
-                gradient.addColorStop(segmentEnd, color);
-                
-                currentPos = segmentEnd;
-              } else {
-                break;
-              }
-            }
-            
-            // Transición suave en el borde
-            if (revealedWidth < 1) {
-              gradient.addColorStop(revealedWidth, 'rgba(0, 0, 0, 0.02)');
-              gradient.addColorStop(Math.min(revealedWidth + 0.05, 1), 'rgba(0, 0, 0, 0)');
-            }
-            
-            // Resto: completamente transparente
-            if (revealedWidth < 1) {
-              gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            }
-            
-            return gradient;
-          }
-          
-          if (!showTotalInvested) {
-            // Sin invested = gradiente verde suave
-            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            gradient.addColorStop(0, 'rgba(34, 197, 94, 0.25)');
-            gradient.addColorStop(0.5, 'rgba(34, 197, 94, 0.12)');
-            gradient.addColorStop(1, 'rgba(34, 197, 94, 0.03)');
-            return gradient;
-          }
-          
-          // Crear gradiente horizontal segmentado punto por punto
-          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-          
-          // Dividir en segmentos según los puntos de datos
-          const segmentSize = 1 / portfolioValues.length;
-          
-          for (let i = 0; i < portfolioValues.length; i++) {
-            const position = i * segmentSize;
-            const nextPosition = (i + 1) * segmentSize;
-            const marketValue = portfolioValues[i];
-            const investedValue = investedValues[i] || 0;
-            
-            // Color según si market gana o pierde en este punto
-            const baseColor = marketValue > investedValue ? '34, 197, 94' : '239, 68, 68';
-            const color = `rgba(${baseColor}, 0.15)`;
-            
-            gradient.addColorStop(position, color);
-            if (i < portfolioValues.length - 1) {
-              gradient.addColorStop(nextPosition - 0.001, color);
-            }
-          }
-          
-          return gradient;
-        },
-        fill: showTotalInvested ? '-1' : 'origin', // Fill to previous dataset or origin
+        label: 'Total Invested',
+        data: investedValues,
+        borderColor: showTotalInvested ? 'rgba(208, 208, 208, 0.8)' : 'rgba(208, 208, 208, 0)',
+        backgroundColor: 'transparent',
+        fill: false,
         tension: 0.5,
         pointRadius: 0,
         pointHoverRadius: 0,
@@ -282,8 +247,96 @@ const TimelineChart = ({ portfolioData, theme }) => {
         pointBorderColor: 'transparent',
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
-        borderWidth: 4,
+        borderDash: [10, 5],
+        borderWidth: showTotalInvested ? 3 : 0,
         pointStyle: 'line',
+        order: 1,
+        hidden: false // Siempre visible para Chart.js, controlamos con transparencia
+      });
+      
+      // Dataset para el área entre las líneas (siempre presente, controlado por transparencia)
+      datasets.push({
+        label: 'P&L Area',
+        data: portfolioValues,
+        backgroundColor: function(context) {
+          if (!showTotalInvested) return 'transparent';
+          
+          const chart = context.chart;
+          const {ctx, chartArea} = chart;
+          if (!chartArea) return 'transparent';
+          
+          // Crear gradiente horizontal segmentado que cambie según profit/loss
+          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+          
+          // Dividir en segmentos según los puntos de datos
+          const segmentSize = 1 / Math.max(portfolioValues.length - 1, 1);
+          
+          for (let i = 0; i < portfolioValues.length; i++) {
+            const position = i * segmentSize;
+            const marketValue = portfolioValues[i];
+            const investedValue = investedValues[i] || 0;
+            
+            // Determinar color: rojo si market < invested, verde si market > invested
+            const isProfit = marketValue > investedValue;
+            const color = isProfit 
+              ? 'rgba(34, 197, 94, 0.35)' // Verde para ganancia (más intenso)
+              : 'rgba(239, 68, 68, 0.35)'; // Rojo para pérdida (más intenso)
+            
+            gradient.addColorStop(position, color);
+            
+            // Suavizar transiciones añadiendo el mismo color al siguiente punto
+            if (i < portfolioValues.length - 1) {
+              const nextPosition = Math.min((i + 1) * segmentSize, 1);
+              gradient.addColorStop(nextPosition - 0.001, color);
+            }
+          }
+          
+          return gradient;
+        },
+        fill: '-1', // Rellenar hasta el dataset anterior (Total Invested)
+        borderColor: 'transparent',
+        borderWidth: 0,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        tension: 0.5,
+        order: 2
+      });
+      
+      // Market Value con sombreado
+      datasets.push({
+        label: 'Market Value',
+        data: portfolioValues,
+        borderColor: '#22c55e', // Color base, se sobrescribe con segment
+        backgroundColor: function(context) {
+          if (!showTotalInvested) {
+            // Sin invested = gradiente verde suave
+            const chart = context.chart;
+            const {ctx, chartArea} = chart;
+            if (!chartArea) return 'transparent';
+            
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            gradient.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
+            gradient.addColorStop(0.5, 'rgba(34, 197, 94, 0.25)');
+            gradient.addColorStop(1, 'rgba(34, 197, 94, 0.08)');
+            return gradient;
+          }
+          
+          // Con invested, no backgroundColor en este dataset
+          return 'transparent';
+        },
+        fill: !showTotalInvested ? 'origin' : false, // Solo fill cuando no hay invested
+        tension: 0.5,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        pointBackgroundColor: 'rgba(255, 255, 255, 1)',
+        pointBorderColor: 'rgba(255, 255, 255, 0.3)',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 20,
+        borderWidth: 4,
+        pointStyle: 'circle',
+        order: showTotalInvested ? 3 : 1,
         segment: {
           borderColor: function(ctx) {
             if (!showTotalInvested) {
@@ -330,33 +383,30 @@ const TimelineChart = ({ portfolioData, theme }) => {
     responsive: true,
     maintainAspectRatio: false,
     animation: {
-      duration: 420,
+      duration: 250,
       easing: 'easeOutCubic',
       animateScale: false,
       animateRotate: false,
       delay: function(context) {
-        return context.dataIndex * 5;
+        // Dibujar de izquierda a derecha
+        return context.dataIndex * 6;
       }
     },
     animations: {
-      // Animación simple y fluida
+      // Animación de dibujo de izquierda a derecha
       y: {
         type: 'number',
-        easing: 'easeOutQuart',
-        duration: 500,
+        easing: 'easeOutCubic',
+        duration: 250,
         delay: function(context) {
-          // Retrasar ligeramente la línea invested para efecto escalonado
-          if (context.chart.data.datasets[context.datasetIndex].label === 'Total Invested') {
-            return context.dataIndex * 8;
-          }
-          return context.dataIndex * 4;
+          return context.dataIndex * 6;
         }
       }
     },
     transitions: {
       active: {
         animation: {
-          duration: 100
+          duration: 50
         }
       },
       resize: {
@@ -379,35 +429,57 @@ const TimelineChart = ({ portfolioData, theme }) => {
             to: function(ctx) {
               return ctx.chart.chartArea ? ctx.chart.chartArea.bottom : 0;
             },
-            duration: 400,
-            easing: 'easeInQuart'
+            duration: 600,
+            easing: 'easeInOutCubic'
           },
           backgroundColor: {
             to: 'rgba(0, 0, 0, 0)',
-            duration: 300,
-            easing: 'easeInSine'
+            duration: 500,
+            easing: 'easeInOutSine'
+          },
+          borderColor: {
+            to: 'rgba(0, 0, 0, 0)',
+            duration: 500,
+            easing: 'easeInOutSine'
           }
+        }
+      },
+      // Transición personalizada para el cambio de fill
+      mode: {
+        animation: {
+          duration: 500,
+          easing: 'easeOutQuart'
         }
       }
     },
     layout: {
       padding: {
         left: 40,
-        right: 20,
+        right: 40,
         top: 20,
-        bottom: 20
+        bottom: 30
       }
     },
     interaction: {
-      mode: 'index',
-      intersect: false
+      mode: 'nearest',
+      intersect: false,
+      axis: 'x'
+    },
+    hover: {
+      mode: 'nearest',
+      intersect: false,
+      animationDuration: 0
     },
     elements: {
       point: {
-        radius: 2,
-        hoverRadius: 6,
-        borderWidth: 2,
-        hoverBorderWidth: 3
+        radius: 0,
+        hoverRadius: 0,
+        borderWidth: 0,
+        hoverBorderWidth: 0,
+        backgroundColor: 'transparent',
+        borderColor: 'transparent',
+        hoverBackgroundColor: 'transparent',
+        hoverBorderColor: 'transparent'
       },
       line: {
         tension: 0.4
@@ -506,12 +578,16 @@ const TimelineChart = ({ portfolioData, theme }) => {
         ticks: {
           color: '#b5b5b5',
           font: {
-            size: 16,
+            size: 14,
             family: "'Inter', sans-serif",
             weight: '600'
           },
-          maxTicksLimit: 12,
-          padding: 12
+          maxTicksLimit: 8,
+          padding: 15,
+          maxRotation: 0,
+          minRotation: 0,
+          autoSkip: true,
+          autoSkipPadding: 25
         },
         grid: {
           display: false
@@ -728,7 +804,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   margin: '0 4px'
                 }}></div>
                 <button
-                  onClick={() => setShowTotalInvested(!showTotalInvested)}
+                  onClick={handleInvestedToggle}
                   style={{
                     background: showTotalInvested 
                       ? 'rgba(255, 255, 255, 0.15)' 
