@@ -79,9 +79,10 @@ const glowPlugin = {
         const textY = lineTop - 10;
         
         // Ajustar posición X para evitar que se corte en los bordes
-        const chartArea = chart.chartArea;
-        const minX = chartArea.left + textWidth/2 + padding;
-        const maxX = chartArea.right - textWidth/2 - padding;
+        const canvasWidth = chart.canvas.width;
+        const safetyMargin = 30; // Margen de seguridad adicional
+        const minX = textWidth/2 + padding + safetyMargin;
+        const maxX = canvasWidth - textWidth/2 - padding - safetyMargin;
         const adjustedX = Math.max(minX, Math.min(maxX, x));
         
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
