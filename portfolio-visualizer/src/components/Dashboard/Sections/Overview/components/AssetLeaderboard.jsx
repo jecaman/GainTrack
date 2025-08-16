@@ -107,17 +107,30 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
   };
 
   return (
-    <div style={{
-      backgroundColor: 'transparent',
-      border: 'none',
-      padding: '0',
-      margin: '0',
-      width: '100%',
-      height: 'fit-content',
-      position: 'relative',
-      zIndex: 10000,
-      overflow: 'visible'
-    }}>
+    <>
+      <style>{`
+        @keyframes slideInRow {
+          0% {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0px);
+          }
+        }
+      `}</style>
+      <div style={{
+        backgroundColor: 'transparent',
+        border: 'none',
+        padding: '0',
+        margin: '0',
+        width: '100%',
+        height: 'fit-content',
+        position: 'relative',
+        zIndex: 10000,
+        overflow: 'visible'
+      }}>
       {/* Botón de información */}
       <div style={{
         position: 'absolute',
@@ -192,11 +205,22 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
         borderRadius: '0',
         overflow: 'hidden'
       }}>
-        {/* Tabla con scroll horizontal */}
+        {/* Tabla con scroll horizontal y vertical con efecto rebote */}
         <div style={{
           overflowX: 'auto',
-          overflowY: 'auto',
-          maxHeight: '580px', // Altura aumentada para llegar debajo del header
+          overflowY: 'scroll',
+          maxHeight: '1200px', // Altura para mostrar hasta 10 filas + header
+          scrollBehavior: 'auto', // Scroll normal para mejor control
+          overscrollBehavior: 'auto', // Permite over-scroll con efecto rebote natural
+          WebkitOverflowScrolling: 'touch', // Scroll suave en dispositivos táctiles
+          // Propiedades específicas para efecto rebote
+          overscrollBehaviorY: 'auto', // Permite rebote vertical
+          overscrollBehaviorX: 'auto', // Permite rebote horizontal
+          // Asegurar que siempre se pueda hacer scroll
+          scrollSnapType: 'none', // Desactiva snap scrolling para permitir scroll libre
+          touchAction: 'auto', // Permite todos los gestos táctiles
+          // Reducir sensibilidad del scroll
+          scrollPadding: '10px',
         }}>
           <table style={{
             width: '100%',
@@ -210,7 +234,8 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
             <thead style={{
               position: 'sticky',
               top: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.9)',
+              backgroundColor: 'rgba(0, 0, 0, 1)', // Fondo sólido sin transparencia
+              backdropFilter: 'none',
               zIndex: 10
             }}>
               <tr>
@@ -234,7 +259,8 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                 <th 
                   style={{ 
                     padding: '20px 6px', 
-                    textAlign: 'right', 
+                    textAlign: 'left', // Alineado a la izquierda para coincidir con el inicio de la barra
+                    paddingLeft: '5px', // Reducido para mover el header un poco más a la derecha
                     color: '#e5e5e5', 
                     fontWeight: '700', 
                     borderBottom: `1px solid #d0d0d0`, 
@@ -245,7 +271,23 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                   }}
                   onClick={() => handleSort('portfolioPercent')}
                 >
-                  Portfolio %{renderSortArrow('portfolioPercent')}
+                  Portfolio Allocation{renderSortArrow('portfolioPercent')}
+                </th>
+                <th 
+                  style={{ 
+                    padding: '20px 6px', 
+                    textAlign: 'right', 
+                    color: '#e5e5e5', 
+                    fontWeight: '700', 
+                    borderBottom: `1px solid #d0d0d0`, 
+                    fontSize: '16px', 
+                    minWidth: '110px',
+                    cursor: 'pointer', 
+                    userSelect: 'none' 
+                  }}
+                  onClick={() => handleSort('fiatValue')}
+                >
+                  Value{renderSortArrow('fiatValue')}
                 </th>
                 <th 
                   style={{ 
@@ -277,7 +319,7 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                   }}
                   onClick={() => handleSort('marketPrice')}
                 >
-                  Current Price{renderSortArrow('marketPrice')}
+                  Price{renderSortArrow('marketPrice')}
                 </th>
                 <th 
                   style={{ 
@@ -293,55 +335,7 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                   }}
                   onClick={() => handleSort('avgCost')}
                 >
-                  Avg Cost{renderSortArrow('avgCost')}
-                </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
-                    minWidth: '110px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
-                  }}
-                  onClick={() => handleSort('fiatValue')}
-                >
-                  Current Value{renderSortArrow('fiatValue')}
-                </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
-                    minWidth: '120px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
-                  }}
-                  onClick={() => handleSort('realizedGains')}
-                >
-                  Realized P&L{renderSortArrow('realizedGains')}
-                </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
-                    minWidth: '130px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
-                  }}
-                  onClick={() => handleSort('unrealizedGains')}
-                >
-                  Unrealized P&L{renderSortArrow('unrealizedGains')}
+                  Average Cost{renderSortArrow('avgCost')}
                 </th>
                 <th 
                   style={{ 
@@ -352,47 +346,68 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                     borderBottom: `1px solid #d0d0d0`, 
                     fontSize: '16px', 
                     minWidth: '100px',
+                    cursor: 'pointer', 
+                    userSelect: 'none' 
+                  }}
+                  onClick={() => handleSort('costBasis')}
+                >
+                  Cost Basis{renderSortArrow('costBasis')}
+                </th>
+                <th 
+                  style={{ 
+                    padding: '20px 6px', 
+                    textAlign: 'right', 
+                    color: '#e5e5e5', 
+                    fontWeight: '700', 
+                    borderBottom: `1px solid #d0d0d0`, 
+                    fontSize: '16px', 
+                    minWidth: '200px',
                     cursor: 'pointer', 
                     userSelect: 'none' 
                   }}
                   onClick={() => handleSort('netProfit')}
                 >
-                  Total P&L{renderSortArrow('netProfit')}
+                  P&L{renderSortArrow('netProfit')}
                 </th>
                 <th 
                   style={{ 
-                    padding: '20px 20px', 
+                    padding: '20px 35px 20px 20px', // Más padding derecho para separar de scrollbar
                     textAlign: 'right', 
                     color: '#e5e5e5', 
                     fontWeight: '700', 
                     borderBottom: `1px solid #d0d0d0`, 
                     fontSize: '16px', 
-                    minWidth: '100px',
+                    minWidth: '120px', // Un poco más ancho
                     cursor: 'pointer', 
                     userSelect: 'none',
                     borderTopRightRadius: '0'
                   }}
                   onClick={() => handleSort('netProfitPercent')}
                 >
-                  P&L %{renderSortArrow('netProfitPercent')}
+                  ROI %{renderSortArrow('netProfitPercent')}
                 </th>
               </tr>
             </thead>
             <tbody>
               {processedData.map((row, index) => (
-                <tr key={row.asset} style={{
-                  transition: 'all 0.2s ease',
-                  backgroundColor: 'transparent'
+                <tr key={`${row.asset}-${sortConfig.key}-${sortConfig.direction}`} style={{
+                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                  backgroundColor: 'transparent',
+                  transform: 'translateY(0px)',
+                  opacity: 1,
+                  animation: `slideInRow 0.3s ease-out ${index * 0.05}s both`
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.transform = 'translateY(0px)';
                 }}
                 >
                   <td style={{ 
-                    padding: '18px 12px', 
+                    padding: '24px 12px', 
                     color: theme.accentPrimary, 
                     fontWeight: '700', 
                     fontSize: '17px', 
@@ -408,8 +423,8 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                         src={getAssetLogo(row.nativeSymbol, 'small')} 
                         alt={row.asset}
                         style={{
-                          width: '28px',
-                          height: '28px',
+                          width: '38px',
+                          height: '38px',
                           borderRadius: '50%',
                           objectFit: 'cover',
                           flexShrink: 0
@@ -424,15 +439,15 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                       />
                     ) : (
                       <div style={{
-                        width: '28px',
-                        height: '28px',
+                        width: '38px',
+                        height: '38px',
                         flexShrink: 0
                       }} />
                     )}
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '17px', fontWeight: '700' }}>{row.asset}</span>
+                        <span style={{ fontSize: '18px', fontWeight: '700' }}>{row.asset}</span>
                         <span style={{ 
-                          fontSize: '15px', 
+                          fontSize: '17px', 
                           fontWeight: '500', 
                           color: 'rgba(255, 255, 255, 0.8)',
                           marginTop: '2px'
@@ -443,123 +458,147 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                     </div>
                   </td>
                   <td style={{ 
-                    padding: '18px 2px 18px 4px', 
+                    padding: '24px 2px 24px 4px', 
                     textAlign: 'right', 
                     color: theme.textPrimary, 
-                    fontSize: '16px', 
+                    fontSize: '18px', 
                     fontWeight: '400', 
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`,
                     position: 'relative',
                     minWidth: '120px'
                   }}>
-                    {/* Barra de progreso visual para el porcentaje */}
-                    <div style={{
-                      position: 'absolute',
-                      left: '-10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      width: '120px', // Más ancha y centrada
-                      height: '8px', // Más gruesa
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '4px',
-                      zIndex: 0
-                    }} />
-                    <div style={{
-                      position: 'absolute',
-                      left: '-10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      width: `${Math.min(row.portfolioPercent, 100) * 1.2}px`, // Máximo 120px (100%)
-                      height: '8px', // Más gruesa
-                      backgroundColor: getAssetColor(row.nativeSymbol),
-                      borderRadius: '4px',
-                      opacity: 0.8, // Mucho más visible
-                      zIndex: 0
-                    }} />
-                    <span style={{ position: 'relative', zIndex: 1, marginLeft: '115px' }}>
-                      {formatEuropeanPercentage(row.portfolioPercent)}
-                    </span>
+                    {/* Barra de progreso integrada con el porcentaje - todas empiezan a la misma altura */}
+                    <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                      {/* Contenedor de la barra más largo */}
+                      <div style={{
+                        position: 'relative',
+                        width: '120px', // Barra más larga
+                        height: '12px', // Un poco más alta
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                        marginRight: '12px' // Separación del porcentaje
+                      }}>
+                        {/* Barra de progreso */}
+                        <div style={{
+                          width: `${Math.min(row.portfolioPercent, 100)}%`,
+                          height: '100%',
+                          backgroundColor: getAssetColor(row.nativeSymbol),
+                          borderRadius: '6px',
+                          opacity: 0.9
+                        }} />
+                      </div>
+                      {/* Porcentaje pegado a la barra */}
+                      <span style={{ 
+                        fontSize: '18px',
+                        fontWeight: '400',
+                        minWidth: '55px',
+                        textAlign: 'left',
+                        flexShrink: 0 // No se encoge
+                      }}>
+                        {formatEuropeanPercentage(row.portfolioPercent)}
+                      </span>
+                    </div>
                   </td>
                   <td style={{ 
-                    padding: '18px 4px', 
+                    padding: '24px 4px', 
                     textAlign: 'right', 
                     color: theme.textPrimary, 
-                    fontSize: '16px', 
-                    fontWeight: '400', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
-                  }}>
-                    {formatEuropeanNumber(row.nativeValue, 6)}
-                  </td>
-                  <td style={{ 
-                    padding: '18px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '16px', 
-                    fontWeight: '400', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
-                  }}>
-                    {formatEuropeanCurrency(row.marketPrice)}
-                  </td>
-                  <td style={{ 
-                    padding: '18px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '16px', 
-                    fontWeight: '400', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
-                  }}>
-                    {formatEuropeanCurrency(row.avgCost)}
-                  </td>
-                  <td style={{ 
-                    padding: '18px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '16px', 
+                    fontSize: '19px', 
                     fontWeight: '700', 
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
                   }}>
                     {formatEuropeanCurrency(row.fiatValue)}
                   </td>
                   <td style={{ 
-                    padding: '18px 4px', 
+                    padding: '24px 4px', 
                     textAlign: 'right', 
-                    color: row.realizedGains >= 0 ? '#00FF99' : '#ef4444', 
-                    fontSize: '16px', 
+                    color: theme.textPrimary, 
+                    fontSize: '18px', 
                     fontWeight: '400', 
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
                   }}>
-                    {row.realizedGains >= 0 ? '+' : ''}{formatEuropeanCurrency(row.realizedGains)}
+                    {formatEuropeanNumber(row.nativeValue, 6)}
                   </td>
                   <td style={{ 
-                    padding: '18px 4px', 
+                    padding: '24px 4px', 
                     textAlign: 'right', 
-                    color: row.unrealizedGains >= 0 ? '#00FF99' : '#ef4444', 
-                    fontSize: '16px', 
+                    color: theme.textPrimary, 
+                    fontSize: '18px', 
                     fontWeight: '400', 
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
                   }}>
-                    {row.unrealizedGains >= 0 ? '+' : ''}{formatEuropeanCurrency(row.unrealizedGains)}
+                    {formatEuropeanCurrency(row.marketPrice)}
                   </td>
                   <td style={{ 
-                    padding: '18px 4px', 
+                    padding: '24px 4px', 
+                    textAlign: 'right', 
+                    color: theme.textPrimary, 
+                    fontSize: '18px', 
+                    fontWeight: '400', 
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  }}>
+                    {formatEuropeanCurrency(row.avgCost)}
+                  </td>
+                  <td style={{ 
+                    padding: '24px 4px', 
+                    textAlign: 'right', 
+                    color: theme.textPrimary, 
+                    fontSize: '18px', 
+                    fontWeight: '400', 
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  }}>
+                    {formatEuropeanCurrency(row.avgCost * row.nativeValue)}
+                  </td>
+                  <td style={{ 
+                    padding: '20px 10px', 
+                    textAlign: 'right', 
+                    color: theme.textPrimary,
+                    fontSize: '14px', 
+                    fontWeight: '400', 
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)`,
+                    lineHeight: '1.5'
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div style={{ 
+                        color: row.netProfit >= 0 ? '#00FF99' : '#ef4444',
+                        fontSize: '19px', // Aumentado de 17px a 19px
+                        fontWeight: '700'
+                      }}>
+                        {row.netProfit >= 0 ? '+' : ''}{formatEuropeanCurrency(row.netProfit)}
+                      </div>
+                      <div style={{ 
+                        color: row.realizedGains >= 0 ? '#00FF99' : '#ef4444',
+                        fontSize: '14px',
+                        opacity: 0.9
+                      }}>
+                        R: {row.realizedGains >= 0 ? '+' : ''}{formatEuropeanCurrency(row.realizedGains)}
+                      </div>
+                      <div style={{ 
+                        color: row.unrealizedGains >= 0 ? '#00FF99' : '#ef4444',
+                        fontSize: '14px',
+                        opacity: 0.9
+                      }}>
+                        U: {row.unrealizedGains >= 0 ? '+' : ''}{formatEuropeanCurrency(row.unrealizedGains)}
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ 
+                    padding: '24px 35px 24px 8px', // Más padding derecho para separar de scrollbar
                     textAlign: 'right', 
                     color: row.netProfit >= 0 ? '#00FF99' : '#ef4444', 
-                    fontSize: '16px', 
+                    fontSize: '18px', // Mismo tamaño que el resto de números
                     fontWeight: '700', 
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
                   }}>
-                    {row.netProfit >= 0 ? '+' : ''}{formatEuropeanCurrency(row.netProfit)}
-                  </td>
-                  <td style={{ 
-                    padding: '20px 8px', 
-                    textAlign: 'right', 
-                    color: row.netProfit >= 0 ? '#00FF99' : '#ef4444', 
-                    fontSize: '16px', 
-                    fontWeight: '700', 
-                    fontStyle: 'italic', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
-                  }}>
-                    {row.netProfitPercent >= 0 ? '+' : ''}{formatEuropeanPercentage(row.netProfitPercent)}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                      <span style={{
+                        fontSize: '16px',
+                        transform: row.netProfitPercent >= 0 ? 'rotate(0deg)' : 'rotate(180deg)',
+                        display: 'inline-block'
+                      }}>▲</span>
+                      <span>{formatEuropeanPercentage(Math.abs(row.netProfitPercent))}</span>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -568,6 +607,7 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

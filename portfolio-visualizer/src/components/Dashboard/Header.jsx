@@ -1,4 +1,5 @@
 import { RotateCcw } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import GainTrackBrand from '../GainTrackBrand';
 import SectionTabs from './Navigation/SectionTabs';
 
@@ -10,6 +11,35 @@ const Header = ({
   onToggleTheme, 
   sidebarOpen 
 }) => {
+  const [dateRange, setDateRange] = useState(null);
+
+  // Función para formatear fechas de manera más legible
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 
+                   'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const day = date.getDate();
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
+  // Obtener fechas de trades al montar el componente
+  useEffect(() => {
+    const fetchTradesDateRange = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/trades/date-range');
+        const data = await response.json();
+        if (data.start_date && data.end_date) {
+          setDateRange(data);
+        }
+      } catch (error) {
+        console.error('Error fetching trades date range:', error);
+      }
+    };
+
+    fetchTradesDateRange();
+  }, []);
   // Componente separador reutilizable
   const Separator = () => (
     <div style={{
@@ -139,16 +169,34 @@ const Header = ({
           flexWrap: 'wrap',
           justifyContent: 'flex-end'
         }}>
-          {/* Connection Type */}
-          <span style={{ 
-            fontWeight: '500', 
-            color: theme.textPrimary,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            whiteSpace: 'nowrap'
+          {/* Trades Date Range */}
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: '4px'
           }}>
-            API Connection
-          </span>
+            <span style={{ 
+              fontSize: 'clamp(10px, 1.8vw, 12px)', 
+              opacity: 0.8, 
+              textTransform: 'uppercase', 
+              letterSpacing: '0.5px',
+              color: theme.textSecondary,
+              fontWeight: '500'
+            }}>
+              Trading Period
+            </span>
+            <span style={{ 
+              fontWeight: '600', 
+              color: theme.textPrimary,
+              letterSpacing: '0.2px',
+              whiteSpace: 'nowrap',
+              fontSize: 'clamp(13px, 2.5vw, 15px)',
+              textShadow: '0 1px 2px rgba(0,0,0,0.1)'
+            }}>
+              {dateRange ? `${formatDate(dateRange.start_date)} → ${formatDate(dateRange.end_date)}` : 'Cargando...'}
+            </span>
+          </div>
 
           <Separator />
 

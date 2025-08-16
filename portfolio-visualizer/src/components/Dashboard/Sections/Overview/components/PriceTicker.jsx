@@ -168,8 +168,8 @@ const PriceTicker = ({ portfolioData, theme }) => {
               src={getAssetLogo(asset.symbol, 'small')} 
               alt={asset.symbol}
               style={{
-                width: '24px',
-                height: '24px',
+                width: '26px',
+                height: '26px',
                 borderRadius: '50%',
                 objectFit: 'cover',
                 flexShrink: 0
@@ -180,8 +180,8 @@ const PriceTicker = ({ portfolioData, theme }) => {
             />
           ) : (
             <div style={{
-              width: '24px',
-              height: '24px',
+              width: '26px',
+              height: '26px',
               flexShrink: 0
             }} />
           )}
@@ -220,7 +220,7 @@ const PriceTicker = ({ portfolioData, theme }) => {
 
   return (
     <div style={{
-      height: '50px',
+      height: '56px',
       width: '100%',
       overflow: 'hidden',
       background: 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.03) 100%)',

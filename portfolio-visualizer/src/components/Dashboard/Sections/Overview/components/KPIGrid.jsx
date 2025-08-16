@@ -6,12 +6,34 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
   const [isCardHovered, setIsCardHovered] = useState(false);
   const [isTooltipHovered, setIsTooltipHovered] = useState(false);
   
+  // Función para ajustar el tamaño de fuente según la longitud del contenido
+  const getFontSize = () => {
+    const totalContent = showChange ? `${value} ${changePercent}` : value;
+    const contentLength = totalContent.length;
+    
+    if (contentLength > 30) return '1.4rem';
+    if (contentLength > 25) return '1.6rem';
+    if (contentLength > 20) return '1.8rem';
+    if (contentLength > 15) return '2.0rem';
+    return '2.1rem';
+  };
+  
+  const getPercentageFontSize = () => {
+    const totalContent = showChange ? `${value} ${changePercent}` : value;
+    const contentLength = totalContent.length;
+    
+    if (contentLength > 30) return '0.8rem';
+    if (contentLength > 25) return '0.9rem';
+    if (contentLength > 20) return '1.0rem';
+    return '1.1rem';
+  };
+  
   return (
     <div 
       style={{
         background: theme.bg,
         borderRadius: '0.75rem',
-        padding: '1.25rem',
+        padding: '1rem',
         border: `2px solid ${theme.borderColor}`,
         boxShadow: 'inset 0 0 10px rgba(0, 255, 136, 0.05)',
         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -23,7 +45,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         justifyContent: 'center',
         alignItems: 'center',
         textAlign: 'center',
-        width: '240px',
+        width: '280px',
         height: '120px'
       }}
       onMouseEnter={(e) => {
@@ -131,14 +153,14 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           data-kpi-label
           style={{
             color: '#ffffff',
-            fontSize: '1.08rem',
+            fontSize: '0.95rem',
             fontWeight: '700',
-            textTransform: 'uppercase',
+            textTransform: 'capitalize',
             letterSpacing: '0.05em',
             transition: 'all 0.25s ease',
             fontFamily: "'Inter', sans-serif",
             textAlign: 'center',
-            height: '30px',
+            height: '20px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -154,16 +176,15 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           flexDirection: 'row',
           alignItems: 'baseline',
           justifyContent: 'center',
-          gap: '0.5rem',
-          flexWrap: 'wrap',
-          height: '40px',
-          alignItems: 'center'
+          gap: '0.75rem',
+          flexWrap: 'nowrap',
+          height: '45px'
         }}>
           <div 
             style={{
-              fontSize: '1.32rem',
+              fontSize: getFontSize(),
               fontWeight: '700',
-              color: isPositive !== undefined ? (isPositive ? '#00FF99' : '#ef4444') : '#ffffff',
+              color: (label === 'Portfolio Value') ? '#ffffff' : (isPositive !== undefined ? (isPositive ? '#00FF99' : '#ef4444') : '#ffffff'),
               lineHeight: '1.2',
               fontFamily: "'Inter', sans-serif",
               letterSpacing: '-0.02em'
@@ -174,13 +195,24 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           {showChange && (
             <div 
               style={{
-                fontSize: '0.9rem',
-                fontWeight: '600',
+                fontSize: getPercentageFontSize(),
+                fontWeight: '400',
                 color: isPositive ? '#00FF99' : '#ef4444',
-                fontFamily: "'Inter', sans-serif"
+                fontFamily: "'Inter', sans-serif",
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: '4px'
               }}
             >
-              ({changePercent})
+              <span style={{
+                fontSize: '1.4rem',
+                transform: isPositive ? 'rotate(0deg)' : 'rotate(180deg)',
+                display: 'inline-block',
+                lineHeight: '1'
+              }}>
+                ▲
+              </span>
+              {changePercent.replace('+', '').replace('-', '')}
             </div>
           )}
         </div>
@@ -227,14 +259,16 @@ const KPIGrid = ({ portfolioData, theme }) => {
     const realizedGains = kpis.realized_gains || 0;
     const unrealizedGains = kpis.unrealized_gains || 0;
     const unrealizedPercentage = kpis.unrealized_percentage || 0;
+    const totalGains = realizedGains + unrealizedGains;
     
     const realizedIsPositive = realizedGains >= 0;
     const unrealizedIsPositive = unrealizedGains >= 0;
+    const totalGainsIsPositive = totalGains >= 0;
 
     // Calcular porcentajes para el tooltip
     const realizedPercentage = kpis.total_invested > 0 ? (realizedGains / kpis.total_invested) * 100 : 0;
-    const realizedPercentText = `${realizedIsPositive ? '+' : ''}${formatEuropeanPercentage(realizedPercentage)}`;
-    const unrealizedPercentText = `${unrealizedIsPositive ? '+' : ''}${formatEuropeanPercentage(unrealizedPercentage)}`;
+    const realizedPercentText = `${realizedIsPositive ? '+' : ''}${formatEuropeanPercentage(realizedPercentage, 1)}`;
+    const unrealizedPercentText = `${unrealizedIsPositive ? '+' : ''}${formatEuropeanPercentage(unrealizedPercentage, 1)}`;
 
     // Datos estructurados para el hover del Net Profit
     const realizedData = {
@@ -253,7 +287,7 @@ const KPIGrid = ({ portfolioData, theme }) => {
       totalInvested: formatEuropeanCurrency(kpis.total_invested),
       currentValue: formatEuropeanCurrency(kpis.current_value),
       profit: `${isPositive ? '+' : ''}${formatEuropeanCurrency(kpis.profit)}`,
-      profitPercent: `${isPositive ? '+' : ''}${formatEuropeanPercentage(kpis.profit_percentage)}`,
+      profitPercent: `${isPositive ? '+' : ''}${formatEuropeanPercentage(kpis.profit_percentage, 1)}`,
       isPositive,
       liquidity: kpis.liquidity > 0 ? formatEuropeanCurrency(kpis.liquidity) : 'N/A',
       fees: formatEuropeanCurrency(kpis.fees),
@@ -262,7 +296,9 @@ const KPIGrid = ({ portfolioData, theme }) => {
       realizedIsPositive,
       unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanCurrency(unrealizedGains)}`,
       unrealizedIsPositive,
-      unrealizedPercent: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanPercentage(unrealizedPercentage)}`,
+      unrealizedPercent: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanPercentage(unrealizedPercentage, 1)}`,
+      totalGains: `${totalGainsIsPositive ? '+' : ''}${formatEuropeanCurrency(totalGains)}`,
+      totalGainsIsPositive,
       realizedData,
       unrealizedData
     };
@@ -299,7 +335,7 @@ const KPIGrid = ({ portfolioData, theme }) => {
         />
         
         <KPICard
-          label="Total Invested"
+          label="Cost Basis"
           value={kpiData.totalInvested}
           theme={theme}
           tooltip="Total amount invested in fiat purchases only, including all trading fees"
@@ -326,15 +362,15 @@ const KPIGrid = ({ portfolioData, theme }) => {
         />
         
         <KPICard
-          label="Net Profit"
-          value={kpiData.profit}
+          label="Total Gains"
+          value={kpiData.totalGains}
           changePercent={kpiData.profitPercent}
-          isPositive={kpiData.isPositive}
+          isPositive={kpiData.totalGainsIsPositive}
           theme={theme}
           showChange={true}
-          tooltip="Total profit combining realized gains from sales and unrealized gains from current holdings"
+          tooltip="Combined realized and unrealized gains/losses - your total profit or loss"
         />
-
+        
         <KPICard
           label="Total Fees"
           value={kpiData.fees}

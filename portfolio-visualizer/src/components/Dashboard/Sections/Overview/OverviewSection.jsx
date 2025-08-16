@@ -264,12 +264,12 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         <KPIGrid portfolioData={portfolioData} theme={theme} />
       </div>
 
-      {/* Segunda línea: Tabla ocupando todo el ancho */}
+      {/* Segunda línea: Timeline Chart - Full width */}
       <div style={{
         width: '100%',
-        margin: '2rem 0'
+        marginTop: '3.5rem'
       }}>
-        <AssetLeaderboard portfolioData={portfolioData} theme={theme} />
+        <TimelineChart portfolioData={portfolioData} theme={theme} />
       </div>
 
       {/* Layout del resto de elementos */}
@@ -281,12 +281,12 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         flex: 1
       }}>
 
-        {/* Tercera línea: Timeline Chart - Full width */}
+        {/* Tercera línea: Tabla ocupando todo el ancho */}
         <div style={{
           width: '100%',
-          marginTop: '1rem' // Separación de la tabla
+          marginTop: '2rem' // Separación del timeline
         }}>
-          <TimelineChart portfolioData={portfolioData} theme={theme} />
+          <AssetLeaderboard portfolioData={portfolioData} theme={theme} />
         </div>
       </div>
     </section>

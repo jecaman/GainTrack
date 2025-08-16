@@ -402,6 +402,10 @@ def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp, fee=0):
         remaining_to_sell = vol
         cost_to_remove = 0
         
+        # Inicializar realized gains historical si no existe
+        if 'realized_gains_historical' not in asset_lots:
+            asset_lots['realized_gains_historical'] = 0
+        
         while remaining_to_sell > 0 and asset_lots['buy_lots']:
             # Tomar el lote más antiguo (FIFO)
             oldest_lot = asset_lots['buy_lots'][0]
@@ -409,6 +413,12 @@ def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp, fee=0):
             if oldest_lot['vol'] <= remaining_to_sell:
                 # Consumir todo el lote
                 cost_to_remove += oldest_lot['cost']
+                
+                # Calcular realized gain para este lote
+                sell_proceeds = (oldest_lot['vol'] / vol) * cost  # Proporción de la venta
+                realized_gain = sell_proceeds - oldest_lot['cost']
+                asset_lots['realized_gains_historical'] += realized_gain
+                
                 remaining_to_sell -= oldest_lot['vol']
                 asset_lots['buy_lots'].pop(0)  # Eliminar lote consumido
                 
@@ -417,6 +427,11 @@ def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp, fee=0):
                 cost_per_unit = oldest_lot['cost'] / oldest_lot['vol']
                 partial_cost = remaining_to_sell * cost_per_unit
                 cost_to_remove += partial_cost
+                
+                # Calcular realized gain para la parte vendida
+                sell_proceeds = (remaining_to_sell / vol) * cost
+                realized_gain = sell_proceeds - partial_cost
+                asset_lots['realized_gains_historical'] += realized_gain
                 
                 # Actualizar el lote restante
                 oldest_lot['vol'] -= remaining_to_sell
@@ -534,6 +549,7 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
     net_profit = realized_gains_total + unrealized_gains_total
     net_profit_percentage = (net_profit / total_invested_fifo * 100) if total_invested_fifo > 0 else 0
     
+    
     return {
         'portfolio_data': portfolio_array,
         'kpis': {
@@ -555,8 +571,13 @@ def create_portfolio_data_from_trades(trades_df, balances, current_prices):
     """Wrapper para mantener compatibilidad - usa versión mejorada"""
     return create_portfolio_data_from_trades_enhanced(trades_df, balances, current_prices)
 
-def calcular_holdings_diarios_csv(trades_df):
-    """Calcula los holdings diarios desde el primer trade hasta HOY"""
+def calcular_holdings_diarios_csv(trades_df, current_prices=None):
+    """Calcula los holdings diarios desde el primer trade hasta HOY
+    
+    Args:
+        trades_df: DataFrame con los trades
+        current_prices: Dict con precios actuales para usar en el último día
+    """
     start_time = time.time()
     if trades_df.empty:
         return []
@@ -638,7 +659,8 @@ def calcular_holdings_diarios_csv(trades_df):
                     'total_invested': 0,
                     'total_invested_historical': 0,
                     'fees': 0,
-                    'cantidad': 0
+                    'cantidad': 0,
+                    'realized_gains_historical': 0
                 }
             
             vol = float(trade['vol'])
@@ -646,8 +668,8 @@ def calcular_holdings_diarios_csv(trades_df):
             fee = float(trade['fee'])
             timestamp = trade['time']
             
-            # Usar función FIFO reutilizable
-            process_trade_fifo(holdings_por_asset[asset], trade['type'], vol, cost, timestamp)
+            # Usar función FIFO reutilizable (incluyendo fee en cost basis)
+            process_trade_fifo(holdings_por_asset[asset], trade['type'], vol, cost, timestamp, fee)
             holdings_por_asset[asset]['fees'] += fee
             
             # Actualizar cantidad total (para balance)
@@ -661,19 +683,48 @@ def calcular_holdings_diarios_csv(trades_df):
         coste_total_dia = sum(holding["total_invested"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
         fees_total_dia = sum(holding["fees"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
         
-        # Calcular valor de mercado usando precios históricos
+        # Calcular valor de mercado - usar precios actuales para el último día
         valor_mercado_dia = 0.0
+        unrealized_gains_dia = 0.0
+        is_last_day = (day_count == days_to_process - 1)
+        
         for asset, holding in holdings_por_asset.items():
             if holding["cantidad"] > 0:
-                precio_actual = precios_historicos.get(asset, {}).get(fecha_actual, 0)
+                if is_last_day and current_prices and asset in current_prices:
+                    # Último día: usar precio actual para coincidir con KPIs
+                    precio_actual = current_prices[asset]
+                else:
+                    # Días anteriores: usar precio histórico
+                    precio_actual = precios_historicos.get(asset, {}).get(fecha_actual, 0)
+                
                 valor_actual = holding["cantidad"] * precio_actual
                 valor_mercado_dia += valor_actual
+                
+                # Calcular unrealized gains para este asset
+                costo_base = holding.get("total_invested", 0)
+                unrealized_gain_asset = valor_actual - costo_base
+                unrealized_gains_dia += unrealized_gain_asset
+        
+        # Calcular realized gains acumulados hasta esta fecha
+        realized_gains_dia = sum(holding.get("realized_gains_historical", 0) for holding in holdings_por_asset.values())
+        
+        # Total gains = realized + unrealized
+        total_gains_dia = realized_gains_dia + unrealized_gains_dia
+        
+        # Calcular total_invested_fifo_dia (solo activos retenidos, homólogo a KPI)
+        total_invested_fifo_dia = sum(holding["total_invested"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
+        total_gains_percent = (total_gains_dia / total_invested_fifo_dia * 100) if total_invested_fifo_dia > 0 else 0
+        
         
         dia_data = {
             "date": fecha_str,
-            "cost": round(coste_total_dia, 2),
+            "cost": round(total_invested_fifo_dia, 2),
             "value": round(valor_mercado_dia, 2),
-            "fees": round(fees_total_dia, 2)
+            "fees": round(fees_total_dia, 2),
+            "realized_gains": round(realized_gains_dia, 2),
+            "unrealized_gains": round(unrealized_gains_dia, 2),
+            "net_profit": round(total_gains_dia, 2),
+            "net_profit_percent": round(total_gains_percent, 2)
         }
         
         timeline.append(dia_data)
@@ -760,7 +811,7 @@ def process_trades_csv(df):
         # TIMING: Generación de timeline
         timeline_start = time.time()
         print(f"📈 Generando timeline histórico...")
-        timeline_data = calcular_holdings_diarios_csv(trades_df)
+        timeline_data = calcular_holdings_diarios_csv(trades_df, current_prices)
         timeline_time = time.time() - timeline_start
         print(f"⏱️ TIMING - Generación timeline: {timeline_time:.3f}s")
         
@@ -821,6 +872,34 @@ def process_csv_data(csv_content):
 async def health_check():
     """Endpoint para verificar que el servidor funciona"""
     return {"status": "ok", "message": "Server is running"}
+
+@app.get("/api/trades/date-range")
+async def get_trades_date_range():
+    """Obtiene las fechas de inicio y fin de todos los trades"""
+    try:
+        # Leer el archivo CSV de trades histórico
+        trades_df = pd.read_csv('trades.csv')
+        
+        if trades_df.empty:
+            return {"error": "No trades data available"}
+        
+        # Convertir columna de tiempo a datetime
+        trades_df['time'] = pd.to_datetime(trades_df['time'])
+        
+        # Obtener fecha mínima y fecha actual
+        start_date = trades_df['time'].min().strftime('%Y-%m-%d')
+        end_date = date.today().strftime('%Y-%m-%d')
+        
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "total_trades": len(trades_df)
+        }
+        
+    except FileNotFoundError:
+        return {"error": "Trades file not found"}
+    except Exception as e:
+        return {"error": f"Error reading trades data: {str(e)}"}
 
 @app.post("/api/portfolio/csv-debug")
 async def upload_csv_debug(request: Request):

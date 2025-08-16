@@ -132,16 +132,16 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
       }}>
       <div style={{
         position: 'relative',
-        width: '600px',
+        width: '700px',
         height: '80px'
       }}>
         {sections.map((section, index) => {
           const isActive = section.id === activeSection;
           
           // Calcular rotación circular completa
-          const centerX = 300;
+          const centerX = 350;
           const centerY = 40;
-          const spacing = 180;
+          const spacing = 220;
           
           // Ángulo base de cada sección (120° entre ellas)
           const sectionAngle = index * 120;
@@ -234,7 +234,7 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onTo
             >
               <h2 style={{
                 margin: 0,
-                fontSize: isActive ? '2.2rem' : '1.8rem',
+                fontSize: isActive ? '2.6rem' : '2.2rem',
                 fontVariationSettings: `'wght' ${isActive ? 510 : 400}`,
                 fontWeight: 'normal',
                 color: isActive ? '#ffffff' : theme.textSecondary,
