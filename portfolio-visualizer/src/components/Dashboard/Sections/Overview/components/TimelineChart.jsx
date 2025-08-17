@@ -52,41 +52,67 @@ const glowPlugin = {
       
       ctx.save();
       
-      // Línea punteada vertical blanca desde el punto hacia arriba 
-      const lineTop = Math.max(45, y - 95); // 95px arriba del punto, mínimo 45px del top
+      // Lógica de posicionamiento dinámico del tooltip
+      const canvasHeight = chart.canvas.height;
+      const canvasWidth = chart.canvas.width;
+      const tooltipHeight = 50; // Altura estimada del tooltip con padding
+      const lineLength = 105; // Longitud deseada de la línea (extendida)
+      const safetyMargin = 30; // Margen de seguridad desde los bordes
       
-      ctx.setLineDash([4, 4]); // Patrón de línea punteada
+      // Estrategia inteligente: acortar línea cuando el texto se salga
+      const shouldPlaceAbove = true;
+      const textMargin = 20; // Margen mínimo desde el borde superior para el texto
+      
+      let lineTop, lineBottom, textY;
+      
+      // Calcular si la línea completa cabría
+      const fullLineTop = y - lineLength;
+      const fullTextY = fullLineTop - 10;
+      
+      if (fullTextY >= textMargin) {
+        // La línea completa cabe - usar tamaño original
+        lineTop = fullLineTop;
+        lineBottom = y - 15;
+        textY = fullTextY;
+      } else {
+        // La línea no cabe - acortarla para que el texto quede visible
+        textY = textMargin; // Texto en la posición mínima
+        lineTop = textY + 10; // Línea 10px abajo del texto
+        lineBottom = y - 15; // Final de línea como siempre
+      }
+      
+      // Línea punteada vertical
+      ctx.setLineDash([4, 4]);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(x, y - 25); // Empezar un poco arriba del punto
-      ctx.lineTo(x, lineTop);
+      ctx.moveTo(x, lineTop);
+      ctx.lineTo(x, lineBottom);
       ctx.stroke();
-      ctx.setLineDash([]); // Resetear línea punteada
+      ctx.setLineDash([]);
       
-      // Mostrar fecha arriba de la línea (más grande)
+      // Mostrar fecha con posicionamiento dinámico
       if (chart.data.labels && chart.data.labels[dataIndex]) {
         const label = chart.data.labels[dataIndex];
         
         ctx.font = 'bold 18px Inter, sans-serif';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
+        ctx.textBaseline = shouldPlaceAbove ? 'bottom' : 'top';
         
-        // Fondo semi-transparente para la fecha (más grande)
+        // Fondo semi-transparente para la fecha
         const textWidth = ctx.measureText(label).width;
         const padding = 12;
-        const textY = lineTop - 10;
         
-        // Ajustar posición X para evitar que se corte en los bordes
-        const canvasWidth = chart.canvas.width;
-        const safetyMargin = 30; // Margen de seguridad adicional
-        const minX = textWidth/2 + padding + safetyMargin;
-        const maxX = canvasWidth - textWidth/2 - padding - safetyMargin;
-        const adjustedX = Math.max(minX, Math.min(maxX, x));
+        // Sin restricciones de posición X - el texto sigue exactamente al cursor
+        const adjustedX = x;
+        
+        // Ajustar altura del fondo según posición
+        const bgHeight = 26;
+        const bgY = shouldPlaceAbove ? textY - bgHeight + 4 : textY - 4;
         
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.fillRect(adjustedX - textWidth/2 - padding, textY - 22, textWidth + padding*2, 26);
+        ctx.fillRect(adjustedX - textWidth/2 - padding, bgY, textWidth + padding*2, bgHeight);
         
         // Texto de la fecha
         ctx.fillStyle = '#ffffff';
@@ -135,6 +161,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [showStartCalendar, setShowStartCalendar] = useState(false);
+  const [showEndCalendar, setShowEndCalendar] = useState(false);
   
   // Inicializar fechas
   useEffect(() => {
@@ -191,6 +219,21 @@ const TimelineChart = ({ portfolioData, theme }) => {
     setTimeout(hideCalendarIcon, 100);
     setTimeout(hideCalendarIcon, 500);
   }, [portfolioData]);
+
+  // Cerrar calendarios al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('[data-calendar]')) {
+        setShowStartCalendar(false);
+        setShowEndCalendar(false);
+      }
+    };
+
+    if (showStartCalendar || showEndCalendar) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showStartCalendar, showEndCalendar]);
   
   // Inicializar tooltip estático
   useEffect(() => {
@@ -203,6 +246,146 @@ const TimelineChart = ({ portfolioData, theme }) => {
   // Manejar transición cuando cambia showTotalInvested
   const handleInvestedToggle = () => {
     setShowTotalInvested(!showTotalInvested);
+  };
+
+  // Functions to handle calendars
+  const handleStartDateChange = (event) => {
+    const selectedDate = new Date(event.target.value);
+    const formattedDate = selectedDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit', 
+      year: 'numeric'
+    });
+    setStartDate(formattedDate);
+    setShowStartCalendar(false);
+  };
+
+  const handleEndDateChange = (event) => {
+    const selectedDate = new Date(event.target.value);
+    const formattedDate = selectedDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    setEndDate(formattedDate);
+    setShowEndCalendar(false);
+  };
+
+  // Convertir fecha DD/MM/YYYY a YYYY-MM-DD para input date
+  const formatDateForInput = (dateStr) => {
+    if (!dateStr) return '';
+    const [day, month, year] = dateStr.split('/');
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  };
+
+  // Generar calendario personalizado
+  const generateCalendar = (year, month) => {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    const days = [];
+    
+    // Días vacíos al inicio
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    
+    // Días del mes
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(day);
+    }
+    
+    // Completar con días vacíos hasta completar 6 filas (42 espacios total)
+    while (days.length < 42) {
+      days.push(null);
+    }
+    
+    return days;
+  };
+
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarType, setCalendarType] = useState('start'); // 'start' o 'end'
+
+  // Handle day selection in custom calendar
+  const handleDayClick = (day) => {
+    if (!day) return;
+    
+    const selectedDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day);
+    const formattedDate = selectedDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    
+    if (calendarType === 'start') {
+      setStartDate(formattedDate);
+      setShowStartCalendar(false);
+    } else {
+      setEndDate(formattedDate);
+      setShowEndCalendar(false);
+    }
+  };
+
+  // Cambiar mes del calendario
+  const changeMonth = (direction) => {
+    setCalendarDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setMonth(prev.getMonth() + direction);
+      return newDate;
+    });
+  };
+
+  // Cambiar año del calendario
+  const changeYear = (direction) => {
+    setCalendarDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setFullYear(prev.getFullYear() + direction);
+      return newDate;
+    });
+  };
+
+  // Función para determinar el estado de un día en el calendario
+  const getDayState = (day, currentYear, currentMonth) => {
+    if (!day) return 'empty';
+    
+    const currentDate = new Date(currentYear, currentMonth, day);
+    
+    // Convertir fechas de los botones a objetos Date
+    let startDateObj = null;
+    let endDateObj = null;
+    
+    if (startDate) {
+      const [sDay, sMonth, sYear] = startDate.split('/');
+      startDateObj = new Date(sYear, sMonth - 1, sDay);
+    }
+    
+    if (endDate) {
+      const [eDay, eMonth, eYear] = endDate.split('/');
+      endDateObj = new Date(eYear, eMonth - 1, eDay);
+    }
+    
+    // Verificar si es una fecha seleccionada
+    if (startDateObj && currentDate.getTime() === startDateObj.getTime()) {
+      return 'selected';
+    }
+    
+    if (endDateObj && currentDate.getTime() === endDateObj.getTime()) {
+      return 'selected';
+    }
+    
+    // Verificar si está en el rango
+    if (startDateObj && endDateObj) {
+      const minDate = startDateObj < endDateObj ? startDateObj : endDateObj;
+      const maxDate = startDateObj > endDateObj ? startDateObj : endDateObj;
+      
+      if (currentDate > minDate && currentDate < maxDate) {
+        return 'inRange';
+      }
+    }
+    
+    return 'normal';
   };
   
   // Función para renderizar tooltip con datos específicos
@@ -657,7 +840,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
       padding: {
         left: 40,
         right: 40,
-        top: 20,
+        top: 20, // Reducido para acercar al tooltip
         bottom: 30
       }
     },
@@ -679,7 +862,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
           const dataIndex = activeElements[0].index;
           tooltipArea.innerHTML = renderTooltipContent(dataIndex);
         } else {
-          // Volver al último punto cuando no hay hover
+          // Sin hover - volver a la última fecha (estado por defecto)
           tooltipArea.innerHTML = renderTooltipContent();
         }
       }
@@ -771,18 +954,19 @@ const TimelineChart = ({ portfolioData, theme }) => {
       backgroundColor: 'transparent',
       border: 'none',
       borderRadius: '0',
-      boxSizing: 'border-box'
+      boxSizing: 'border-box',
+      overflow: 'visible'
     }}>
       {/* Contenedor igual que AssetLeaderboard */}
       <div style={{
         background: 'transparent',
         border: 'none',
         borderRadius: '0',
-        overflow: 'hidden'
+        overflow: 'visible'
       }}>
       <div style={{
         position: 'relative',
-        marginBottom: '3.5rem',
+        marginBottom: '5rem',
         transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
       }}>
         {/* Contenedor principal para controles */}
@@ -1072,75 +1256,293 @@ const TimelineChart = ({ portfolioData, theme }) => {
             gap: '0px'
           }}>
             {/* Botón fecha inicio */}
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '10px',
-              padding: '12px 13px',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: '700',
-              cursor: 'pointer',
-              transition: 'all 0.25s ease-out',
-              backdropFilter: 'blur(10px)',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              whiteSpace: 'nowrap',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-              MozUserSelect: 'none',
-              msUserSelect: 'none'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.transform = 'scale(1.02)';
-              e.target.style.background = 'rgba(255, 255, 255, 0.12)';
-              e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.transform = 'scale(1)';
-              e.target.style.background = 'rgba(255, 255, 255, 0.08)';
-              e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-            }}
-            onClick={() => {
-              const input = document.getElementById('start-date-input');
-              input.focus();
-              input.select();
-            }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="16" y1="2" x2="16" y2="6"></line>
-                <line x1="8" y1="2" x2="8" y2="6"></line>
-                <line x1="3" y1="10" x2="21" y2="10"></line>
-              </svg>
-              <input
-                id="start-date-input"
-                type="text"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'inherit',
-                  fontSize: 'inherit',
-                  fontFamily: 'inherit',
-                  fontWeight: 'inherit',
-                  outline: 'none',
-                  minWidth: '0',
-                  width: `${startDate.length * 0.66}em`,
-                  textAlign: 'left',
-                  userSelect: 'none',
-                  WebkitUserSelect: 'none',
-                  MozUserSelect: 'none',
-                  msUserSelect: 'none',
-                  pointerEvents: 'none'
-                }}
-              />
+            <div style={{ position: 'relative' }} data-calendar>
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '10px',
+                padding: '12px 13px',
+                color: '#ffffff',
+                fontSize: '14px',
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.25s ease-out',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                whiteSpace: 'nowrap',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                MozUserSelect: 'none',
+                msUserSelect: 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'scale(1.02)';
+                e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
+                e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'scale(1)';
+                e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+              }}
+              onClick={() => {
+                setCalendarType('start');
+                // Establecer calendario en la fecha actual del botón
+                if (startDate) {
+                  const [day, month, year] = startDate.split('/');
+                  setCalendarDate(new Date(year, month - 1, day));
+                }
+                setShowStartCalendar(!showStartCalendar);
+                setShowEndCalendar(false);
+              }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span>{startDate}</span>
+              </div>
+              
+              {/* Calendario emergente para fecha inicio */}
+              {showStartCalendar && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: '0', // Cambiar a right para que se extienda hacia la izquierda
+                  marginTop: '8px',
+                  zIndex: 1000,
+                  background: 'rgba(0, 0, 0, 0.95)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '16px',
+                  padding: '24px', // Más padding
+                  backdropFilter: 'blur(20px)',
+                  boxShadow: '0 12px 48px rgba(0, 0, 0, 0.5)',
+                  minWidth: '480px', // Más ancho para 7 columnas
+                  width: '480px',
+                  minHeight: '540px' // Altura mínima para selector de año + 6 filas
+                }}>
+                  {/* Calendar Header */}
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    marginBottom: '24px',
+                    color: '#ffffff',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: '600'
+                  }}>
+                    {/* Year selector */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      marginBottom: '16px'
+                    }}>
+                      <button
+                        onClick={() => changeYear(-1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ‹‹
+                      </button>
+                      <span style={{ 
+                        fontSize: '20px', 
+                        fontWeight: '700', 
+                        margin: '0 20px',
+                        minWidth: '80px',
+                        textAlign: 'center'
+                      }}>
+                        {calendarDate.getFullYear()}
+                      </span>
+                      <button
+                        onClick={() => changeYear(1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ››
+                      </button>
+                    </div>
+                    
+                    {/* Month selector */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      <button
+                        onClick={() => changeMonth(-1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '10px',
+                          color: '#ffffff',
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          fontSize: '20px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ‹
+                      </button>
+                      <span style={{ 
+                        fontSize: '22px', 
+                        fontWeight: '700', 
+                        margin: '0 20px',
+                        minWidth: '140px',
+                        textAlign: 'center'
+                      }}>
+                        {calendarDate.toLocaleDateString('en-US', { month: 'long' })}
+                      </span>
+                      <button
+                        onClick={() => changeMonth(1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '10px',
+                          color: '#ffffff',
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          fontSize: '20px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ›
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Días de la semana */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    gap: '6px', // Espacio optimizado
+                    marginBottom: '16px', // Más espacio
+                    fontSize: '16px', // Más grande
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: '600',
+                    textAlign: 'center'
+                  }}>
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                      <div key={day} style={{ padding: '8px' }}>{day}</div>
+                    ))}
+                  </div>
+
+                  {/* Grid de días */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    gap: '8px' // Más espacio
+                  }}>
+                    {generateCalendar(calendarDate.getFullYear(), calendarDate.getMonth()).map((day, index) => {
+                      const dayState = getDayState(day, calendarDate.getFullYear(), calendarDate.getMonth());
+                      
+                      // Determinar colores según el estado
+                      let backgroundColor = 'transparent';
+                      let hoverColor = 'rgba(34, 197, 94, 0.3)';
+                      
+                      if (day) {
+                        switch (dayState) {
+                          case 'selected':
+                            backgroundColor = 'rgba(34, 197, 94, 0.7)'; // Verde fuerte para días seleccionados
+                            break;
+                          case 'inRange':
+                            backgroundColor = 'rgba(34, 197, 94, 0.3)'; // Verde suave para rango
+                            break;
+                          case 'normal':
+                          default:
+                            backgroundColor = 'rgba(255, 255, 255, 0.1)'; // Color normal
+                            break;
+                        }
+                      }
+                      
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleDayClick(day)}
+                          disabled={!day}
+                          style={{
+                            background: backgroundColor,
+                            border: 'none',
+                            borderRadius: '10px',
+                            color: day ? '#ffffff' : 'transparent',
+                            padding: '12px',
+                            cursor: day ? 'pointer' : 'default',
+                            fontSize: '18px',
+                            fontFamily: "'Inter', sans-serif",
+                            fontWeight: dayState === 'selected' ? '700' : '600',
+                            transition: 'all 0.2s ease',
+                            minHeight: '48px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          onMouseEnter={day ? (e) => {
+                            if (dayState !== 'selected' && dayState !== 'inRange') {
+                              e.target.style.background = hoverColor;
+                            }
+                            e.target.style.transform = 'scale(1.05)';
+                          } : undefined}
+                          onMouseLeave={day ? (e) => {
+                            e.target.style.background = backgroundColor;
+                            e.target.style.transform = 'scale(1)';
+                          } : undefined}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             
             {/* Línea divisora */}
@@ -1153,70 +1555,293 @@ const TimelineChart = ({ portfolioData, theme }) => {
             }}></div>
             
             {/* Botón fecha fin */}
-            <div style={{
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '10px',
-              padding: '12px 13px',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: '700',
-              cursor: 'pointer',
-              transition: 'all 0.25s ease-out',
-              backdropFilter: 'blur(10px)',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              whiteSpace: 'nowrap',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-              MozUserSelect: 'none',
-              msUserSelect: 'none'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.transform = 'scale(1.02)';
-              e.target.style.background = 'rgba(255, 255, 255, 0.12)';
-              e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.transform = 'scale(1)';
-              e.target.style.background = 'rgba(255, 255, 255, 0.08)';
-              e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-            }}
-            onClick={() => {
-              const input = document.getElementById('end-date-input');
-              input.focus();
-              input.select();
-            }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="16" y1="2" x2="16" y2="6"></line>
-                <line x1="8" y1="2" x2="8" y2="6"></line>
-                <line x1="3" y1="10" x2="21" y2="10"></line>
-              </svg>
-              <input
-                id="end-date-input"
-                type="text"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'inherit',
-                  fontSize: 'inherit',
-                  fontFamily: 'inherit',
-                  fontWeight: 'inherit',
-                  outline: 'none',
-                  minWidth: '0',
-                  width: `${endDate.length * 0.66}em`,
-                  textAlign: 'left'
-                }}
-              />
+            <div style={{ position: 'relative' }} data-calendar>
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '10px',
+                padding: '12px 13px',
+                color: '#ffffff',
+                fontSize: '14px',
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.25s ease-out',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                whiteSpace: 'nowrap',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                MozUserSelect: 'none',
+                msUserSelect: 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'scale(1.02)';
+                e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
+                e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'scale(1)';
+                e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+              }}
+              onClick={() => {
+                setCalendarType('end');
+                // Establecer calendario en la fecha actual del botón
+                if (endDate) {
+                  const [day, month, year] = endDate.split('/');
+                  setCalendarDate(new Date(year, month - 1, day));
+                }
+                setShowEndCalendar(!showEndCalendar);
+                setShowStartCalendar(false);
+              }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span>{endDate}</span>
+              </div>
+              
+              {/* Calendario emergente para fecha fin */}
+              {showEndCalendar && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: '0',
+                  marginTop: '8px',
+                  zIndex: 1000,
+                  background: 'rgba(0, 0, 0, 0.95)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '16px',
+                  padding: '24px', // Más padding
+                  backdropFilter: 'blur(20px)',
+                  boxShadow: '0 12px 48px rgba(0, 0, 0, 0.5)',
+                  minWidth: '480px', // Más ancho para 7 columnas
+                  width: '480px',
+                  minHeight: '540px' // Altura mínima para selector de año + 6 filas
+                }}>
+                  {/* Calendar Header */}
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    marginBottom: '24px',
+                    color: '#ffffff',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: '600'
+                  }}>
+                    {/* Year selector */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      marginBottom: '16px'
+                    }}>
+                      <button
+                        onClick={() => changeYear(-1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ‹‹
+                      </button>
+                      <span style={{ 
+                        fontSize: '20px', 
+                        fontWeight: '700', 
+                        margin: '0 20px',
+                        minWidth: '80px',
+                        textAlign: 'center'
+                      }}>
+                        {calendarDate.getFullYear()}
+                      </span>
+                      <button
+                        onClick={() => changeYear(1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          fontSize: '16px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ››
+                      </button>
+                    </div>
+                    
+                    {/* Month selector */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      <button
+                        onClick={() => changeMonth(-1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '10px',
+                          color: '#ffffff',
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          fontSize: '20px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ‹
+                      </button>
+                      <span style={{ 
+                        fontSize: '22px', 
+                        fontWeight: '700', 
+                        margin: '0 20px',
+                        minWidth: '140px',
+                        textAlign: 'center'
+                      }}>
+                        {calendarDate.toLocaleDateString('en-US', { month: 'long' })}
+                      </span>
+                      <button
+                        onClick={() => changeMonth(1)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          border: 'none',
+                          borderRadius: '10px',
+                          color: '#ffffff',
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          fontSize: '20px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
+                        }}
+                      >
+                        ›
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Días de la semana */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    gap: '6px', // Espacio optimizado
+                    marginBottom: '16px', // Más espacio
+                    fontSize: '16px', // Más grande
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: '600',
+                    textAlign: 'center'
+                  }}>
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                      <div key={day} style={{ padding: '8px' }}>{day}</div>
+                    ))}
+                  </div>
+
+                  {/* Grid de días */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    gap: '8px' // Más espacio
+                  }}>
+                    {generateCalendar(calendarDate.getFullYear(), calendarDate.getMonth()).map((day, index) => {
+                      const dayState = getDayState(day, calendarDate.getFullYear(), calendarDate.getMonth());
+                      
+                      // Determinar colores según el estado
+                      let backgroundColor = 'transparent';
+                      let hoverColor = 'rgba(34, 197, 94, 0.3)';
+                      
+                      if (day) {
+                        switch (dayState) {
+                          case 'selected':
+                            backgroundColor = 'rgba(34, 197, 94, 0.7)'; // Verde fuerte para días seleccionados
+                            break;
+                          case 'inRange':
+                            backgroundColor = 'rgba(34, 197, 94, 0.3)'; // Verde suave para rango
+                            break;
+                          case 'normal':
+                          default:
+                            backgroundColor = 'rgba(255, 255, 255, 0.1)'; // Color normal
+                            break;
+                        }
+                      }
+                      
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleDayClick(day)}
+                          disabled={!day}
+                          style={{
+                            background: backgroundColor,
+                            border: 'none',
+                            borderRadius: '10px',
+                            color: day ? '#ffffff' : 'transparent',
+                            padding: '12px',
+                            cursor: day ? 'pointer' : 'default',
+                            fontSize: '18px',
+                            fontFamily: "'Inter', sans-serif",
+                            fontWeight: dayState === 'selected' ? '700' : '600',
+                            transition: 'all 0.2s ease',
+                            minHeight: '48px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          onMouseEnter={day ? (e) => {
+                            if (dayState !== 'selected' && dayState !== 'inRange') {
+                              e.target.style.background = hoverColor;
+                            }
+                            e.target.style.transform = 'scale(1.05)';
+                          } : undefined}
+                          onMouseLeave={day ? (e) => {
+                            e.target.style.background = backgroundColor;
+                            e.target.style.transform = 'scale(1)';
+                          } : undefined}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1230,11 +1855,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
         alignItems: 'center',
         width: '100%',
         marginTop: '2.5rem',
-        marginBottom: '0.2rem'
+        marginBottom: '1.5rem'
       }}>
         {/* Área dedicada para tooltip estático */}
         <div id="tooltip-area" style={{ 
-          minHeight: '80px', 
+          minHeight: '40px', 
           flex: 1,
           position: 'relative',
           padding: '0',
@@ -1250,21 +1875,29 @@ const TimelineChart = ({ portfolioData, theme }) => {
       </div>
       
       {/* Contenedor del gráfico expandido */}
-      <div style={{ 
-        width: 'calc(100% + 70px)', // Expandir hasta cubrir desde tooltip hasta botones
-        marginLeft: '-50px', // Empezar desde el tooltip
-        marginRight: '-20px', // Extender hasta los botones de fecha
-        height: '800px', // Aumentar altura
-        minHeight: '800px', 
-        position: 'relative',
-        background: 'transparent',
-        borderRadius: '0',
-        padding: '0', // Sin padding para usar todo el espacio
-        margin: '1rem 0',
-        boxSizing: 'border-box',
-        border: 'none',
-        overflow: 'visible'
-      }}>
+      <div 
+        style={{ 
+          width: 'calc(100% + 70px)', // Expandir hasta cubrir desde tooltip hasta botones
+          marginLeft: '-50px', // Empezar desde el tooltip
+          height: '800px', // Aumentar altura
+          minHeight: '800px', 
+          position: 'relative',
+          background: 'transparent',
+          borderRadius: '0',
+          padding: '10px 0 0 0', // Padding mínimo superior
+          margin: '0.2rem 0',
+          boxSizing: 'border-box',
+          border: 'none',
+          overflow: 'visible'
+        }}
+        onMouseLeave={() => {
+          // Cuando el mouse sale del contenedor, volver al estado por defecto
+          const tooltipArea = document.querySelector('#tooltip-area');
+          if (tooltipArea) {
+            tooltipArea.innerHTML = renderTooltipContent();
+          }
+        }}
+      >
         <Line data={timelineData} options={timelineOptions} />
       </div>
       </div>
