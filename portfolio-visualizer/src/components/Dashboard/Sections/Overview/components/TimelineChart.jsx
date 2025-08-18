@@ -1,6 +1,10 @@
+import React, { useRef, useEffect, useState } from 'react';
+import { Chart, TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { useState, useEffect } from 'react';
-import { Chart } from 'chart.js';
+import 'chartjs-adapter-date-fns';
+
+// Registrar escalas
+Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
 // Plugin de brillo personalizado con color dinámico
 const glowPlugin = {
@@ -739,9 +743,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
     const positiveBalanceCount = balanceValues.filter(val => val > 0).length;
     const balanceIsPositive = positiveBalanceCount > balanceValues.length / 2;
     const balanceAreaColor = balanceIsPositive ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-    
-    console.log('🎯 BALANCE COLOR CALC:', positiveBalanceCount, '/', balanceValues.length, '-> isPositive:', balanceIsPositive, '-> color:', balanceAreaColor);
-    
+        
     // Para Full View: calcular si market gana
     let marketWinsCount = 0;
     if (showTotalInvested) {
@@ -757,7 +759,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
     const marketIsWinning = marketWinsCount > portfolioValues.length / 2;
     const marketAreaColor = marketIsWinning ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
     
-    console.log('🎯 MARKET COLOR CALC:', marketWinsCount, '/', portfolioValues.length, '-> isWinning:', marketIsWinning, '-> color:', marketAreaColor);
     
     // Construir datasets según el modo de vista
     let datasets = [];
@@ -1540,24 +1541,224 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 }}>Balance (P&L)</span>
               </div>
             )}
-          </div>
-          
-          {/* Controles superiores derecha */}
-          <div style={{
-            position: 'absolute',
-            top: '60px',
-            right: '0px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: '8px'
-          }}>
-            {/* Botones de fechas */}
+            
+            {/* Separador y sección de Period */}
+            <div style={{
+              width: '1px',
+              height: '20px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              margin: '0 8px'
+            }}></div>
+            
+            {/* Etiqueta Period */}
+            <div style={{
+              color: 'rgba(245, 245, 245, 0.7)',
+              fontSize: '14px',
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: '600',
+              marginRight: '8px',
+              display: 'flex',
+              alignItems: 'center'
+            }}>
+              Period
+            </div>
+            
+            {/* Botones de período */}
             <div style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: '0px'
+              gap: '4px'
             }}>
+              <button
+                onClick={() => setPeriodMode('day')}
+                style={{
+                  background: periodMode === 'day' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: periodMode === 'day' 
+                    ? '2px solid rgba(34, 197, 94, 0.7)' 
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  color: periodMode === 'day' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease-out',
+                  transform: periodMode === 'day' ? 'scale(1.02)' : 'scale(1)',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: periodMode === 'day' 
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
+                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'day') {
+                    e.target.style.color = '#ffffff';
+                    e.target.style.transform = 'scale(1.02)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'day') {
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  }
+                }}
+              >
+                Day
+              </button>
+              
+              <button
+                onClick={() => setPeriodMode('week')}
+                style={{
+                  background: periodMode === 'week' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: periodMode === 'week' 
+                    ? '2px solid rgba(34, 197, 94, 0.7)' 
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  color: periodMode === 'week' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease-out',
+                  transform: periodMode === 'week' ? 'scale(1.02)' : 'scale(1)',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: periodMode === 'week' 
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
+                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'week') {
+                    e.target.style.color = '#ffffff';
+                    e.target.style.transform = 'scale(1.02)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'week') {
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  }
+                }}
+              >
+                Week
+              </button>
+              
+              <button
+                onClick={() => setPeriodMode('month')}
+                style={{
+                  background: periodMode === 'month' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: periodMode === 'month' 
+                    ? '2px solid rgba(34, 197, 94, 0.7)' 
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  color: periodMode === 'month' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease-out',
+                  transform: periodMode === 'month' ? 'scale(1.02)' : 'scale(1)',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: periodMode === 'month' 
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
+                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'month') {
+                    e.target.style.color = '#ffffff';
+                    e.target.style.transform = 'scale(1.02)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'month') {
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  }
+                }}
+              >
+                Month
+              </button>
+              
+              <button
+                onClick={() => setPeriodMode('year')}
+                style={{
+                  background: periodMode === 'year' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
+                    : 'rgba(255, 255, 255, 0.08)',
+                  border: periodMode === 'year' 
+                    ? '2px solid rgba(34, 197, 94, 0.7)' 
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  color: periodMode === 'year' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease-out',
+                  transform: periodMode === 'year' ? 'scale(1.02)' : 'scale(1)',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: periodMode === 'year' 
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
+                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'year') {
+                    e.target.style.color = '#ffffff';
+                    e.target.style.transform = 'scale(1.02)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'year') {
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.target.style.transform = 'scale(1)';
+                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  }
+                }}
+              >
+                Year
+              </button>
+            </div>
+          </div>
+          
+          {/* Botones de fechas a la derecha */}
+          <div style={{
+            position: 'absolute',
+            top: '10px',
+            right: '0px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0px'
+          }}>
             {/* Botón fecha inicio */}
             <div style={{ position: 'relative' }} data-calendar>
               <div style={{
@@ -2436,7 +2637,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
         </div>
       </div>
       
-      {/* Línea de botones Reset y Apply */}
+      {/* Línea del tooltip estático */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -2445,8 +2646,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
         marginTop: '2.5rem',
         marginBottom: '1.5rem'
       }}>
-        {/* Espacio flexible para mantener diseño */}
-        <div style={{ 
+        {/* Área dedicada para tooltip estático */}
+        <div id="tooltip-area" style={{ 
           minHeight: '40px', 
           flex: 1,
           position: 'relative',
@@ -2455,6 +2656,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
           alignItems: 'center',
           justifyContent: 'flex-start'
         }}>
+          {/* El tooltip se inicializará con el último día */}
         </div>
         
         {/* Botones alineados a la derecha - Solo cuando hay filtros activos */}
@@ -2565,25 +2767,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
             </div>
           </div>
         )}
-            </div>
-            
-            {/* Tooltip estático reubicado */}
-            <div id="tooltip-area" style={{ 
-              minHeight: '40px',
-              position: 'relative',
-              padding: '8px 12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-              background: 'rgba(0, 0, 0, 0.3)',
-              borderRadius: '8px',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              backdropFilter: 'blur(10px)',
-              maxWidth: '400px'
-            }}>
-              {/* El tooltip se inicializará con el último día */}
-            </div>
-          </div>
       </div>
       
       {/* Contenedor del gráfico expandido */}
@@ -2614,6 +2797,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
         }}
       >
         <Line data={timelineData} options={timelineOptions} />
+      </div>
       </div>
     </div>
   );
