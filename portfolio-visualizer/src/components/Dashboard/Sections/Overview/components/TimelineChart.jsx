@@ -66,11 +66,7 @@ const glowPlugin = {
       ctx.save();
       
       // Lógica de posicionamiento dinámico del tooltip
-      const canvasHeight = chart.canvas.height;
-      const canvasWidth = chart.canvas.width;
-      const tooltipHeight = 50; // Altura estimada del tooltip con padding
       const lineLength = 105; // Longitud deseada de la línea (extendida)
-      const safetyMargin = 30; // Margen de seguridad desde los bordes
       
       // Estrategia inteligente: acortar línea cuando el texto se salga
       const shouldPlaceAbove = true;
@@ -172,7 +168,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
   const [showTotalInvested, setShowTotalInvested] = useState(true);
   const [viewMode, setViewMode] = useState('both'); // 'both', 'balance'
   const [periodMode, setPeriodMode] = useState('day'); // 'week', 'month', 'year', 'day'
-  const [isTransitioning, setIsTransitioning] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showStartCalendar, setShowStartCalendar] = useState(false);
@@ -2034,7 +2029,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                       
                       // Determinar colores según el estado
                       let backgroundColor = 'transparent';
-                      let hoverColor = 'rgba(34, 197, 94, 0.3)';
                       
                       if (day) {
                         switch (dayState) {
@@ -2475,7 +2469,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                       
                       // Determinar colores según el estado
                       let backgroundColor = 'transparent';
-                      let hoverColor = 'rgba(34, 197, 94, 0.3)';
                       
                       if (day) {
                         switch (dayState) {
