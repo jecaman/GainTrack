@@ -37,16 +37,25 @@ const glowPlugin = {
       if (chart.config._config && chart.config._config.data && chart.config._config.data.datasets) {
         const datasets = chart.config._config.data.datasets;
         
-        // Buscar dataset de Market Value y Total Invested
-        const marketDataset = datasets.find(d => d.label === 'Market Value');
-        const investedDataset = datasets.find(d => d.label === 'Total Invested');
+        // Buscar dataset de Balance (P&L) para vista P&L
+        const balanceDataset = datasets.find(d => d.label === 'Balance (P&L)');
         
-        if (marketDataset && investedDataset && dataIndex < marketDataset.data.length) {
-          const marketValue = marketDataset.data[dataIndex];
-          const investedValue = investedDataset.data[dataIndex];
+        if (balanceDataset && dataIndex < balanceDataset.data.length) {
+          const balanceValue = balanceDataset.data[dataIndex];
+          // Verde si balance positivo, rojo si balance negativo
+          pointColor = balanceValue >= 0 ? '#22c55e' : '#ef4444';
+        } else {
+          // Fallback para vista completa: buscar dataset de Market Value y Total Invested
+          const marketDataset = datasets.find(d => d.label === 'Market Value');
+          const investedDataset = datasets.find(d => d.label === 'Total Invested');
           
-          // Verde si market > invested, rojo si market < invested
-          pointColor = marketValue >= investedValue ? '#22c55e' : '#ef4444';
+          if (marketDataset && investedDataset && dataIndex < marketDataset.data.length) {
+            const marketValue = marketDataset.data[dataIndex];
+            const investedValue = investedDataset.data[dataIndex];
+            
+            // Verde si market > invested, rojo si market < invested
+            pointColor = marketValue >= investedValue ? '#22c55e' : '#ef4444';
+          }
         }
       }
       
@@ -158,17 +167,19 @@ Chart.register(glowPlugin);
 const TimelineChart = ({ portfolioData, theme }) => {
   const [showTotalInvested, setShowTotalInvested] = useState(true);
   const [viewMode, setViewMode] = useState('both'); // 'both', 'balance'
+  const [periodMode, setPeriodMode] = useState('day'); // 'week', 'month', 'year', 'day'
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showStartCalendar, setShowStartCalendar] = useState(false);
   const [showEndCalendar, setShowEndCalendar] = useState(false);
+  const [isChartLoading, setIsChartLoading] = useState(false);
   
   // Inicializar fechas
   useEffect(() => {
     if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
       const firstDate = new Date(portfolioData.timeline[0].date);
-      const lastDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date);
+      const today = new Date(); // Fecha actual en lugar de última fecha de datos
       
       // Formatear fechas como DD/MM/YYYY
       const formatDate = (date) => {
@@ -178,8 +189,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
         return `${day}/${month}/${year}`;
       };
       
-      setStartDate(formatDate(firstDate));
-      setEndDate(formatDate(lastDate));
+      // Solo establecer si no están ya establecidas (para no sobrescribir selecciones del usuario)
+      if (!startDate) setStartDate(formatDate(firstDate));
+      if (!endDate) setEndDate(formatDate(today));
     }
     
     // Ocultar iconos de calendario de manera agresiva
@@ -241,7 +253,20 @@ const TimelineChart = ({ portfolioData, theme }) => {
     if (tooltipArea && portfolioData?.timeline) {
       tooltipArea.innerHTML = renderTooltipContent();
     }
-  }, [portfolioData, showTotalInvested, viewMode]);
+  }, [portfolioData, showTotalInvested, viewMode, startDate, endDate]);
+
+  // Gestionar transición suave del gráfico cuando cambian las fechas
+  useEffect(() => {
+    if (portfolioData?.timeline) {
+      setIsChartLoading(true);
+      // Delay optimizado para permitir transición visual suave
+      const timer = setTimeout(() => {
+        setIsChartLoading(false);
+      }, 300); // 300ms para transición más ergonómica
+      
+      return () => clearTimeout(timer);
+    }
+  }, [startDate, endDate, portfolioData]);
   
   // Manejar transición cuando cambia showTotalInvested
   const handleInvestedToggle = () => {
@@ -307,10 +332,75 @@ const TimelineChart = ({ portfolioData, theme }) => {
 
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarType, setCalendarType] = useState('start'); // 'start' o 'end'
+  const [autoOpenCount, setAutoOpenCount] = useState(0); // Para evitar bucles
+
+  // Función para obtener fechas por defecto
+  const getDefaultDates = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
+      return { defaultStartDate: '', defaultEndDate: '' };
+    }
+    
+    const firstDate = new Date(portfolioData.timeline[0].date);
+    const today = new Date();
+    
+    const formatDate = (date) => {
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+    
+    return {
+      defaultStartDate: formatDate(firstDate),
+      defaultEndDate: formatDate(today)
+    };
+  };
+
+  // Función para obtener rango de fechas válidas
+  const getValidDateRange = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
+      return { minDate: null, maxDate: null };
+    }
+    
+    const firstDate = new Date(portfolioData.timeline[0].date);
+    const lastDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date);
+    
+    return {
+      minDate: firstDate,
+      maxDate: lastDate
+    };
+  };
+
+  // Función para validar si una fecha es válida
+  const isValidDate = (year, month, day) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return false;
+    
+    const dateToCheck = new Date(year, month, day);
+    return dateToCheck >= minDate && dateToCheck <= maxDate;
+  };
+
+  // Función para validar lógica de rango (inicio no posterior a fin)
+  const isValidRange = (startDateStr, endDateStr) => {
+    if (!startDateStr || !endDateStr) return true; // Si alguna está vacía, no validar
+    
+    const [startDay, startMonth, startYear] = startDateStr.split('/');
+    const [endDay, endMonth, endYear] = endDateStr.split('/');
+    
+    const startDateObj = new Date(startYear, startMonth - 1, startDay);
+    const endDateObj = new Date(endYear, endMonth - 1, endDay);
+    
+    return startDateObj <= endDateObj;
+  };
 
   // Handle day selection in custom calendar
   const handleDayClick = (day) => {
     if (!day) return;
+    
+    // Validar que la fecha esté en el rango de datos disponibles
+    if (!isValidDate(calendarDate.getFullYear(), calendarDate.getMonth(), day)) {
+      return; // No permitir seleccionar fechas fuera del rango
+    }
     
     const selectedDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day);
     const formattedDate = selectedDate.toLocaleDateString('en-GB', {
@@ -320,28 +410,79 @@ const TimelineChart = ({ portfolioData, theme }) => {
     });
     
     if (calendarType === 'start') {
+      // Validar que fecha inicio no sea posterior a fecha fin
+      if (endDate && !isValidRange(formattedDate, endDate)) {
+        return; // No permitir fecha inicio posterior a fecha fin
+      }
+      
       setStartDate(formattedDate);
+      
+      // Transición directa al calendario de fin sin timeout
+      setCalendarType('end');
+      // Establecer calendario en la fecha fin al abrir
+      if (endDate) {
+        const [day, month, year] = endDate.split('/');
+        setCalendarDate(new Date(year, month - 1, day));
+      }
       setShowStartCalendar(false);
+      setShowEndCalendar(true);
+      
     } else {
+      // Validar que fecha fin no sea anterior a fecha inicio
+      if (startDate && !isValidRange(startDate, formattedDate)) {
+        return; // No permitir fecha fin anterior a fecha inicio
+      }
+      
       setEndDate(formattedDate);
       setShowEndCalendar(false);
+      
+      // NO abrir automáticamente el calendario de inicio - ROMPER EL BUCLE
+      // El usuario tendrá que hacer clic manual si quiere cambiar la fecha inicio
     }
   };
 
   // Cambiar mes del calendario
   const changeMonth = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return;
+    
     setCalendarDate(prev => {
       const newDate = new Date(prev);
-      newDate.setMonth(prev.getMonth() + direction);
+      const targetMonth = prev.getMonth() + direction;
+      newDate.setMonth(targetMonth);
+      
+      // Verificar que el nuevo mes no esté fuera del rango de datos
+      const firstDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth(), 1);
+      const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0);
+      
+      // Si todo el mes está fuera del rango, no cambiar
+      if (lastDayOfMonth < minDate || firstDayOfMonth > maxDate) {
+        return prev; // No cambiar si está completamente fuera del rango
+      }
+      
       return newDate;
     });
   };
 
   // Cambiar año del calendario
   const changeYear = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return;
+    
     setCalendarDate(prev => {
       const newDate = new Date(prev);
-      newDate.setFullYear(prev.getFullYear() + direction);
+      const targetYear = prev.getFullYear() + direction;
+      newDate.setFullYear(targetYear);
+      
+      // Verificar que el nuevo año no esté fuera del rango de datos
+      const firstDayOfYear = new Date(newDate.getFullYear(), 0, 1);
+      const lastDayOfYear = new Date(newDate.getFullYear(), 11, 31);
+      
+      // Si todo el año está fuera del rango, no cambiar
+      if (lastDayOfYear < minDate || firstDayOfYear > maxDate) {
+        return prev; // No cambiar si está completamente fuera del rango
+      }
+      
       return newDate;
     });
   };
@@ -366,13 +507,37 @@ const TimelineChart = ({ portfolioData, theme }) => {
       endDateObj = new Date(eYear, eMonth - 1, eDay);
     }
     
-    // Verificar si es una fecha seleccionada
+    // PRIMERO verificar si es una fecha seleccionada (prioridad máxima)
     if (startDateObj && currentDate.getTime() === startDateObj.getTime()) {
       return 'selected';
     }
     
     if (endDateObj && currentDate.getTime() === endDateObj.getTime()) {
       return 'selected';
+    }
+    
+    // Verificar si la fecha está fuera del rango de datos disponibles
+    if (!isValidDate(currentYear, currentMonth, day)) {
+      return 'disabled';
+    }
+    
+    // Verificar validaciones de rango según el contexto (solo si no es fecha seleccionada)
+    const formattedCurrentDate = currentDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    
+    if (calendarType === 'start' && endDate) {
+      // En calendario de inicio, deshabilitar fechas posteriores a fecha fin
+      if (!isValidRange(formattedCurrentDate, endDate)) {
+        return 'disabled';
+      }
+    } else if (calendarType === 'end' && startDate) {
+      // En calendario de fin, deshabilitar fechas anteriores a fecha inicio
+      if (!isValidRange(startDate, formattedCurrentDate)) {
+        return 'disabled';
+      }
     }
     
     // Verificar si está en el rango
@@ -386,6 +551,34 @@ const TimelineChart = ({ portfolioData, theme }) => {
     }
     
     return 'normal';
+  };
+  
+  // Función para verificar si la navegación de mes está deshabilitada
+  const isMonthNavigationDisabled = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return true;
+    
+    const testDate = new Date(calendarDate);
+    testDate.setMonth(testDate.getMonth() + direction);
+    
+    const firstDayOfMonth = new Date(testDate.getFullYear(), testDate.getMonth(), 1);
+    const lastDayOfMonth = new Date(testDate.getFullYear(), testDate.getMonth() + 1, 0);
+    
+    return lastDayOfMonth < minDate || firstDayOfMonth > maxDate;
+  };
+  
+  // Función para verificar si la navegación de año está deshabilitada
+  const isYearNavigationDisabled = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return true;
+    
+    const testDate = new Date(calendarDate);
+    testDate.setFullYear(testDate.getFullYear() + direction);
+    
+    const firstDayOfYear = new Date(testDate.getFullYear(), 0, 1);
+    const lastDayOfYear = new Date(testDate.getFullYear(), 11, 31);
+    
+    return lastDayOfYear < minDate || firstDayOfYear > maxDate;
   };
   
   // Función para renderizar tooltip con datos específicos
@@ -466,6 +659,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
     `;
   };
   
+  // Check if using default date range
+  const { defaultStartDate, defaultEndDate } = getDefaultDates();
+  const isUsingDefaultRange = (startDate === defaultStartDate && endDate === defaultEndDate);
+  
   // Create Timeline Chart Data with conditional coloring
   const createTimelineData = () => {
     console.log('DEBUG - portfolioData.timeline:', portfolioData?.timeline);
@@ -475,7 +672,38 @@ const TimelineChart = ({ portfolioData, theme }) => {
       return null;
     }
 
-    const timelineData = portfolioData.timeline;
+    let timelineData = portfolioData.timeline;
+    
+    // Filter data based on selected date range (only if not using default range)
+    if ((startDate || endDate) && !isUsingDefaultRange) {
+      timelineData = timelineData.filter(entry => {
+        const entryDate = new Date(entry.date);
+        let includeEntry = true;
+        
+        if (startDate) {
+          const [startDay, startMonth, startYear] = startDate.split('/');
+          const startDateObj = new Date(startYear, startMonth - 1, startDay);
+          if (entryDate < startDateObj) {
+            includeEntry = false;
+          }
+        }
+        
+        if (endDate && includeEntry) {
+          const [endDay, endMonth, endYear] = endDate.split('/');
+          // Incluir todo el día de la fecha fin (hasta las 23:59:59)
+          const endDateObj = new Date(endYear, endMonth - 1, endDay, 23, 59, 59);
+          if (entryDate > endDateObj) {
+            includeEntry = false;
+          }
+          // Debug: log para verificar el filtrado
+          console.log('DEBUG - Entry date:', entryDate.toDateString(), 'End date:', endDateObj.toDateString(), 'Include:', includeEntry);
+        }
+        
+        return includeEntry;
+      });
+      
+      console.log('DEBUG - Filtered data from', startDate, 'to', endDate, ':', timelineData.length, 'entries');
+    }
     const labels = timelineData.map(entry => {
       const date = new Date(entry.date);
       return date.toLocaleDateString('es-ES', { 
@@ -558,11 +786,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
           const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
           
           // Dividir en segmentos según los puntos de datos
-          const segmentSize = 1 / balanceValues.length;
+          const segmentSize = 1 / Math.max(balanceValues.length - 1, 1);
           
           for (let i = 0; i < balanceValues.length; i++) {
             const position = i * segmentSize;
-            const nextPosition = (i + 1) * segmentSize;
             const value = balanceValues[i];
             
             // Color base según el valor, con opacidad más intensa
@@ -570,8 +797,24 @@ const TimelineChart = ({ portfolioData, theme }) => {
             const color = `rgba(${baseColor}, 0.3)`;
             
             gradient.addColorStop(position, color);
+            
+            // Añadir transiciones suaves entre cambios de color
             if (i < balanceValues.length - 1) {
-              gradient.addColorStop(nextPosition - 0.001, color);
+              const nextValue = balanceValues[i + 1];
+              const nextBaseColor = nextValue > 0 ? '34, 197, 94' : '239, 68, 68';
+              
+              // Solo añadir transición si hay cambio de color
+              if ((value > 0) !== (nextValue > 0)) {
+                const transitionStart = position + (segmentSize * 0.4);
+                const transitionEnd = position + (segmentSize * 0.6);
+                
+                // Crear zona de transición gradual
+                const blendColor = `rgba(${baseColor}, 0.15)`;
+                const nextBlendColor = `rgba(${nextBaseColor}, 0.15)`;
+                
+                gradient.addColorStop(transitionStart, blendColor);
+                gradient.addColorStop(transitionEnd, nextBlendColor);
+              }
             }
           }
           
@@ -583,8 +826,20 @@ const TimelineChart = ({ portfolioData, theme }) => {
         tension: 0.5,
         pointRadius: 0,
         pointHoverRadius: 6,
-        pointBackgroundColor: 'rgba(255, 255, 255, 1)',
-        pointBorderColor: 'rgba(255, 255, 255, 0.3)',
+        pointBackgroundColor: function(context) {
+          if (!context.parsed) return '#ffffff';
+          const dataIndex = context.dataIndex;
+          const balanceValue = balanceValues[dataIndex];
+          // Verde si es ganancia, rojo si es pérdida
+          return balanceValue >= 0 ? '#22c55e' : '#ef4444';
+        },
+        pointBorderColor: function(context) {
+          if (!context.parsed) return 'rgba(255, 255, 255, 0.3)';
+          const dataIndex = context.dataIndex;
+          const balanceValue = balanceValues[dataIndex];
+          // Borde más intenso del mismo color
+          return balanceValue >= 0 ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+        },
         pointBorderWidth: 0,
         pointHoverBorderWidth: 20,
         borderWidth: 4,
@@ -668,10 +923,29 @@ const TimelineChart = ({ portfolioData, theme }) => {
             
             gradient.addColorStop(position, color);
             
-            // Suavizar transiciones añadiendo el mismo color al siguiente punto
+            // Añadir transiciones suaves entre cambios de profit/loss
             if (i < portfolioValues.length - 1) {
-              const nextPosition = Math.min((i + 1) * segmentSize, 1);
-              gradient.addColorStop(nextPosition - 0.001, color);
+              const nextMarketValue = portfolioValues[i + 1];
+              const nextInvestedValue = investedValues[i + 1] || 0;
+              const nextIsProfit = nextMarketValue > nextInvestedValue;
+              
+              // Solo añadir transición si hay cambio de profit/loss
+              if (isProfit !== nextIsProfit) {
+                const transitionStart = position + (segmentSize * 0.4);
+                const transitionEnd = position + (segmentSize * 0.6);
+                
+                // Crear zona de transición gradual con opacidades reducidas
+                const blendColor = isProfit 
+                  ? 'rgba(34, 197, 94, 0.18)' // Verde más transparente
+                  : 'rgba(239, 68, 68, 0.18)'; // Rojo más transparente
+                
+                const nextBlendColor = nextIsProfit 
+                  ? 'rgba(34, 197, 94, 0.18)' 
+                  : 'rgba(239, 68, 68, 0.18)';
+                
+                gradient.addColorStop(transitionStart, blendColor);
+                gradient.addColorStop(transitionEnd, nextBlendColor);
+              }
             }
           }
           
@@ -767,43 +1041,60 @@ const TimelineChart = ({ portfolioData, theme }) => {
     responsive: true,
     maintainAspectRatio: false,
     animation: {
-      duration: 250,
-      easing: 'easeOutCubic',
+      duration: 600,
+      easing: 'easeOutQuart',
       animateScale: false,
-      animateRotate: false,
-      delay: function(context) {
-        // Dibujar de izquierda a derecha
-        return context.dataIndex * 6;
-      }
+      animateRotate: false
     },
     animations: {
-      // Animación de dibujo de izquierda a derecha
+      // Animación suave para coordenadas Y
       y: {
         type: 'number',
-        easing: 'easeOutCubic',
-        duration: 250,
+        easing: 'easeOutQuart',
+        duration: 500
+      },
+      // Animación para coordenadas X (desplazamiento horizontal suave)
+      x: {
+        type: 'number',
+        easing: 'easeInOutQuart', 
+        duration: 700
+      },
+      // Animación para opacidad
+      opacity: {
+        type: 'number',
+        easing: 'easeInOutSine',
+        duration: 600,
         delay: function(context) {
-          return context.dataIndex * 6;
+          return context.dataIndex * 8;
         }
       }
     },
     transitions: {
       active: {
         animation: {
-          duration: 50
+          duration: 200,
+          easing: 'easeInOutQuad'
         }
       },
       resize: {
         animation: {
-          duration: 0
+          duration: 300,
+          easing: 'easeInOutQuad'
         }
       },
       show: {
         animations: {
           y: {
+            from: function(ctx) {
+              return ctx.chart.chartArea ? ctx.chart.chartArea.bottom : 0;
+            },
+            duration: 900,
+            easing: 'easeOutElastic'
+          },
+          opacity: {
             from: 0,
             duration: 600,
-            easing: 'easeOutQuart'
+            easing: 'easeInOutSine'
           }
         }
       },
@@ -813,26 +1104,31 @@ const TimelineChart = ({ portfolioData, theme }) => {
             to: function(ctx) {
               return ctx.chart.chartArea ? ctx.chart.chartArea.bottom : 0;
             },
-            duration: 600,
-            easing: 'easeInOutCubic'
-          },
-          backgroundColor: {
-            to: 'rgba(0, 0, 0, 0)',
             duration: 500,
-            easing: 'easeInOutSine'
+            easing: 'easeInQuart'
           },
-          borderColor: {
-            to: 'rgba(0, 0, 0, 0)',
-            duration: 500,
-            easing: 'easeInOutSine'
+          opacity: {
+            to: 0,
+            duration: 400,
+            easing: 'easeInQuart'
           }
         }
       },
-      // Transición personalizada para el cambio de fill
-      mode: {
-        animation: {
-          duration: 500,
-          easing: 'easeOutQuart'
+      // Transición personalizada para filtros de fecha
+      'default': {
+        animations: {
+          y: {
+            duration: 400,
+            easing: 'easeOutQuart'
+          },
+          x: {
+            duration: 400,
+            easing: 'easeOutQuart'
+          },
+          opacity: {
+            duration: 500,
+            easing: 'easeInOutSine'
+          }
         }
       }
     },
@@ -1246,15 +1542,22 @@ const TimelineChart = ({ portfolioData, theme }) => {
             )}
           </div>
           
-          {/* Botones de fechas a la derecha */}
+          {/* Controles superiores derecha */}
           <div style={{
             position: 'absolute',
-            top: '10px',
-            right: '20px',
+            top: '60px',
+            right: '0px',
             display: 'flex',
-            alignItems: 'center',
-            gap: '0px'
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: '8px'
           }}>
+            {/* Botones de fechas */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0px'
+            }}>
             {/* Botón fecha inicio */}
             <div style={{ position: 'relative' }} data-calendar>
               <div style={{
@@ -1292,6 +1595,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
               }}
               onClick={() => {
+                setAutoOpenCount(0); // Reset cuando se hace clic manual
                 setCalendarType('start');
                 // Establecer calendario en la fecha actual del botón
                 if (startDate) {
@@ -1299,7 +1603,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   setCalendarDate(new Date(year, month - 1, day));
                 }
                 setShowStartCalendar(!showStartCalendar);
-                setShowEndCalendar(false);
+                if (!showStartCalendar) {
+                  setShowEndCalendar(false);
+                }
               }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1309,6 +1615,22 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
                 <span>{startDate}</span>
+                {(() => {
+                  const { defaultStartDate } = getDefaultDates();
+                  return startDate && startDate !== defaultStartDate && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '-3px',
+                      right: '-3px',
+                      width: '10px',
+                      height: '10px',
+                      background: '#00ff88',
+                      borderRadius: '50%',
+                      border: '1px solid rgba(15, 15, 15, 0.8)',
+                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)'
+                    }}></div>
+                  );
+                })()}
               </div>
               
               {/* Calendario emergente para fecha inicio */}
@@ -1316,146 +1638,170 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 <div style={{
                   position: 'absolute',
                   top: '100%',
-                  right: '0', // Cambiar a right para que se extienda hacia la izquierda
+                  right: '0',
                   marginTop: '8px',
                   zIndex: 1000,
-                  background: 'rgba(0, 0, 0, 0.95)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '16px',
-                  padding: '24px', // Más padding
-                  backdropFilter: 'blur(20px)',
-                  boxShadow: '0 12px 48px rgba(0, 0, 0, 0.5)',
-                  minWidth: '480px', // Más ancho para 7 columnas
-                  width: '480px',
-                  minHeight: '540px' // Altura mínima para selector de año + 6 filas
+                  background: 'rgba(15, 15, 15, 0.98)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '20px',
+                  padding: '20px',
+                  backdropFilter: 'blur(30px)',
+                  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6), 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
+                  minWidth: '420px',
+                  width: '420px',
+                  minHeight: '380px',
+                  overflow: 'hidden'
                 }}>
-                  {/* Calendar Header */}
+                  {/* Calendar Title */}
+                  <div style={{
+                    textAlign: 'center',
+                    marginBottom: '15px',
+                    color: '#ffffff',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    fontFamily: "'Inter', sans-serif",
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                    paddingBottom: '10px'
+                  }}>
+                    Select Start Date
+                  </div>
+
+                  {/* Calendar Header - Redesign minimalista */}
                   <div style={{
                     display: 'flex',
-                    flexDirection: 'column',
+                    justifyContent: 'center',
                     alignItems: 'center',
-                    marginBottom: '24px',
-                    color: '#ffffff',
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: '600'
+                    marginBottom: '20px',
+                    fontFamily: "'Inter', sans-serif"
                   }}>
-                    {/* Year selector */}
+                    {/* Navigation with arrows */}
                     <div style={{
                       display: 'flex',
-                      justifyContent: 'center',
                       alignItems: 'center',
-                      marginBottom: '16px'
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      color: '#ffffff',
+                      fontSize: '18px',
+                      fontWeight: '500',
+                      fontFamily: "'Inter', sans-serif"
                     }}>
-                      <button
-                        onClick={() => changeYear(-1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '8px',
-                          color: '#ffffff',
-                          padding: '8px 12px',
-                          cursor: 'pointer',
-                          fontSize: '16px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ‹‹
-                      </button>
-                      <span style={{ 
-                        fontSize: '20px', 
-                        fontWeight: '700', 
-                        margin: '0 20px',
-                        minWidth: '80px',
-                        textAlign: 'center'
+                      {/* Month navigation */}
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        flex: '1',
+                        position: 'relative'
                       }}>
-                        {calendarDate.getFullYear()}
-                      </span>
-                      <button
-                        onClick={() => changeYear(1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '8px',
+                        <span 
+                          onClick={() => !isMonthNavigationDisabled(-1) && changeMonth(-1)}
+                          style={{
+                            cursor: isMonthNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isMonthNavigationDisabled(-1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '16px',
+                            fontWeight: '500',
+                            color: isMonthNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'right',
+                            minWidth: '40px'
+                          }}
+                          onMouseEnter={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1).toLocaleDateString('en-US', { month: 'long' }).substring(0, 3)}
+                        </span>
+                        <span style={{ 
+                          fontWeight: '600',
                           color: '#ffffff',
-                          padding: '8px 12px',
-                          cursor: 'pointer',
-                          fontSize: '16px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ››
-                      </button>
-                    </div>
-                    
-                    {/* Month selector */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}>
-                      <button
-                        onClick={() => changeMonth(-1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '10px',
-                          color: '#ffffff',
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          fontSize: '20px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ‹
-                      </button>
-                      <span style={{ 
-                        fontSize: '22px', 
-                        fontWeight: '700', 
+                          textAlign: 'center',
+                          flex: '1',
+                          fontSize: '18px'
+                        }}>
+                          {calendarDate.toLocaleDateString('en-US', { month: 'long' })}
+                        </span>
+                        <span 
+                          onClick={() => !isMonthNavigationDisabled(1) && changeMonth(1)}
+                          style={{
+                            cursor: isMonthNavigationDisabled(1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isMonthNavigationDisabled(1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '16px',
+                            fontWeight: '500',
+                            color: isMonthNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'left',
+                            minWidth: '40px'
+                          }}
+                          onMouseEnter={(e) => !isMonthNavigationDisabled(1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isMonthNavigationDisabled(1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1).toLocaleDateString('en-US', { month: 'long' }).substring(0, 3)}
+                        </span>
+                      </div>
+
+                      {/* Divisor */}
+                      <div style={{
+                        width: '2px',
+                        height: '30px',
+                        background: 'rgba(255, 255, 255, 0.5)',
                         margin: '0 20px',
-                        minWidth: '140px',
-                        textAlign: 'center'
+                        borderRadius: '1px'
+                      }}></div>
+
+                      {/* Year navigation */}
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        minWidth: '140px'
                       }}>
-                        {calendarDate.toLocaleDateString('en-US', { month: 'long' })}
-                      </span>
-                      <button
-                        onClick={() => changeMonth(1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '10px',
+                        <span 
+                          onClick={() => !isYearNavigationDisabled(-1) && changeYear(-1)}
+                          style={{
+                            cursor: isYearNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isYearNavigationDisabled(-1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            color: isYearNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'right',
+                            minWidth: '30px'
+                          }}
+                          onMouseEnter={(e) => !isYearNavigationDisabled(-1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isYearNavigationDisabled(-1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {calendarDate.getFullYear() - 1}
+                        </span>
+                        <span style={{ 
+                          fontWeight: '600',
                           color: '#ffffff',
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          fontSize: '20px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ›
-                      </button>
+                          minWidth: '50px',
+                          textAlign: 'center',
+                          fontSize: '18px'
+                        }}>
+                          {calendarDate.getFullYear()}
+                        </span>
+                        <span 
+                          onClick={() => !isYearNavigationDisabled(1) && changeYear(1)}
+                          style={{
+                            cursor: isYearNavigationDisabled(1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isYearNavigationDisabled(1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            color: isYearNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'left',
+                            minWidth: '30px'
+                          }}
+                          onMouseEnter={(e) => !isYearNavigationDisabled(1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isYearNavigationDisabled(1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {calendarDate.getFullYear() + 1}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1497,6 +1843,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           case 'inRange':
                             backgroundColor = 'rgba(34, 197, 94, 0.3)'; // Verde suave para rango
                             break;
+                          case 'disabled':
+                            backgroundColor = 'rgba(80, 80, 80, 0.25)'; // Gris más visible para días deshabilitados
+                            break;
                           case 'normal':
                           default:
                             backgroundColor = 'rgba(255, 255, 255, 0.1)'; // Color normal
@@ -1508,38 +1857,135 @@ const TimelineChart = ({ portfolioData, theme }) => {
                         <button
                           key={index}
                           onClick={() => handleDayClick(day)}
-                          disabled={!day}
+                          disabled={!day || dayState === 'disabled'}
                           style={{
-                            background: backgroundColor,
-                            border: 'none',
-                            borderRadius: '10px',
-                            color: day ? '#ffffff' : 'transparent',
+                            background: backgroundColor === 'rgba(34, 197, 94, 0.7)' ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.8), rgba(0, 200, 100, 0.6))' :
+                                      backgroundColor === 'rgba(34, 197, 94, 0.3)' ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.35), rgba(0, 200, 100, 0.25))' :
+                                      backgroundColor === 'rgba(80, 80, 80, 0.25)' ? 'linear-gradient(135deg, rgba(80, 80, 80, 0.15), rgba(60, 60, 60, 0.1))' :
+                                      backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent',
+                            border: dayState === 'selected' ? '2px solid rgba(0, 255, 136, 0.9)' : 
+                                   dayState === 'inRange' ? '1px solid rgba(0, 255, 136, 0.4)' :
+                                   dayState === 'disabled' ? '1px solid rgba(80, 80, 80, 0.3)' :
+                                   day ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
+                            borderRadius: '14px',
+                            color: day ? (dayState === 'disabled' ? 'rgba(120, 120, 120, 0.5)' : '#ffffff') : 'transparent',
                             padding: '12px',
-                            cursor: day ? 'pointer' : 'default',
-                            fontSize: '18px',
+                            cursor: day ? (dayState === 'disabled' ? 'not-allowed' : 'pointer') : 'default',
+                            fontSize: '16px',
                             fontFamily: "'Inter', sans-serif",
-                            fontWeight: dayState === 'selected' ? '700' : '600',
-                            transition: 'all 0.2s ease',
-                            minHeight: '48px',
+                            fontWeight: dayState === 'selected' ? '800' : '600',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            minHeight: '42px',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            boxShadow: dayState === 'selected' ? '0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' :
+                                      dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
+                                      dayState === 'disabled' ? 'inset 0 1px 2px rgba(0, 0, 0, 0.3)' :
+                                      day ? '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)' : 'none',
+                            opacity: dayState === 'disabled' ? 0.4 : 1
                           }}
-                          onMouseEnter={day ? (e) => {
+                          onMouseEnter={day && dayState !== 'disabled' ? (e) => {
                             if (dayState !== 'selected' && dayState !== 'inRange') {
-                              e.target.style.background = hoverColor;
+                              e.target.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.4), rgba(16, 185, 129, 0.3))';
+                              e.target.style.borderColor = 'rgba(34, 197, 94, 0.6)';
                             }
-                            e.target.style.transform = 'scale(1.05)';
+                            e.target.style.transform = 'scale(1.12)';
+                            e.target.style.boxShadow = '0 8px 24px rgba(34, 197, 94, 0.25), inset 0 2px 4px rgba(255, 255, 255, 0.15)';
+                            e.target.style.zIndex = '10';
                           } : undefined}
-                          onMouseLeave={day ? (e) => {
-                            e.target.style.background = backgroundColor;
+                          onMouseLeave={day && dayState !== 'disabled' ? (e) => {
+                            const currentBackground = backgroundColor === 'rgba(34, 197, 94, 0.7)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.8), rgba(16, 185, 129, 0.6))' :
+                                                    backgroundColor === 'rgba(34, 197, 94, 0.3)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.35), rgba(16, 185, 129, 0.25))' :
+                                                    backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent';
+                            e.target.style.background = currentBackground;
+                            e.target.style.borderColor = dayState === 'selected' ? 'rgba(34, 197, 94, 0.9)' : 
+                                                        dayState === 'inRange' ? 'rgba(34, 197, 94, 0.4)' :
+                                                        'rgba(255, 255, 255, 0.08)';
                             e.target.style.transform = 'scale(1)';
+                            e.target.style.boxShadow = dayState === 'selected' ? '0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' :
+                                                      dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
+                                                      '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)';
+                            e.target.style.zIndex = 'auto';
                           } : undefined}
                         >
                           {day}
                         </button>
                       );
                     })}
+                  </div>
+                  
+                  {/* Action buttons */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    marginTop: '20px',
+                    paddingTop: '15px',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                  }}>
+                    <button
+                      onClick={() => {
+                        const { defaultStartDate } = getDefaultDates();
+                        setStartDate(defaultStartDate);
+                        setShowStartCalendar(false);
+                      }}
+                      style={{
+                        flex: '1',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        color: 'rgba(239, 68, 68, 0.9)',
+                        fontSize: '14px',
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'rgba(239, 68, 68, 0.15)';
+                        e.target.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                        e.target.style.color = '#ef4444';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'rgba(239, 68, 68, 0.1)';
+                        e.target.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                        e.target.style.color = 'rgba(239, 68, 68, 0.9)';
+                      }}
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowStartCalendar(false);
+                      }}
+                      style={{
+                        flex: '1',
+                        background: 'rgba(0, 255, 136, 0.1)',
+                        border: '1px solid rgba(0, 255, 136, 0.3)',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        color: 'rgba(0, 255, 136, 0.9)',
+                        fontSize: '14px',
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'rgba(0, 255, 136, 0.15)';
+                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.5)';
+                        e.target.style.color = '#00ff88';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'rgba(0, 255, 136, 0.1)';
+                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.3)';
+                        e.target.style.color = 'rgba(0, 255, 136, 0.9)';
+                      }}
+                    >
+                      Done
+                    </button>
                   </div>
                 </div>
               )}
@@ -1591,6 +2037,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
               }}
               onClick={() => {
+                setAutoOpenCount(0); // Reset cuando se hace clic manual
                 setCalendarType('end');
                 // Establecer calendario en la fecha actual del botón
                 if (endDate) {
@@ -1598,7 +2045,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   setCalendarDate(new Date(year, month - 1, day));
                 }
                 setShowEndCalendar(!showEndCalendar);
-                setShowStartCalendar(false);
+                if (!showEndCalendar) {
+                  setShowStartCalendar(false);
+                }
               }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1608,6 +2057,22 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
                 <span>{endDate}</span>
+                {(() => {
+                  const { defaultEndDate } = getDefaultDates();
+                  return endDate && endDate !== defaultEndDate && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '-3px',
+                      right: '-3px',
+                      width: '10px',
+                      height: '10px',
+                      background: '#00ff88',
+                      borderRadius: '50%',
+                      border: '1px solid rgba(15, 15, 15, 0.8)',
+                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)'
+                    }}></div>
+                  );
+                })()}
               </div>
               
               {/* Calendario emergente para fecha fin */}
@@ -1618,143 +2083,166 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   right: '0',
                   marginTop: '8px',
                   zIndex: 1000,
-                  background: 'rgba(0, 0, 0, 0.95)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '16px',
-                  padding: '24px', // Más padding
-                  backdropFilter: 'blur(20px)',
-                  boxShadow: '0 12px 48px rgba(0, 0, 0, 0.5)',
-                  minWidth: '480px', // Más ancho para 7 columnas
-                  width: '480px',
-                  minHeight: '540px' // Altura mínima para selector de año + 6 filas
+                  background: 'rgba(15, 15, 15, 0.98)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '20px',
+                  padding: '20px', // Padding equilibrado
+                  backdropFilter: 'blur(30px)',
+                  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6), 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
+                  minWidth: '420px',
+                  width: '420px',
+                  minHeight: '380px'
                 }}>
-                  {/* Calendar Header */}
+                  {/* Calendar Title */}
+                  <div style={{
+                    textAlign: 'center',
+                    marginBottom: '15px',
+                    color: '#ffffff',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    fontFamily: "'Inter', sans-serif",
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                    paddingBottom: '10px'
+                  }}>
+                    Select End Date
+                  </div>
+
+                  {/* Calendar Header - Redesign minimalista */}
                   <div style={{
                     display: 'flex',
-                    flexDirection: 'column',
+                    justifyContent: 'center',
                     alignItems: 'center',
-                    marginBottom: '24px',
-                    color: '#ffffff',
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: '600'
+                    marginBottom: '20px',
+                    fontFamily: "'Inter', sans-serif"
                   }}>
-                    {/* Year selector */}
+                    {/* Navigation with arrows */}
                     <div style={{
                       display: 'flex',
-                      justifyContent: 'center',
                       alignItems: 'center',
-                      marginBottom: '16px'
+                      justifyContent: 'space-between',
+                      width: '100%',
+                      color: '#ffffff',
+                      fontSize: '18px',
+                      fontWeight: '500',
+                      fontFamily: "'Inter', sans-serif"
                     }}>
-                      <button
-                        onClick={() => changeYear(-1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '8px',
-                          color: '#ffffff',
-                          padding: '8px 12px',
-                          cursor: 'pointer',
-                          fontSize: '16px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ‹‹
-                      </button>
-                      <span style={{ 
-                        fontSize: '20px', 
-                        fontWeight: '700', 
-                        margin: '0 20px',
-                        minWidth: '80px',
-                        textAlign: 'center'
+                      {/* Month navigation */}
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        flex: '1',
+                        position: 'relative'
                       }}>
-                        {calendarDate.getFullYear()}
-                      </span>
-                      <button
-                        onClick={() => changeYear(1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '8px',
+                        <span 
+                          onClick={() => !isMonthNavigationDisabled(-1) && changeMonth(-1)}
+                          style={{
+                            cursor: isMonthNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isMonthNavigationDisabled(-1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '16px',
+                            fontWeight: '500',
+                            color: isMonthNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'right',
+                            minWidth: '40px'
+                          }}
+                          onMouseEnter={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1).toLocaleDateString('en-US', { month: 'long' }).substring(0, 3)}
+                        </span>
+                        <span style={{ 
+                          fontWeight: '600',
                           color: '#ffffff',
-                          padding: '8px 12px',
-                          cursor: 'pointer',
-                          fontSize: '16px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ››
-                      </button>
-                    </div>
-                    
-                    {/* Month selector */}
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}>
-                      <button
-                        onClick={() => changeMonth(-1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '10px',
-                          color: '#ffffff',
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          fontSize: '20px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ‹
-                      </button>
-                      <span style={{ 
-                        fontSize: '22px', 
-                        fontWeight: '700', 
+                          textAlign: 'center',
+                          flex: '1',
+                          fontSize: '18px'
+                        }}>
+                          {calendarDate.toLocaleDateString('en-US', { month: 'long' })}
+                        </span>
+                        <span 
+                          onClick={() => !isMonthNavigationDisabled(1) && changeMonth(1)}
+                          style={{
+                            cursor: isMonthNavigationDisabled(1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isMonthNavigationDisabled(1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '16px',
+                            fontWeight: '500',
+                            color: isMonthNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'left',
+                            minWidth: '40px'
+                          }}
+                          onMouseEnter={(e) => !isMonthNavigationDisabled(1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isMonthNavigationDisabled(1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1).toLocaleDateString('en-US', { month: 'long' }).substring(0, 3)}
+                        </span>
+                      </div>
+
+                      {/* Divisor */}
+                      <div style={{
+                        width: '2px',
+                        height: '30px',
+                        background: 'rgba(255, 255, 255, 0.5)',
                         margin: '0 20px',
-                        minWidth: '140px',
-                        textAlign: 'center'
+                        borderRadius: '1px'
+                      }}></div>
+
+                      {/* Year navigation */}
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        minWidth: '140px'
                       }}>
-                        {calendarDate.toLocaleDateString('en-US', { month: 'long' })}
-                      </span>
-                      <button
-                        onClick={() => changeMonth(1)}
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.1)',
-                          border: 'none',
-                          borderRadius: '10px',
+                        <span 
+                          onClick={() => !isYearNavigationDisabled(-1) && changeYear(-1)}
+                          style={{
+                            cursor: isYearNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isYearNavigationDisabled(-1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            color: isYearNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'right',
+                            minWidth: '30px'
+                          }}
+                          onMouseEnter={(e) => !isYearNavigationDisabled(-1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isYearNavigationDisabled(-1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {calendarDate.getFullYear() - 1}
+                        </span>
+                        <span style={{ 
+                          fontWeight: '600',
                           color: '#ffffff',
-                          padding: '12px 16px',
-                          cursor: 'pointer',
-                          fontSize: '20px',
-                          transition: 'all 0.2s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.2)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.background = 'rgba(255, 255, 255, 0.1)';
-                        }}
-                      >
-                        ›
-                      </button>
+                          minWidth: '50px',
+                          textAlign: 'center',
+                          fontSize: '18px'
+                        }}>
+                          {calendarDate.getFullYear()}
+                        </span>
+                        <span 
+                          onClick={() => !isYearNavigationDisabled(1) && changeYear(1)}
+                          style={{
+                            cursor: isYearNavigationDisabled(1) ? 'not-allowed' : 'pointer',
+                            userSelect: 'none',
+                            opacity: isYearNavigationDisabled(1) ? 0.3 : 0.7,
+                            transition: 'opacity 0.2s ease',
+                            fontSize: '14px',
+                            fontWeight: '500',
+                            color: isYearNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            textAlign: 'left',
+                            minWidth: '30px'
+                          }}
+                          onMouseEnter={(e) => !isYearNavigationDisabled(1) && (e.target.style.opacity = 1)}
+                          onMouseLeave={(e) => !isYearNavigationDisabled(1) && (e.target.style.opacity = 0.7)}
+                        >
+                          {calendarDate.getFullYear() + 1}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1796,6 +2284,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           case 'inRange':
                             backgroundColor = 'rgba(34, 197, 94, 0.3)'; // Verde suave para rango
                             break;
+                          case 'disabled':
+                            backgroundColor = 'rgba(80, 80, 80, 0.25)'; // Gris más visible para días deshabilitados
+                            break;
                           case 'normal':
                           default:
                             backgroundColor = 'rgba(255, 255, 255, 0.1)'; // Color normal
@@ -1807,38 +2298,135 @@ const TimelineChart = ({ portfolioData, theme }) => {
                         <button
                           key={index}
                           onClick={() => handleDayClick(day)}
-                          disabled={!day}
+                          disabled={!day || dayState === 'disabled'}
                           style={{
-                            background: backgroundColor,
-                            border: 'none',
-                            borderRadius: '10px',
-                            color: day ? '#ffffff' : 'transparent',
+                            background: backgroundColor === 'rgba(34, 197, 94, 0.7)' ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.8), rgba(0, 200, 100, 0.6))' :
+                                      backgroundColor === 'rgba(34, 197, 94, 0.3)' ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.35), rgba(0, 200, 100, 0.25))' :
+                                      backgroundColor === 'rgba(80, 80, 80, 0.25)' ? 'linear-gradient(135deg, rgba(80, 80, 80, 0.15), rgba(60, 60, 60, 0.1))' :
+                                      backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent',
+                            border: dayState === 'selected' ? '2px solid rgba(0, 255, 136, 0.9)' : 
+                                   dayState === 'inRange' ? '1px solid rgba(0, 255, 136, 0.4)' :
+                                   dayState === 'disabled' ? '1px solid rgba(80, 80, 80, 0.3)' :
+                                   day ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
+                            borderRadius: '14px',
+                            color: day ? (dayState === 'disabled' ? 'rgba(120, 120, 120, 0.5)' : '#ffffff') : 'transparent',
                             padding: '12px',
-                            cursor: day ? 'pointer' : 'default',
-                            fontSize: '18px',
+                            cursor: day ? (dayState === 'disabled' ? 'not-allowed' : 'pointer') : 'default',
+                            fontSize: '16px',
                             fontFamily: "'Inter', sans-serif",
-                            fontWeight: dayState === 'selected' ? '700' : '600',
-                            transition: 'all 0.2s ease',
-                            minHeight: '48px',
+                            fontWeight: dayState === 'selected' ? '800' : '600',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            minHeight: '42px',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            boxShadow: dayState === 'selected' ? '0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' :
+                                      dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
+                                      dayState === 'disabled' ? 'inset 0 1px 2px rgba(0, 0, 0, 0.3)' :
+                                      day ? '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)' : 'none',
+                            opacity: dayState === 'disabled' ? 0.4 : 1
                           }}
-                          onMouseEnter={day ? (e) => {
+                          onMouseEnter={day && dayState !== 'disabled' ? (e) => {
                             if (dayState !== 'selected' && dayState !== 'inRange') {
-                              e.target.style.background = hoverColor;
+                              e.target.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.4), rgba(16, 185, 129, 0.3))';
+                              e.target.style.borderColor = 'rgba(34, 197, 94, 0.6)';
                             }
-                            e.target.style.transform = 'scale(1.05)';
+                            e.target.style.transform = 'scale(1.12)';
+                            e.target.style.boxShadow = '0 8px 24px rgba(34, 197, 94, 0.25), inset 0 2px 4px rgba(255, 255, 255, 0.15)';
+                            e.target.style.zIndex = '10';
                           } : undefined}
-                          onMouseLeave={day ? (e) => {
-                            e.target.style.background = backgroundColor;
+                          onMouseLeave={day && dayState !== 'disabled' ? (e) => {
+                            const currentBackground = backgroundColor === 'rgba(34, 197, 94, 0.7)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.8), rgba(16, 185, 129, 0.6))' :
+                                                    backgroundColor === 'rgba(34, 197, 94, 0.3)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.35), rgba(16, 185, 129, 0.25))' :
+                                                    backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent';
+                            e.target.style.background = currentBackground;
+                            e.target.style.borderColor = dayState === 'selected' ? 'rgba(34, 197, 94, 0.9)' : 
+                                                        dayState === 'inRange' ? 'rgba(34, 197, 94, 0.4)' :
+                                                        'rgba(255, 255, 255, 0.08)';
                             e.target.style.transform = 'scale(1)';
+                            e.target.style.boxShadow = dayState === 'selected' ? '0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' :
+                                                      dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
+                                                      '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)';
+                            e.target.style.zIndex = 'auto';
                           } : undefined}
                         >
                           {day}
                         </button>
                       );
                     })}
+                  </div>
+                  
+                  {/* Action buttons */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    marginTop: '20px',
+                    paddingTop: '15px',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                  }}>
+                    <button
+                      onClick={() => {
+                        const { defaultEndDate } = getDefaultDates();
+                        setEndDate(defaultEndDate);
+                        setShowEndCalendar(false);
+                      }}
+                      style={{
+                        flex: '1',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        color: 'rgba(239, 68, 68, 0.9)',
+                        fontSize: '14px',
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'rgba(239, 68, 68, 0.15)';
+                        e.target.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                        e.target.style.color = '#ef4444';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'rgba(239, 68, 68, 0.1)';
+                        e.target.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                        e.target.style.color = 'rgba(239, 68, 68, 0.9)';
+                      }}
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowEndCalendar(false);
+                      }}
+                      style={{
+                        flex: '1',
+                        background: 'rgba(0, 255, 136, 0.1)',
+                        border: '1px solid rgba(0, 255, 136, 0.3)',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        color: 'rgba(0, 255, 136, 0.9)',
+                        fontSize: '14px',
+                        fontFamily: "'Inter', sans-serif",
+                        fontWeight: '500',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'rgba(0, 255, 136, 0.15)';
+                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.5)';
+                        e.target.style.color = '#00ff88';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'rgba(0, 255, 136, 0.1)';
+                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.3)';
+                        e.target.style.color = 'rgba(0, 255, 136, 0.9)';
+                      }}
+                    >
+                      Done
+                    </button>
                   </div>
                 </div>
               )}
@@ -1848,7 +2436,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
         </div>
       </div>
       
-      {/* Línea del tooltip estático */}
+      {/* Línea de botones Reset y Apply */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -1857,8 +2445,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
         marginTop: '2.5rem',
         marginBottom: '1.5rem'
       }}>
-        {/* Área dedicada para tooltip estático */}
-        <div id="tooltip-area" style={{ 
+        {/* Espacio flexible para mantener diseño */}
+        <div style={{ 
           minHeight: '40px', 
           flex: 1,
           position: 'relative',
@@ -1867,18 +2455,141 @@ const TimelineChart = ({ portfolioData, theme }) => {
           alignItems: 'center',
           justifyContent: 'flex-start'
         }}>
-          {/* El tooltip se inicializará con el último día */}
         </div>
         
-        {/* Espacio reservado para tooltip */}
-        <div></div>
+        {/* Botones alineados a la derecha - Solo cuando hay filtros activos */}
+        {!isUsingDefaultRange && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            {/* Botón Reset */}
+            <div style={{ position: 'relative' }}>
+              <div 
+                onClick={() => {
+                  const { defaultStartDate, defaultEndDate } = getDefaultDates();
+                  setStartDate(defaultStartDate);
+                  setEndDate(defaultEndDate);
+                }}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  color: 'rgba(239, 68, 68, 0.9)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease-out',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'none'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = 'rgba(239, 68, 68, 0.12)';
+                  e.target.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                  e.target.style.color = '#ef4444';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'rgba(239, 68, 68, 0.08)';
+                  e.target.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                  e.target.style.color = 'rgba(239, 68, 68, 0.9)';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+                <span>Reset</span>
+              </div>
+            </div>
+            
+            {/* Botón Apply to All */}
+            <div style={{ position: 'relative' }}>
+              <div 
+                onClick={() => {
+                  // Placeholder - no implementation yet
+                  console.log('Apply to all pages:', { startDate, endDate });
+                }}
+                style={{
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  color: 'rgba(245, 158, 11, 0.9)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease-out',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'none'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = 'rgba(245, 158, 11, 0.12)';
+                  e.target.style.borderColor = 'rgba(245, 158, 11, 0.5)';
+                  e.target.style.color = '#f59e0b';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'rgba(245, 158, 11, 0.08)';
+                  e.target.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+                  e.target.style.color = 'rgba(245, 158, 11, 0.9)';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                  <path d="M2 12h20"/>
+                </svg>
+                <span>Apply to All</span>
+              </div>
+            </div>
+          </div>
+        )}
+            </div>
+            
+            {/* Tooltip estático reubicado */}
+            <div id="tooltip-area" style={{ 
+              minHeight: '40px',
+              position: 'relative',
+              padding: '8px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              background: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              backdropFilter: 'blur(10px)',
+              maxWidth: '400px'
+            }}>
+              {/* El tooltip se inicializará con el último día */}
+            </div>
+          </div>
       </div>
       
       {/* Contenedor del gráfico expandido */}
       <div 
         style={{ 
-          width: 'calc(100% + 70px)', // Expandir hasta cubrir desde tooltip hasta botones
-          marginLeft: '-50px', // Empezar desde el tooltip
+          width: 'calc(100% + 100px)', // Expandir más para llegar hasta los botones
           height: '800px', // Aumentar altura
           minHeight: '800px', 
           position: 'relative',
@@ -1887,8 +2598,12 @@ const TimelineChart = ({ portfolioData, theme }) => {
           padding: '10px 0 0 0', // Padding mínimo superior
           margin: '0.2rem 0',
           boxSizing: 'border-box',
+          transform: isChartLoading ? 'translateX(-50px) scale(0.98)' : 'translateX(-50px) scale(1)',
           border: 'none',
-          overflow: 'visible'
+          overflow: 'visible',
+          opacity: isChartLoading ? 0.6 : 1,
+          transition: 'opacity 0.3s ease-out',
+          pointerEvents: isChartLoading ? 'none' : 'auto'
         }}
         onMouseLeave={() => {
           // Cuando el mouse sale del contenedor, volver al estado por defecto
@@ -1900,9 +2615,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
       >
         <Line data={timelineData} options={timelineOptions} />
       </div>
-      </div>
     </div>
   );
 };
+
 
 export default TimelineChart;
