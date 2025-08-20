@@ -165,6 +165,22 @@ const glowPlugin = {
 Chart.register(glowPlugin);
 
 const TimelineChart = ({ portfolioData, theme }) => {
+  // Constantes de estilo reutilizables
+  const COLORS = {
+    HOVER_LIGHT: 'rgba(255, 255, 255, 0.12)',
+    HOVER_DEFAULT: 'rgba(255, 255, 255, 0.08)',
+    BACKGROUND_GLASS: 'rgba(255, 255, 255, 0.1)',
+    BACKGROUND_DARK: 'rgba(0, 0, 0, 0.4)'
+  };
+
+  // Función centralizada para formatear fechas
+  const formatDate = (date) => {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   const [showTotalInvested, setShowTotalInvested] = useState(true);
   const [viewMode, setViewMode] = useState('both'); // 'both', 'balance'
   const [periodMode, setPeriodMode] = useState('day'); // 'week', 'month', 'year', 'day'
@@ -179,14 +195,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
     if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
       const firstDate = new Date(portfolioData.timeline[0].date);
       const today = new Date(); // Fecha actual en lugar de última fecha de datos
-      
-      // Formatear fechas como DD/MM/YYYY
-      const formatDate = (date) => {
-        const day = date.getDate().toString().padStart(2, '0');
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const year = date.getFullYear();
-        return `${day}/${month}/${year}`;
-      };
       
       // Solo establecer si no están ya establecidas (para no sobrescribir selecciones del usuario)
       if (!startDate) setStartDate(formatDate(firstDate));
@@ -331,7 +339,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
 
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarType, setCalendarType] = useState('start'); // 'start' o 'end'
-  const [autoOpenCount, setAutoOpenCount] = useState(0); // Para evitar bucles
 
   // Función para obtener fechas por defecto
   const getDefaultDates = () => {
@@ -341,13 +348,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
     
     const firstDate = new Date(portfolioData.timeline[0].date);
     const today = new Date();
-    
-    const formatDate = (date) => {
-      const day = date.getDate().toString().padStart(2, '0');
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
     
     return {
       defaultStartDate: formatDate(firstDate),
@@ -1287,7 +1287,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
             alignItems: 'center',
             gap: '10px',
             marginRight: '1.5rem',
-            background: 'rgba(0, 0, 0, 0.4)',
+            background: COLORS.BACKGROUND_DARK,
             borderRadius: '14px',
             padding: '6px',
             border: '2px solid rgba(255, 255, 255, 0.2)',
@@ -1329,7 +1329,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (viewMode !== 'both') {
                     e.target.style.color = '#ffffff';
                     e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   }
@@ -1338,7 +1338,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (viewMode !== 'both') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                     e.target.style.transform = 'scale(1)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }
@@ -1374,7 +1374,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (viewMode !== 'balance') {
                     e.target.style.color = '#ffffff';
                     e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   }
@@ -1383,7 +1383,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (viewMode !== 'balance') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                     e.target.style.transform = 'scale(1)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }
@@ -1399,7 +1399,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 <div style={{
                   width: '1px',
                   height: '20px',
-                  background: 'rgba(255, 255, 255, 0.1)',
+                  background: COLORS.BACKGROUND_GLASS,
                   margin: '0 4px'
                 }}></div>
                 <button
@@ -1541,7 +1541,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
             <div style={{
               width: '1px',
               height: '20px',
-              background: 'rgba(255, 255, 255, 0.1)',
+              background: COLORS.BACKGROUND_GLASS,
               margin: '0 8px'
             }}></div>
             
@@ -1590,7 +1590,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'day') {
                     e.target.style.color = '#ffffff';
                     e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   }
@@ -1599,7 +1599,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'day') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                     e.target.style.transform = 'scale(1)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }
@@ -1635,7 +1635,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'week') {
                     e.target.style.color = '#ffffff';
                     e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   }
@@ -1644,7 +1644,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'week') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                     e.target.style.transform = 'scale(1)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }
@@ -1680,7 +1680,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'month') {
                     e.target.style.color = '#ffffff';
                     e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   }
@@ -1689,7 +1689,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'month') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                     e.target.style.transform = 'scale(1)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }
@@ -1725,7 +1725,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'year') {
                     e.target.style.color = '#ffffff';
                     e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   }
@@ -1734,7 +1734,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   if (periodMode !== 'year') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                     e.target.style.transform = 'scale(1)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                   }
@@ -1780,18 +1780,17 @@ const TimelineChart = ({ portfolioData, theme }) => {
               }}
               onMouseEnter={(e) => {
                 e.target.style.transform = 'scale(1.02)';
-                e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                e.target.style.background = COLORS.HOVER_LIGHT;
                 e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
               }}
               onMouseLeave={(e) => {
                 e.target.style.transform = 'scale(1)';
-                e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.target.style.background = COLORS.HOVER_DEFAULT;
                 e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
               }}
               onClick={() => {
-                setAutoOpenCount(0); // Reset cuando se hace clic manual
                 setCalendarType('start');
                 // Establecer calendario en la fecha actual del botón
                 if (startDate) {
@@ -2221,18 +2220,17 @@ const TimelineChart = ({ portfolioData, theme }) => {
               }}
               onMouseEnter={(e) => {
                 e.target.style.transform = 'scale(1.02)';
-                e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                e.target.style.background = COLORS.HOVER_LIGHT;
                 e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
               }}
               onMouseLeave={(e) => {
                 e.target.style.transform = 'scale(1)';
-                e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.target.style.background = COLORS.HOVER_DEFAULT;
                 e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
               }}
               onClick={() => {
-                setAutoOpenCount(0); // Reset cuando se hace clic manual
                 setCalendarType('end');
                 // Establecer calendario en la fecha actual del botón
                 if (endDate) {
