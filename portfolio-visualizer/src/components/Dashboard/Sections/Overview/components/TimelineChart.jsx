@@ -189,6 +189,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
   const [showStartCalendar, setShowStartCalendar] = useState(false);
   const [showEndCalendar, setShowEndCalendar] = useState(false);
   const [isChartLoading, setIsChartLoading] = useState(false);
+  const [processedTimelineData, setProcessedTimelineData] = useState([]);
   
   // Inicializar fechas
   useEffect(() => {
@@ -258,9 +259,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
   useEffect(() => {
     const tooltipArea = document.querySelector('#tooltip-area');
     if (tooltipArea && portfolioData?.timeline) {
-      tooltipArea.innerHTML = renderTooltipContent();
+      // Usar datos procesados si están disponibles, sino usar datos originales
+      const dataToUse = processedTimelineData.length > 0 ? processedTimelineData : null;
+      tooltipArea.innerHTML = renderTooltipContent(null, dataToUse);
     }
-  }, [portfolioData, showTotalInvested, viewMode, startDate, endDate]);
+  }, [portfolioData, showTotalInvested, viewMode, startDate, endDate, periodMode, processedTimelineData]);
 
   // Gestionar transición suave del gráfico cuando cambian las fechas
   useEffect(() => {
@@ -273,7 +276,105 @@ const TimelineChart = ({ portfolioData, theme }) => {
       
       return () => clearTimeout(timer);
     }
-  }, [startDate, endDate, portfolioData]);
+  }, [startDate, endDate, portfolioData, periodMode]);
+
+  // Procesar datos para tooltip cuando cambien las dependencias
+  useEffect(() => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
+      setProcessedTimelineData([]);
+      return;
+    }
+
+    let timelineData = [...portfolioData.timeline];
+
+    // Filtrar por fechas si están definidas
+    if (startDate || endDate) {
+      timelineData = timelineData.filter(entry => {
+        const entryDate = new Date(entry.date);
+        let includeEntry = true;
+        
+        if (startDate) {
+          const [startDay, startMonth, startYear] = startDate.split('/');
+          const startDateObj = new Date(startYear, startMonth - 1, startDay);
+          if (entryDate < startDateObj) {
+            includeEntry = false;
+          }
+        }
+        
+        if (endDate && includeEntry) {
+          const [endDay, endMonth, endYear] = endDate.split('/');
+          const endDateObj = new Date(endYear, endMonth - 1, endDay, 23, 59, 59);
+          if (entryDate > endDateObj) {
+            includeEntry = false;
+          }
+        }
+        
+        return includeEntry;
+      });
+    }
+
+    // Función para agrupar datos según el período seleccionado
+    const groupDataByPeriod = (data, period) => {
+      if (period === 'day' || data.length === 0) return data;
+      
+      const grouped = {};
+      
+      data.forEach(entry => {
+        const date = new Date(entry.date);
+        let groupKey;
+        
+        switch (period) {
+          case 'week':
+            const weekStart = new Date(date);
+            const day = weekStart.getDay();
+            const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+            weekStart.setDate(diff);
+            groupKey = weekStart.toISOString().split('T')[0];
+            break;
+            
+          case 'month':
+            groupKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+            break;
+            
+          case 'year':
+            groupKey = date.getFullYear().toString();
+            break;
+            
+          default:
+            groupKey = entry.date;
+        }
+        
+        if (!grouped[groupKey]) {
+          grouped[groupKey] = {
+            date: period === 'week' ? groupKey : 
+                  period === 'month' ? `${groupKey}-01` :
+                  period === 'year' ? `${groupKey}-01-01` : entry.date,
+            entries: []
+          };
+        }
+        
+        grouped[groupKey].entries.push(entry);
+      });
+      
+      return Object.values(grouped).map(group => {
+        const sortedEntries = group.entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+        const lastEntry = sortedEntries[sortedEntries.length - 1];
+        
+        return {
+          date: group.date,
+          value: lastEntry.value,
+          cost: lastEntry.cost,
+          total_gain: lastEntry.total_gain,
+          net_profit: lastEntry.net_profit,
+          sales: lastEntry.sales  // Mantener información de ventas
+        };
+      }).sort((a, b) => new Date(a.date) - new Date(b.date));
+    };
+
+    // Aplicar agrupación
+    const processedData = groupDataByPeriod(timelineData, periodMode);
+    setProcessedTimelineData(processedData);
+  }, [portfolioData, startDate, endDate, periodMode]);
   
   // Manejar transición cuando cambia showTotalInvested
   const handleInvestedToggle = () => {
@@ -581,19 +682,25 @@ const TimelineChart = ({ portfolioData, theme }) => {
   };
   
   // Función para renderizar tooltip con datos específicos
-  const renderTooltipContent = (dataIndex = null) => {
-    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return '';
+  const renderTooltipContent = (dataIndex = null, processedData = null) => {
+    // Usar datos procesados si están disponibles, sino usar datos originales
+    const dataSource = processedData || portfolioData?.timeline;
+    if (!dataSource || dataSource.length === 0) return '';
     
     // Usar el último punto si no se especifica índice
-    const index = dataIndex !== null ? dataIndex : portfolioData.timeline.length - 1;
-    const entry = portfolioData.timeline[index];
+    const index = dataIndex !== null ? dataIndex : dataSource.length - 1;
+    const entry = dataSource[index];
     
     if (!entry) return '';
     
     const date = new Date(entry.date);
     const marketValue = entry.value || 0;
     const investedValue = entry.cost || 0;
-    const profit = marketValue - investedValue;
+    
+    // Usar total_gain del backend (realized + unrealized gains)
+    const profit = entry.total_gain !== undefined ? entry.total_gain :
+                   entry.net_profit !== undefined ? entry.net_profit :
+                   (marketValue - investedValue);
     const profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
     
     const formatCurrency = (value) => {
@@ -617,18 +724,46 @@ const TimelineChart = ({ portfolioData, theme }) => {
       }).format(absValue) + '€';
     };
     
-    let content = `<span style="color: #ffffff; font-size: 18px; vertical-align: baseline;">${date.toLocaleDateString('en-US', { 
-      weekday: 'short',
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    })}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+    // Formatear fecha según el período seleccionado
+    let dateFormat;
+    switch (periodMode) {
+      case 'week':
+        dateFormat = date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        }) + ' (Week)';
+        break;
+      case 'month':
+        dateFormat = date.toLocaleDateString('en-US', { 
+          month: 'long',
+          year: 'numeric'
+        });
+        break;
+      case 'year':
+        dateFormat = date.getFullYear().toString();
+        break;
+      default: // 'day'
+        dateFormat = date.toLocaleDateString('en-US', { 
+          weekday: 'short',
+          month: 'short', 
+          day: 'numeric',
+          year: 'numeric'
+        });
+    }
+    
+    let content = `<span style="color: #ffffff; font-size: 18px; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     
     if (showTotalInvested && viewMode === 'both') {
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">PROFIT</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      // Determinar el tipo de profit mostrado basado en datos disponibles
+      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
+      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     } else if (viewMode === 'balance') {
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">PROFIT</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>`;
+      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
+      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>`;
     }
+    
+    // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
     return `
       <div class="custom-tooltip" style="
@@ -664,7 +799,23 @@ const TimelineChart = ({ portfolioData, theme }) => {
   
   // Create Timeline Chart Data with conditional coloring
   const createTimelineData = () => {
+    console.log('DEBUG - portfolioData completo:', portfolioData);
     console.log('DEBUG - portfolioData.timeline:', portfolioData?.timeline);
+    
+    // Debug para verificar si tenemos total_gain y sales
+    if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
+      const firstEntry = portfolioData.timeline[0];
+      console.log('DEBUG - Primera entrada del timeline:', firstEntry);
+      console.log('DEBUG - ¿Tiene total_gain?', firstEntry.total_gain !== undefined);
+      console.log('DEBUG - ¿Tiene net_profit?', firstEntry.net_profit !== undefined);
+      console.log('DEBUG - ¿Tiene sales?', firstEntry.sales !== undefined);
+      
+      // Buscar el primer día con ventas para debuggear
+      const entryWithSales = portfolioData.timeline.find(entry => entry.sales !== null);
+      if (entryWithSales) {
+        console.log('DEBUG - Entrada con ventas:', entryWithSales);
+      }
+    }
     
     if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
       console.log('DEBUG - No timeline data available');
@@ -703,20 +854,47 @@ const TimelineChart = ({ portfolioData, theme }) => {
       
       console.log('DEBUG - Filtered data from', startDate, 'to', endDate, ':', timelineData.length, 'entries');
     }
+
+    // Usar datos ya procesados del useEffect
+    timelineData = processedTimelineData.length > 0 ? processedTimelineData : timelineData;
+    
     const labels = timelineData.map(entry => {
       const date = new Date(entry.date);
-      return date.toLocaleDateString('es-ES', { 
-        day: '2-digit', 
-        month: '2-digit',
-        year: '2-digit'
-      });
+      
+      switch (periodMode) {
+        case 'week':
+          return date.toLocaleDateString('es-ES', { 
+            day: '2-digit', 
+            month: '2-digit',
+            year: '2-digit'
+          }) + ' (Sem)';
+        case 'month':
+          const monthStr = date.toLocaleDateString('en-US', { 
+            month: 'long',
+            year: 'numeric'
+          });
+          return monthStr.charAt(0).toUpperCase() + monthStr.slice(1);
+        case 'year':
+          return date.getFullYear().toString();
+        default: // 'day'
+          return date.toLocaleDateString('es-ES', { 
+            day: '2-digit', 
+            month: '2-digit',
+            year: '2-digit'
+          });
+      }
     });
 
     const investedValues = timelineData.map(entry => entry.cost || 0);
     const portfolioValues = timelineData.map(entry => entry.value || 0);
     
-    // Calcular balance (profit/loss) para cada punto
-    const balanceValues = timelineData.map(entry => (entry.value || 0) - (entry.cost || 0));
+    // Usar total_gain del backend (realized + unrealized gains)
+    const balanceValues = timelineData.map(entry => {
+      // Prioridad: total_gain del backend, fallback a net_profit, sino unrealized
+      return entry.total_gain !== undefined ? entry.total_gain :
+             entry.net_profit !== undefined ? entry.net_profit :
+             (entry.value || 0) - (entry.cost || 0);
+    });
     
     // DEBUG: Ver los datos
     console.log('📊 DATOS DEBUG:');
@@ -815,8 +993,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
           }
           
           return gradient;
-          
-          return gradient;
+        
         },
         fill: 'origin', // Rellenar hasta el eje X (línea de 0)
         tension: 0.5,
@@ -1026,6 +1203,46 @@ const TimelineChart = ({ portfolioData, theme }) => {
       });
     }
 
+    // Dataset para marcar puntos de venta
+    const salesData = timelineData.map(entry => entry.sales ? entry.value : null);
+    const hasSales = timelineData.some(entry => entry.sales !== null);
+    
+    if (hasSales) {
+      datasets.push({
+        label: 'Sales Points',
+        data: salesData,
+        borderColor: 'transparent',
+        backgroundColor: 'transparent',
+        pointRadius: function(ctx) {
+          const entry = timelineData[ctx.dataIndex];
+          return entry?.sales ? 6 : 0;
+        },
+        pointHoverRadius: function(ctx) {
+          const entry = timelineData[ctx.dataIndex];
+          return entry?.sales ? 8 : 0;
+        },
+        pointBackgroundColor: function(ctx) {
+          const entry = timelineData[ctx.dataIndex];
+          return entry?.sales ? '#fbbf24' : 'transparent'; // Color amarillo/naranja para ventas
+        },
+        pointBorderColor: function(ctx) {
+          const entry = timelineData[ctx.dataIndex];
+          return entry?.sales ? '#ffffff' : 'transparent';
+        },
+        pointBorderWidth: function(ctx) {
+          const entry = timelineData[ctx.dataIndex];
+          return entry?.sales ? 2 : 0;
+        },
+        pointHoverBorderWidth: function(ctx) {
+          const entry = timelineData[ctx.dataIndex];
+          return entry?.sales ? 3 : 0;
+        },
+        showLine: false,
+        order: 0, // Orden más alto para que aparezca encima
+        tension: 0
+      });
+    }
+
     return {
       labels,
       datasets
@@ -1152,10 +1369,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
         if (activeElements.length > 0) {
           // Actualizar tooltip con el punto hover
           const dataIndex = activeElements[0].index;
-          tooltipArea.innerHTML = renderTooltipContent(dataIndex);
+          tooltipArea.innerHTML = renderTooltipContent(dataIndex, processedTimelineData);
         } else {
           // Sin hover - volver a la última fecha (estado por defecto)
-          tooltipArea.innerHTML = renderTooltipContent();
+          tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
         }
       }
     },
@@ -1179,7 +1396,96 @@ const TimelineChart = ({ portfolioData, theme }) => {
         display: false // Ocultamos la leyenda porque ya tenemos nuestra propia leyenda personalizada
       },
       tooltip: {
-        enabled: false
+        enabled: true,
+        external: function(context) {
+          // Solo mostrar tooltip para puntos de venta
+          const tooltipModel = context.tooltip;
+          
+          if (tooltipModel.opacity === 0) {
+            const tooltipEl = document.getElementById('chartjs-tooltip');
+            if (tooltipEl) {
+              tooltipEl.style.opacity = 0;
+            }
+            return;
+          }
+          
+          const dataIndex = tooltipModel.dataPoints[0].dataIndex;
+          const entry = timelineData[dataIndex];
+          
+          // Solo mostrar si hay ventas
+          if (!entry || !entry.sales) {
+            return;
+          }
+          
+          const sales = entry.sales;
+          const totalRealizedGainColor = sales.total_realized_gain >= 0 ? '#22c55e' : '#ef4444';
+          
+          let salesContent = `
+            <div style="
+              background: rgba(0, 0, 0, 0.9);
+              border: 1px solid rgba(255, 187, 36, 0.5);
+              border-radius: 12px;
+              padding: 16px;
+              color: white;
+              font-family: Inter, sans-serif;
+              font-size: 14px;
+              min-width: 300px;
+              max-width: 400px;
+              box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            ">
+              <div style="color: #fbbf24; font-weight: 700; font-size: 18px; margin-bottom: 12px;">SALES</div>
+              <div style="color: rgba(160, 160, 160, 0.8); font-size: 16px; margin-bottom: 6px;">
+                VOLUME&nbsp;&nbsp;<span style="color: #ffffff; font-size: 18px;">${formatCurrencyEuroAfter(sales.total_volume_eur)}</span>
+              </div>
+              <div style="color: rgba(160, 160, 160, 0.8); font-size: 16px; margin-bottom: 16px;">
+                REALIZED P&L&nbsp;&nbsp;<span style="color: ${totalRealizedGainColor}; font-size: 18px;">${sales.total_realized_gain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(sales.total_realized_gain)}</span>
+              </div>
+          `;
+          
+          // Agregar ventas individuales
+          sales.sales.forEach(sale => {
+            const saleRealizedGainColor = sale.realized_gain >= 0 ? '#22c55e' : '#ef4444';
+            salesContent += `
+              <div style="color: rgba(160, 160, 160, 0.6); font-size: 14px; margin-bottom: 4px;">
+                • <span style="color: #ffffff;">${sale.asset}</span>&nbsp;&nbsp;<span style="color: #ffffff;">${sale.volume}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.6);">→</span>&nbsp;&nbsp;<span style="color: #ffffff;">${formatCurrencyEuroAfter(sale.volume_eur)}</span>&nbsp;&nbsp;<span style="color: ${saleRealizedGainColor};">(${sale.realized_gain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(sale.realized_gain)})</span>
+              </div>
+            `;
+          });
+          
+          if (sales.additional_sales > 0) {
+            salesContent += `
+              <div style="color: rgba(160, 160, 160, 0.6); font-size: 14px; margin-top: 8px;">
+                ... and ${sales.additional_sales} more sale${sales.additional_sales > 1 ? 's' : ''}
+              </div>
+            `;
+          }
+          
+          salesContent += '</div>';
+          
+          // Crear tooltip personalizado
+          let tooltipEl = document.getElementById('chartjs-tooltip');
+          if (!tooltipEl) {
+            tooltipEl = document.createElement('div');
+            tooltipEl.id = 'chartjs-tooltip';
+            tooltipEl.style.position = 'absolute';
+            tooltipEl.style.pointerEvents = 'none';
+            tooltipEl.style.zIndex = '10000';
+            document.body.appendChild(tooltipEl);
+          }
+          
+          tooltipEl.innerHTML = salesContent;
+          tooltipEl.style.opacity = 1;
+          
+          const position = context.chart.canvas.getBoundingClientRect();
+          
+          tooltipEl.style.left = position.left + window.pageXOffset + tooltipModel.caretX + 'px';
+          tooltipEl.style.top = position.top + window.pageYOffset + tooltipModel.caretY + 'px';
+        },
+        filter: function(tooltipItem) {
+          // Solo mostrar tooltip para el dataset de sales points
+          const datasets = tooltipItem.chart.data.datasets;
+          return tooltipItem.datasetIndex === datasets.findIndex(d => d.label === 'Sales Points');
+        }
       }
     },
     scales: {
@@ -1256,13 +1562,13 @@ const TimelineChart = ({ portfolioData, theme }) => {
         borderRadius: '0',
         overflow: 'visible'
       }}>
-      <div style={{
-        position: 'relative',
-        marginBottom: '5rem',
-        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
-      }}>
-        {/* Contenedor principal para controles */}
         <div style={{
+          position: 'relative',
+          marginBottom: '8rem',
+          transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}>
+          {/* Contenedor principal para controles */}
+          <div style={{
           position: 'absolute',
           top: '0',
           left: '0',
@@ -1285,14 +1591,15 @@ const TimelineChart = ({ portfolioData, theme }) => {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '10px',
             marginRight: '1.5rem',
             background: COLORS.BACKGROUND_DARK,
             borderRadius: '14px',
             padding: '6px',
             border: '2px solid rgba(255, 255, 255, 0.2)',
             backdropFilter: 'blur(20px)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)'
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
+            minWidth: 'fit-content',
+            flexShrink: 0
           }}>
             {/* Selector de modo de vista con toggle fluido */}
             <div style={{
@@ -1300,7 +1607,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
               display: 'flex',
               background: 'transparent',
               borderRadius: '10px',
-              padding: '0'
+              padding: '0',
+              minWidth: '200px',
+              justifyContent: 'space-between',
+              marginRight: '10px'
             }}>
               <button
                 onClick={() => setViewMode('both')}
@@ -1310,7 +1620,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                     : 'rgba(255, 255, 255, 0.08)',
                   border: viewMode === 'both' 
                     ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '1px solid rgba(255, 255, 255, 0.15)',
+                    : '2px solid rgba(255, 255, 255, 0.15)',
                   borderRadius: '10px',
                   padding: '8px 14px',
                   color: viewMode === 'both' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
@@ -1319,7 +1629,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
-                  transform: viewMode === 'both' ? 'scale(1.02)' : 'scale(1)',
                   backdropFilter: 'blur(10px)',
                   boxShadow: viewMode === 'both' 
                     ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
@@ -1328,7 +1637,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 onMouseEnter={(e) => {
                   if (viewMode !== 'both') {
                     e.target.style.color = '#ffffff';
-                    e.target.style.transform = 'scale(1.02)';
                     e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
@@ -1337,7 +1645,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 onMouseLeave={(e) => {
                   if (viewMode !== 'both') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
-                    e.target.style.transform = 'scale(1)';
                     e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
@@ -1355,7 +1662,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                     : 'rgba(255, 255, 255, 0.08)',
                   border: viewMode === 'balance' 
                     ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '1px solid rgba(255, 255, 255, 0.15)',
+                    : '2px solid rgba(255, 255, 255, 0.15)',
                   borderRadius: '10px',
                   padding: '8px 14px',
                   color: viewMode === 'balance' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
@@ -1364,7 +1671,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
-                  transform: viewMode === 'balance' ? 'scale(1.02)' : 'scale(1)',
                   backdropFilter: 'blur(10px)',
                   boxShadow: viewMode === 'balance' 
                     ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
@@ -1373,7 +1679,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 onMouseEnter={(e) => {
                   if (viewMode !== 'balance') {
                     e.target.style.color = '#ffffff';
-                    e.target.style.transform = 'scale(1.02)';
                     e.target.style.background = COLORS.HOVER_LIGHT;
                     e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
@@ -1382,7 +1687,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
                 onMouseLeave={(e) => {
                   if (viewMode !== 'balance') {
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
-                    e.target.style.transform = 'scale(1)';
                     e.target.style.background = COLORS.HOVER_DEFAULT;
                     e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                     e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
@@ -1393,81 +1697,229 @@ const TimelineChart = ({ portfolioData, theme }) => {
               </button>
             </div>
             
-            {/* Botón para mostrar/ocultar Total Invested - solo en modo 'both' */}
-            {viewMode === 'both' && (
-              <>
-                <div style={{
-                  width: '1px',
-                  height: '20px',
-                  background: COLORS.BACKGROUND_GLASS,
-                  margin: '0 4px'
-                }}></div>
-                <button
-                  onClick={handleInvestedToggle}
-                  style={{
-                    background: showTotalInvested 
-                      ? 'rgba(255, 255, 255, 0.15)' 
-                      : 'rgba(255, 255, 255, 0.05)',
-                    border: showTotalInvested 
-                      ? '1px solid rgba(255, 255, 255, 0.3)' 
-                      : '1px solid rgba(255, 255, 255, 0.1)',
-                    borderRadius: '8px',
-                    padding: '7px 12px',
-                    color: showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)',
-                    fontSize: '15px',
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'all 0.25s ease-out',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    backdropFilter: 'blur(10px)',
-                    boxShadow: showTotalInvested 
-                      ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
-                      : '0 1px 4px rgba(0, 0, 0, 0.1)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = showTotalInvested 
-                      ? 'rgba(255, 255, 255, 0.18)' 
-                      : 'rgba(255, 255, 255, 0.1)';
+            {/* Botón para mostrar/ocultar Total Invested - con transición suave */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              opacity: viewMode === 'both' ? 1 : 0,
+              width: viewMode === 'both' ? '130px' : '0px',
+              overflow: 'hidden',
+              transition: 'all 0.25s ease-out',
+              pointerEvents: viewMode === 'both' ? 'auto' : 'none',
+              marginRight: '10px'
+            }}>
+              <button
+                onClick={handleInvestedToggle}
+                style={{
+                  background: showTotalInvested 
+                    ? 'rgba(255, 255, 255, 0.15)' 
+                    : 'rgba(255, 255, 255, 0.05)',
+                  border: showTotalInvested 
+                    ? '1px solid rgba(255, 255, 255, 0.3)' 
+                    : '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  padding: '7px 12px',
+                  color: showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)',
+                  fontSize: '15px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.25s ease-out',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: showTotalInvested 
+                    ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
+                    : '0 1px 4px rgba(0, 0, 0, 0.1)',
+                  whiteSpace: 'nowrap'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = showTotalInvested 
+                    ? 'rgba(255, 255, 255, 0.18)' 
+                    : 'rgba(255, 255, 255, 0.1)';
+                  e.target.style.color = '#ffffff';
+                  e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.12)';
+                  e.target.style.borderColor = showTotalInvested 
+                    ? 'rgba(255, 255, 255, 0.4)' 
+                    : 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = showTotalInvested 
+                    ? 'rgba(255, 255, 255, 0.15)' 
+                    : 'rgba(255, 255, 255, 0.05)';
+                  e.target.style.color = showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)';
+                  e.target.style.boxShadow = showTotalInvested 
+                    ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
+                    : '0 1px 4px rgba(0, 0, 0, 0.1)';
+                  e.target.style.borderColor = showTotalInvested 
+                    ? 'rgba(255, 255, 255, 0.3)' 
+                    : 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                <span style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: showTotalInvested 
+                    ? 'linear-gradient(45deg, rgba(200, 200, 200, 1), rgba(255, 255, 255, 0.9))' 
+                    : 'rgba(120, 120, 120, 0.5)',
+                  transition: 'all 0.3s ease',
+                  boxShadow: showTotalInvested 
+                    ? '0 2px 8px rgba(255, 255, 255, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5)' 
+                    : 'none'
+                }}></span>
+                Invested
+              </button>
+            </div>
+            
+            {/* Botones de Period */}
+            <div style={{
+              display: 'flex',
+              gap: '4px',
+              alignItems: 'center'
+            }}>
+              
+              <button
+                onClick={() => setPeriodMode('day')}
+                style={{
+                  background: periodMode === 'day' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
+                    : 'rgba(255, 255, 255, 0.06)',
+                  border: periodMode === 'day' 
+                    ? '1px solid rgba(34, 197, 94, 0.8)' 
+                    : '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  color: periodMode === 'day' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  backdropFilter: 'blur(8px)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'day') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
                     e.target.style.color = '#ffffff';
-                    e.target.style.transform = 'scale(1.01)';
-                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.12)';
-                    e.target.style.borderColor = showTotalInvested 
-                      ? 'rgba(255, 255, 255, 0.4)' 
-                      : 'rgba(255, 255, 255, 0.2)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = showTotalInvested 
-                      ? 'rgba(255, 255, 255, 0.15)' 
-                      : 'rgba(255, 255, 255, 0.05)';
-                    e.target.style.color = showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)';
-                    e.target.style.transform = 'scale(1)';
-                    e.target.style.boxShadow = showTotalInvested 
-                      ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
-                      : '0 1px 4px rgba(0, 0, 0, 0.1)';
-                    e.target.style.borderColor = showTotalInvested 
-                      ? 'rgba(255, 255, 255, 0.3)' 
-                      : 'rgba(255, 255, 255, 0.1)';
-                  }}
-                >
-                  <span style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    background: showTotalInvested 
-                      ? 'linear-gradient(45deg, rgba(200, 200, 200, 1), rgba(255, 255, 255, 0.9))' 
-                      : 'rgba(120, 120, 120, 0.5)',
-                    transition: 'all 0.3s ease',
-                    boxShadow: showTotalInvested 
-                      ? '0 2px 8px rgba(255, 255, 255, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5)' 
-                      : 'none'
-                  }}></span>
-                  Invested
-                </button>
-              </>
-            )}
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'day') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.06)';
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                  }
+                }}
+              >
+                D
+              </button>
+              
+              <button
+                onClick={() => setPeriodMode('week')}
+                style={{
+                  background: periodMode === 'week' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
+                    : 'rgba(255, 255, 255, 0.06)',
+                  border: periodMode === 'week' 
+                    ? '1px solid rgba(34, 197, 94, 0.8)' 
+                    : '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  color: periodMode === 'week' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  backdropFilter: 'blur(8px)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'week') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.color = '#ffffff';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'week') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.06)';
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                  }
+                }}
+              >
+                W
+              </button>
+              
+              <button
+                onClick={() => setPeriodMode('month')}
+                style={{
+                  background: periodMode === 'month' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
+                    : 'rgba(255, 255, 255, 0.06)',
+                  border: periodMode === 'month' 
+                    ? '1px solid rgba(34, 197, 94, 0.8)' 
+                    : '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  color: periodMode === 'month' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  backdropFilter: 'blur(8px)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'month') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.color = '#ffffff';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'month') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.06)';
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                  }
+                }}
+              >
+                M
+              </button>
+              
+              <button
+                onClick={() => setPeriodMode('year')}
+                style={{
+                  background: periodMode === 'year' 
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
+                    : 'rgba(255, 255, 255, 0.06)',
+                  border: periodMode === 'year' 
+                    ? '1px solid rgba(34, 197, 94, 0.8)' 
+                    : '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  color: periodMode === 'year' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  fontSize: '13px',
+                  fontFamily: "'Inter', sans-serif",
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  backdropFilter: 'blur(8px)'
+                }}
+                onMouseEnter={(e) => {
+                  if (periodMode !== 'year') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                    e.target.style.color = '#ffffff';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (periodMode !== 'year') {
+                    e.target.style.background = 'rgba(255, 255, 255, 0.06)';
+                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                  }
+                }}
+              >
+                Y
+              </button>
+            </div>
           </div>
           
           {/* Leyenda dinámica - solo muestra elementos activos */}
@@ -1537,212 +1989,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
               </div>
             )}
             
-            {/* Separador y sección de Period */}
-            <div style={{
-              width: '1px',
-              height: '20px',
-              background: COLORS.BACKGROUND_GLASS,
-              margin: '0 8px'
-            }}></div>
-            
-            {/* Etiqueta Period */}
-            <div style={{
-              color: 'rgba(245, 245, 245, 0.7)',
-              fontSize: '14px',
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: '600',
-              marginRight: '8px',
-              display: 'flex',
-              alignItems: 'center'
-            }}>
-              Period
-            </div>
-            
-            {/* Botones de período */}
-            <div style={{
-              display: 'flex',
-              gap: '4px'
-            }}>
-              <button
-                onClick={() => setPeriodMode('day')}
-                style={{
-                  background: periodMode === 'day' 
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
-                    : 'rgba(255, 255, 255, 0.08)',
-                  border: periodMode === 'day' 
-                    ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '8px',
-                  padding: '6px 10px',
-                  color: periodMode === 'day' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  transition: 'all 0.25s ease-out',
-                  transform: periodMode === 'day' ? 'scale(1.02)' : 'scale(1)',
-                  backdropFilter: 'blur(10px)',
-                  boxShadow: periodMode === 'day' 
-                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
-                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
-                }}
-                onMouseEnter={(e) => {
-                  if (periodMode !== 'day') {
-                    e.target.style.color = '#ffffff';
-                    e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = COLORS.HOVER_LIGHT;
-                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (periodMode !== 'day') {
-                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
-                    e.target.style.transform = 'scale(1)';
-                    e.target.style.background = COLORS.HOVER_DEFAULT;
-                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                  }
-                }}
-              >
-                Day
-              </button>
-              
-              <button
-                onClick={() => setPeriodMode('week')}
-                style={{
-                  background: periodMode === 'week' 
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
-                    : 'rgba(255, 255, 255, 0.08)',
-                  border: periodMode === 'week' 
-                    ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '8px',
-                  padding: '6px 10px',
-                  color: periodMode === 'week' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  transition: 'all 0.25s ease-out',
-                  transform: periodMode === 'week' ? 'scale(1.02)' : 'scale(1)',
-                  backdropFilter: 'blur(10px)',
-                  boxShadow: periodMode === 'week' 
-                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
-                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
-                }}
-                onMouseEnter={(e) => {
-                  if (periodMode !== 'week') {
-                    e.target.style.color = '#ffffff';
-                    e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = COLORS.HOVER_LIGHT;
-                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (periodMode !== 'week') {
-                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
-                    e.target.style.transform = 'scale(1)';
-                    e.target.style.background = COLORS.HOVER_DEFAULT;
-                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                  }
-                }}
-              >
-                Week
-              </button>
-              
-              <button
-                onClick={() => setPeriodMode('month')}
-                style={{
-                  background: periodMode === 'month' 
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
-                    : 'rgba(255, 255, 255, 0.08)',
-                  border: periodMode === 'month' 
-                    ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '8px',
-                  padding: '6px 10px',
-                  color: periodMode === 'month' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  transition: 'all 0.25s ease-out',
-                  transform: periodMode === 'month' ? 'scale(1.02)' : 'scale(1)',
-                  backdropFilter: 'blur(10px)',
-                  boxShadow: periodMode === 'month' 
-                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
-                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
-                }}
-                onMouseEnter={(e) => {
-                  if (periodMode !== 'month') {
-                    e.target.style.color = '#ffffff';
-                    e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = COLORS.HOVER_LIGHT;
-                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (periodMode !== 'month') {
-                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
-                    e.target.style.transform = 'scale(1)';
-                    e.target.style.background = COLORS.HOVER_DEFAULT;
-                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                  }
-                }}
-              >
-                Month
-              </button>
-              
-              <button
-                onClick={() => setPeriodMode('year')}
-                style={{
-                  background: periodMode === 'year' 
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
-                    : 'rgba(255, 255, 255, 0.08)',
-                  border: periodMode === 'year' 
-                    ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '8px',
-                  padding: '6px 10px',
-                  color: periodMode === 'year' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  transition: 'all 0.25s ease-out',
-                  transform: periodMode === 'year' ? 'scale(1.02)' : 'scale(1)',
-                  backdropFilter: 'blur(10px)',
-                  boxShadow: periodMode === 'year' 
-                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
-                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
-                }}
-                onMouseEnter={(e) => {
-                  if (periodMode !== 'year') {
-                    e.target.style.color = '#ffffff';
-                    e.target.style.transform = 'scale(1.02)';
-                    e.target.style.background = COLORS.HOVER_LIGHT;
-                    e.target.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (periodMode !== 'year') {
-                    e.target.style.color = 'rgba(245, 245, 245, 0.8)';
-                    e.target.style.transform = 'scale(1)';
-                    e.target.style.background = COLORS.HOVER_DEFAULT;
-                    e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                  }
-                }}
-              >
-                Year
-              </button>
-            </div>
           </div>
           
           {/* Botones de fechas a la derecha */}
@@ -1893,11 +2139,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isMonthNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isMonthNavigationDisabled(-1) ? 0.3 : 0.7,
+                            opacity: isMonthNavigationDisabled(-1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '16px',
                             fontWeight: '500',
-                            color: isMonthNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isMonthNavigationDisabled(-1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'right',
                             minWidth: '40px'
                           }}
@@ -1920,11 +2166,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isMonthNavigationDisabled(1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isMonthNavigationDisabled(1) ? 0.3 : 0.7,
+                            opacity: isMonthNavigationDisabled(1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '16px',
                             fontWeight: '500',
-                            color: isMonthNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isMonthNavigationDisabled(1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'left',
                             minWidth: '40px'
                           }}
@@ -1956,11 +2202,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isYearNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isYearNavigationDisabled(-1) ? 0.3 : 0.7,
+                            opacity: isYearNavigationDisabled(-1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '14px',
                             fontWeight: '500',
-                            color: isYearNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isYearNavigationDisabled(-1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'right',
                             minWidth: '30px'
                           }}
@@ -1983,11 +2229,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isYearNavigationDisabled(1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isYearNavigationDisabled(1) ? 0.3 : 0.7,
+                            opacity: isYearNavigationDisabled(1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '14px',
                             fontWeight: '500',
-                            color: isYearNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isYearNavigationDisabled(1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'left',
                             minWidth: '30px'
                           }}
@@ -2059,10 +2305,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
                                       backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent',
                             border: dayState === 'selected' ? '2px solid rgba(0, 255, 136, 0.9)' : 
                                    dayState === 'inRange' ? '1px solid rgba(0, 255, 136, 0.4)' :
-                                   dayState === 'disabled' ? '1px solid rgba(80, 80, 80, 0.3)' :
+                                   dayState === 'disabled' ? '1px solid rgba(120, 120, 120, 0.6)' :
                                    day ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
                             borderRadius: '14px',
-                            color: day ? (dayState === 'disabled' ? 'rgba(120, 120, 120, 0.5)' : '#ffffff') : 'transparent',
+                            color: day ? (dayState === 'disabled' ? 'rgba(180, 180, 180, 0.8)' : '#ffffff') : 'transparent',
                             padding: '12px',
                             cursor: day ? (dayState === 'disabled' ? 'not-allowed' : 'pointer') : 'default',
                             fontSize: '16px',
@@ -2077,7 +2323,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                                       dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
                                       dayState === 'disabled' ? 'inset 0 1px 2px rgba(0, 0, 0, 0.3)' :
                                       day ? '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)' : 'none',
-                            opacity: dayState === 'disabled' ? 0.4 : 1
+                            opacity: dayState === 'disabled' ? 0.55 : 1
                           }}
                           onMouseEnter={day && dayState !== 'disabled' ? (e) => {
                             if (dayState !== 'selected' && dayState !== 'inRange') {
@@ -2332,11 +2578,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isMonthNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isMonthNavigationDisabled(-1) ? 0.3 : 0.7,
+                            opacity: isMonthNavigationDisabled(-1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '16px',
                             fontWeight: '500',
-                            color: isMonthNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isMonthNavigationDisabled(-1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'right',
                             minWidth: '40px'
                           }}
@@ -2359,11 +2605,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isMonthNavigationDisabled(1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isMonthNavigationDisabled(1) ? 0.3 : 0.7,
+                            opacity: isMonthNavigationDisabled(1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '16px',
                             fontWeight: '500',
-                            color: isMonthNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isMonthNavigationDisabled(1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'left',
                             minWidth: '40px'
                           }}
@@ -2395,11 +2641,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isYearNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isYearNavigationDisabled(-1) ? 0.3 : 0.7,
+                            opacity: isYearNavigationDisabled(-1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '14px',
                             fontWeight: '500',
-                            color: isYearNavigationDisabled(-1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isYearNavigationDisabled(-1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'right',
                             minWidth: '30px'
                           }}
@@ -2422,11 +2668,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                           style={{
                             cursor: isYearNavigationDisabled(1) ? 'not-allowed' : 'pointer',
                             userSelect: 'none',
-                            opacity: isYearNavigationDisabled(1) ? 0.3 : 0.7,
+                            opacity: isYearNavigationDisabled(1) ? 0.6 : 1.0,
                             transition: 'opacity 0.2s ease',
                             fontSize: '14px',
                             fontWeight: '500',
-                            color: isYearNavigationDisabled(1) ? 'rgba(120,120,120,0.5)' : 'rgba(255,255,255,0.7)',
+                            color: isYearNavigationDisabled(1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
                             textAlign: 'left',
                             minWidth: '30px'
                           }}
@@ -2498,10 +2744,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
                                       backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent',
                             border: dayState === 'selected' ? '2px solid rgba(0, 255, 136, 0.9)' : 
                                    dayState === 'inRange' ? '1px solid rgba(0, 255, 136, 0.4)' :
-                                   dayState === 'disabled' ? '1px solid rgba(80, 80, 80, 0.3)' :
+                                   dayState === 'disabled' ? '1px solid rgba(120, 120, 120, 0.6)' :
                                    day ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
                             borderRadius: '14px',
-                            color: day ? (dayState === 'disabled' ? 'rgba(120, 120, 120, 0.5)' : '#ffffff') : 'transparent',
+                            color: day ? (dayState === 'disabled' ? 'rgba(180, 180, 180, 0.8)' : '#ffffff') : 'transparent',
                             padding: '12px',
                             cursor: day ? (dayState === 'disabled' ? 'not-allowed' : 'pointer') : 'default',
                             fontSize: '16px',
@@ -2516,7 +2762,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
                                       dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
                                       dayState === 'disabled' ? 'inset 0 1px 2px rgba(0, 0, 0, 0.3)' :
                                       day ? '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)' : 'none',
-                            opacity: dayState === 'disabled' ? 0.4 : 1
+                            opacity: dayState === 'disabled' ? 0.55 : 1
                           }}
                           onMouseEnter={day && dayState !== 'disabled' ? (e) => {
                             if (dayState !== 'selected' && dayState !== 'inRange') {
@@ -2625,55 +2871,60 @@ const TimelineChart = ({ portfolioData, theme }) => {
             </div>
           </div>
         </div>
-        </div>
       </div>
       
-      {/* Línea del tooltip estático */}
+      {/* Espaciador para separar tooltip de controles */}
+      <div style={{ height: '4rem' }}></div>
+      
+      {/* Tooltip estático con botones en la misma línea */}
       <div style={{
+        width: '100%',
+        marginTop: '1rem',
+        marginBottom: '1rem',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        width: '100%',
-        marginTop: '2.5rem',
-        marginBottom: '1.5rem'
+        alignItems: 'center'
       }}>
-        {/* Área dedicada para tooltip estático */}
         <div id="tooltip-area" style={{ 
           minHeight: '40px', 
           flex: 1,
           position: 'relative',
           padding: '0',
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'flex-start'
         }}>
           {/* El tooltip se inicializará con el último día */}
         </div>
         
-        {/* Botones alineados a la derecha - Solo cuando hay filtros activos */}
+        {/* Botones Reset/Apply alineados a la derecha */}
         {!isUsingDefaultRange && (
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '8px',
+            marginLeft: '2rem',
+            alignSelf: 'flex-start',
+            marginTop: '-10px'
           }}>
             {/* Botón Reset */}
             <div style={{ position: 'relative' }}>
               <div 
                 onClick={() => {
+                  // Reset to default dates
                   const { defaultStartDate, defaultEndDate } = getDefaultDates();
                   setStartDate(defaultStartDate);
                   setEndDate(defaultEndDate);
                 }}
                 style={{
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '10px',
-                  padding: '10px 14px',
-                  color: 'rgba(239, 68, 68, 0.9)',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '8px',
+                  padding: '7px 12px',
+                  color: '#ef4444',
                   fontSize: '13px',
                   fontFamily: "'Inter', sans-serif",
-                  fontWeight: '700',
+                  fontWeight: '600',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
                   backdropFilter: 'blur(10px)',
@@ -2685,16 +2936,16 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   userSelect: 'none'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(239, 68, 68, 0.12)';
-                  e.target.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   e.target.style.color = '#ef4444';
                   e.target.style.transform = 'translateY(-1px)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.15)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(239, 68, 68, 0.08)';
-                  e.target.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                  e.target.style.color = 'rgba(239, 68, 68, 0.9)';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  e.target.style.color = '#ef4444';
                   e.target.style.transform = 'translateY(0)';
                   e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                 }}
@@ -2715,14 +2966,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   console.log('Apply to all pages:', { startDate, endDate });
                 }}
                 style={{
-                  background: 'rgba(245, 158, 11, 0.08)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: '10px',
-                  padding: '10px 14px',
-                  color: 'rgba(245, 158, 11, 0.9)',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '8px',
+                  padding: '7px 12px',
+                  color: '#f59e0b',
                   fontSize: '13px',
                   fontFamily: "'Inter', sans-serif",
-                  fontWeight: '700',
+                  fontWeight: '600',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
                   backdropFilter: 'blur(10px)',
@@ -2734,16 +2985,16 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   userSelect: 'none'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(245, 158, 11, 0.12)';
-                  e.target.style.borderColor = 'rgba(245, 158, 11, 0.5)';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
                   e.target.style.color = '#f59e0b';
                   e.target.style.transform = 'translateY(-1px)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.15)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(245, 158, 11, 0.08)';
-                  e.target.style.borderColor = 'rgba(245, 158, 11, 0.3)';
-                  e.target.style.color = 'rgba(245, 158, 11, 0.9)';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                  e.target.style.color = '#f59e0b';
                   e.target.style.transform = 'translateY(0)';
                   e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                 }}
@@ -2783,13 +3034,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
           // Cuando el mouse sale del contenedor, volver al estado por defecto
           const tooltipArea = document.querySelector('#tooltip-area');
           if (tooltipArea) {
-            tooltipArea.innerHTML = renderTooltipContent();
+            tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
           }
         }}
       >
         <Line data={timelineData} options={timelineOptions} />
       </div>
-      </div>
+    </div>
+    </div>
     </div>
   );
 };

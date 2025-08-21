@@ -647,6 +647,9 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
         # Procesar trades de este día
         trades_del_dia = trades_df[trades_df['time'].dt.date == fecha_actual]
         
+        # Rastrear ventas del día
+        ventas_del_dia = []
+        
         for _, trade in trades_del_dia.iterrows():
             pair = str(trade['pair'])
             asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
@@ -668,8 +671,30 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
             fee = float(trade['fee'])
             timestamp = trade['time']
             
-            # Usar función FIFO reutilizable (incluyendo fee en cost basis)
-            process_trade_fifo(holdings_por_asset[asset], trade['type'], vol, cost, timestamp, fee)
+            # Si es una venta, guardar información para el tooltip
+            if trade['type'] == 'sell':
+                # Calcular realized gain de esta venta antes de procesarla
+                realized_gain_before = holdings_por_asset[asset].get('realized_gains_historical', 0)
+                
+                # Procesar la venta
+                process_trade_fifo(holdings_por_asset[asset], trade['type'], vol, cost, timestamp, fee)
+                
+                # Calcular realized gain de esta venta específica
+                realized_gain_after = holdings_por_asset[asset].get('realized_gains_historical', 0)
+                realized_gain_this_sale = realized_gain_after - realized_gain_before
+                
+                ventas_del_dia.append({
+                    'asset': asset,
+                    'volume': vol,
+                    'cost': cost,  # Ingresos de la venta
+                    'fee': fee,
+                    'realized_gain': realized_gain_this_sale,
+                    'timestamp': timestamp
+                })
+            else:
+                # Procesar compra normalmente
+                process_trade_fifo(holdings_por_asset[asset], trade['type'], vol, cost, timestamp, fee)
+            
             holdings_por_asset[asset]['fees'] += fee
             
             # Actualizar cantidad total (para balance)
@@ -716,6 +741,37 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
         total_gains_percent = (total_gains_dia / total_invested_fifo_dia * 100) if total_invested_fifo_dia > 0 else 0
         
         
+        # Preparar información de ventas para el frontend
+        sales_info = None
+        if ventas_del_dia:
+            # Ordenar ventas por volumen en euros (cost) descendente
+            ventas_ordenadas = sorted(ventas_del_dia, key=lambda x: x['cost'], reverse=True)
+            
+            # Tomar máximo 5 ventas
+            ventas_principales = ventas_ordenadas[:5]
+            ventas_adicionales = len(ventas_ordenadas) - 5 if len(ventas_ordenadas) > 5 else 0
+            
+            # Calcular totales
+            total_volume_eur = sum(venta['cost'] for venta in ventas_del_dia)
+            total_realized_gain = sum(venta['realized_gain'] for venta in ventas_del_dia)
+            
+            sales_info = {
+                "total_sales": len(ventas_del_dia),
+                "total_volume_eur": round(total_volume_eur, 2),
+                "total_realized_gain": round(total_realized_gain, 2),
+                "sales": [
+                    {
+                        "asset": venta['asset'],
+                        "volume": round(venta['volume'], 6),
+                        "volume_eur": round(venta['cost'], 2),
+                        "realized_gain": round(venta['realized_gain'], 2),
+                        "fee": round(venta['fee'], 2)
+                    }
+                    for venta in ventas_principales
+                ],
+                "additional_sales": ventas_adicionales
+            }
+        
         dia_data = {
             "date": fecha_str,
             "cost": round(total_invested_fifo_dia, 2),
@@ -724,7 +780,8 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
             "realized_gains": round(realized_gains_dia, 2),
             "unrealized_gains": round(unrealized_gains_dia, 2),
             "net_profit": round(total_gains_dia, 2),
-            "net_profit_percent": round(total_gains_percent, 2)
+            "net_profit_percent": round(total_gains_percent, 2),
+            "sales": sales_info  # Nueva información de ventas
         }
         
         timeline.append(dia_data)
