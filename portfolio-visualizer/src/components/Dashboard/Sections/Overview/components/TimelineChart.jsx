@@ -2993,8 +2993,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
         )}
       </div>
       
-      <div>
+      <div style={{
+        height: '800px',
+        width: '100%',
+        position: 'relative'
+      }}>
         <Line ref={chartRef} data={timelineData} options={timelineOptions} />
+      </div>
+      </div>
       </div>
     </div>
   );
