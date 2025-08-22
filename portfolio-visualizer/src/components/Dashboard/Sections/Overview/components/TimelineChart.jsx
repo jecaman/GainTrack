@@ -194,6 +194,26 @@ const TimelineChart = ({ portfolioData, theme }) => {
   const [isZoomed, setIsZoomed] = useState(false);
   const chartRef = useRef(null);
   
+  // Flag para saber si el cambio de fechas viene del zoom (no re-renderizar) o del usuario (sí re-renderizar)
+  const isCalendarChangeFromZoom = useRef(false);
+  
+  
+  
+  // Referencias para acceder a las funciones de setState desde callbacks de Chart.js
+  const setStartDateRef = useRef(setStartDate);
+  const setEndDateRef = useRef(setEndDate);
+  const setIsZoomedRef = useRef(setIsZoomed);
+  const chartRefForCallback = useRef(null);
+  
+  // Actualizar las referencias cuando cambien las funciones
+  useEffect(() => {
+    setStartDateRef.current = setStartDate;
+    setEndDateRef.current = setEndDate;
+    setIsZoomedRef.current = setIsZoomed;
+    chartRefForCallback.current = chartRef.current;
+  }, [setStartDate, setEndDate, setIsZoomed, chartRef.current]);
+
+  
   // Inicializar fechas
   useEffect(() => {
     if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
@@ -270,6 +290,15 @@ const TimelineChart = ({ portfolioData, theme }) => {
 
   // Gestionar transición suave del gráfico cuando cambian las fechas
   useEffect(() => {
+    // Si el cambio viene del zoom, NO re-renderizar
+    if (isCalendarChangeFromZoom.current) {
+      console.log('🔴 [FILTRO] Cambio viene del ZOOM - NO re-renderizar');
+      isCalendarChangeFromZoom.current = false; // Reset flag
+      return;
+    }
+    
+    // Si viene del usuario, SÍ re-renderizar normalmente
+    console.log('🔴 [FILTRO] Cambio viene del USUARIO - re-renderizando');
     if (portfolioData?.timeline) {
       setIsChartLoading(true);
       // Delay optimizado para permitir transición visual suave
@@ -283,6 +312,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
 
   // Procesar datos para tooltip cuando cambien las dependencias
   useEffect(() => {
+    // Si el cambio viene del zoom, procesar datos silenciosamente
+    if (isCalendarChangeFromZoom.current) {
+      console.log('🔵 [PROCESAMIENTO] Cambio viene del ZOOM - procesamiento silencioso');
+      // No resetear la flag aquí porque se resetea en el otro useEffect
+    } else {
+      console.log('🔵 [PROCESAMIENTO] Cambio viene del USUARIO - procesamiento normal');
+    }
+    
     if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
       setProcessedTimelineData([]);
       return;
@@ -802,26 +839,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
   
   // Create Timeline Chart Data with conditional coloring
   const createTimelineData = () => {
-    console.log('DEBUG - portfolioData completo:', portfolioData);
-    console.log('DEBUG - portfolioData.timeline:', portfolioData?.timeline);
-    
-    // Debug para verificar si tenemos total_gain y sales
-    if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
-      const firstEntry = portfolioData.timeline[0];
-      console.log('DEBUG - Primera entrada del timeline:', firstEntry);
-      console.log('DEBUG - ¿Tiene total_gain?', firstEntry.total_gain !== undefined);
-      console.log('DEBUG - ¿Tiene net_profit?', firstEntry.net_profit !== undefined);
-      console.log('DEBUG - ¿Tiene sales?', firstEntry.sales !== undefined);
-      
-      // Buscar el primer día con ventas para debuggear
-      const entryWithSales = portfolioData.timeline.find(entry => entry.sales !== null);
-      if (entryWithSales) {
-        console.log('DEBUG - Entrada con ventas:', entryWithSales);
-      }
-    }
-    
     if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
-      console.log('DEBUG - No timeline data available');
       return null;
     }
 
@@ -848,14 +866,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
           if (entryDate > endDateObj) {
             includeEntry = false;
           }
-          // Debug: log para verificar el filtrado
-          console.log('DEBUG - Entry date:', entryDate.toDateString(), 'End date:', endDateObj.toDateString(), 'Include:', includeEntry);
         }
         
         return includeEntry;
       });
-      
-      console.log('DEBUG - Filtered data from', startDate, 'to', endDate, ':', timelineData.length, 'entries');
     }
 
     // Usar datos ya procesados del useEffect
@@ -874,14 +888,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
              entry.net_profit !== undefined ? entry.net_profit :
              (entry.value || 0) - (entry.cost || 0);
     });
-    
-    // DEBUG: Ver los datos
-    console.log('📊 DATOS DEBUG:');
-    console.log('Portfolio values:', portfolioValues.slice(0, 3), '...');
-    console.log('Invested values:', investedValues.slice(0, 3), '...');
-    console.log('Balance values:', balanceValues.slice(0, 3), '...');
-    console.log('View mode:', viewMode);
-    console.log('Show invested:', showTotalInvested);
 
     // Create point colors based on profit/loss at each point
     const pointColors = portfolioValues.map((value, index) => {
@@ -1193,94 +1199,16 @@ const TimelineChart = ({ portfolioData, theme }) => {
   const timelineOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    animation: {
-      duration: 600,
-      easing: 'easeOutQuart',
-      animateScale: false,
-      animateRotate: false
-    },
-    animations: {
-      // Animación suave para coordenadas Y
-      y: {
-        type: 'number',
-        easing: 'easeOutQuart',
-        duration: 500
-      },
-      // Animación para coordenadas X (desplazamiento horizontal suave)
-      x: {
-        type: 'number',
-        easing: 'easeInOutQuart', 
-        duration: 700
-      },
-      // Animación para opacidad
-      opacity: {
-        type: 'number',
-        easing: 'easeInOutSine',
-        duration: 600,
-        delay: function(context) {
-          return context.dataIndex * 8;
-        }
-      }
-    },
     transitions: {
-      active: {
-        animation: {
-          duration: 200,
-          easing: 'easeInOutQuad'
-        }
-      },
-      resize: {
-        animation: {
-          duration: 300,
-          easing: 'easeInOutQuad'
-        }
-      },
-      show: {
+      zoom: {
         animations: {
-          y: {
-            from: function(ctx) {
-              return ctx.chart.chartArea ? ctx.chart.chartArea.bottom : 0;
-            },
-            duration: 900,
-            easing: 'easeOutElastic'
-          },
-          opacity: {
-            from: 0,
-            duration: 600,
-            easing: 'easeInOutSine'
-          }
-        }
-      },
-      hide: {
-        animations: {
-          y: {
-            to: function(ctx) {
-              return ctx.chart.chartArea ? ctx.chart.chartArea.bottom : 0;
-            },
-            duration: 500,
-            easing: 'easeInQuart'
-          },
-          opacity: {
-            to: 0,
-            duration: 400,
-            easing: 'easeInQuart'
-          }
-        }
-      },
-      // Transición personalizada para filtros de fecha
-      'default': {
-        animations: {
-          y: {
-            duration: 400,
-            easing: 'easeOutQuart'
-          },
           x: {
-            duration: 400,
-            easing: 'easeOutQuart'
+            duration: 1000,
+            easing: 'easeOutBounce'
           },
-          opacity: {
-            duration: 500,
-            easing: 'easeInOutSine'
+          y: {
+            duration: 1000,
+            easing: 'easeOutBounce'
           }
         }
       }
@@ -1340,58 +1268,99 @@ const TimelineChart = ({ portfolioData, theme }) => {
       },
       zoom: {
         pan: {
-          enabled: false  // Deshabilitar pan
+          enabled: false
         },
         zoom: {
-          wheel: {
-            enabled: false  // Deshabilitar zoom con rueda
-          },
-          pinch: {
-            enabled: false  // Deshabilitar zoom con pinch
-          },
           drag: {
             enabled: true,
-            backgroundColor: 'rgba(34, 197, 94, 0.2)',  // Verde semitransparente
-            borderColor: 'rgba(34, 197, 94, 0.8)',      // Borde verde
+            backgroundColor: 'rgba(34, 197, 94, 0.2)',
+            borderColor: 'rgba(34, 197, 94, 0.8)',
             borderWidth: 2
           },
-          mode: 'x',  // Solo zoom horizontal
+          wheel: {
+            enabled: false
+          },
+          pinch: {
+            enabled: false
+          },
+          mode: 'x',
           onZoomComplete: function(chart) {
-            // Obtener las nuevas fechas del zoom
-            const xScale = chart.scales.x;
-            if (xScale && xScale.min && xScale.max) {
-              // Convertir a formato DD/MM/YYYY usado en la aplicación
-              const startDateObj = new Date(xScale.min);
-              const endDateObj = new Date(xScale.max);
+            console.log('🔍 Zoom complete event triggered!');
+            
+            // Verificación más robusta del chart y escalas
+            try {
+              // Intentar múltiples formas de acceder al chart
+              let targetChart = chart;
               
-              const newStartDate = startDateObj.toLocaleDateString('en-GB', {
+              // Si el chart pasado como parámetro no tiene escalas, usar chartRef
+              if (!targetChart || !targetChart.scales) {
+                if (chartRef.current) {
+                  targetChart = chartRef.current;
+                }
+              }
+              
+              if (!targetChart) {
+                console.log('❌ No se pudo acceder a ningún chart');
+                return;
+              }
+              
+              if (!targetChart.scales || !targetChart.scales.x) {
+                return;
+              }
+              
+              const xScale = targetChart.scales.x;
+              
+              // Verificar que min y max sean valores válidos
+              if (typeof xScale.min === 'undefined' || typeof xScale.max === 'undefined') {
+                return;
+              }
+              
+              if (isNaN(xScale.min) || isNaN(xScale.max)) {
+                return;
+              }
+              
+              const minDate = new Date(xScale.min);
+              const maxDate = new Date(xScale.max);
+              
+              // Verificar que las fechas sean válidas
+              if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime())) {
+                return;
+              }
+              
+              const newStartDate = minDate.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit', 
+                year: 'numeric'
+              });
+              
+              const newEndDate = maxDate.toLocaleDateString('en-GB', {
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric'
               });
               
-              const newEndDate = endDateObj.toLocaleDateString('en-GB', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-              });
+              // Verificar que las referencias estén disponibles
+              if (!setStartDateRef.current || !setEndDateRef.current || !setIsZoomedRef.current) {
+                return;
+              }
               
-              // Actualizar los calendarios (esto activará el filtro)
-              setStartDate(newStartDate);
-              setEndDate(newEndDate);
+              // Activar flag: el próximo cambio de fechas viene del zoom
+              isCalendarChangeFromZoom.current = true;
+              
+              // Marcar como zoomed
               setIsZoomed(true);
               
-              // Resetear el zoom del chart pero mantener las fechas filtradas
-              setTimeout(() => {
-                chart.resetZoom('none');
-                
-                // Actualizar tooltip después del reset
-                const tooltipArea = document.querySelector('#tooltip-area');
-                if (tooltipArea) {
-                  tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
-                }
-              }, 50);
+              // Actualizar calendarios (esto disparará useEffects pero serán ignorados por la flag)
+              console.log('🔍 Actualizando calendarios desde zoom:', newStartDate, 'a', newEndDate);
+              setStartDateRef.current(newStartDate);
+              setEndDateRef.current(newEndDate);
+              
+              console.log('✅ Zoom completado con calendarios actualizados');
+              
+            } catch (error) {
+              console.error('❌ [ZOOM] Error en onZoomComplete:', error);
             }
+            
           },
           onZoomRejected: function() {
             setIsZoomed(false);
@@ -2843,51 +2812,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
             alignSelf: 'flex-start',
             marginTop: '-10px'
           }}>
-            {/* Botón Reset Zoom - solo aparece si hay zoom activo */}
-            {isZoomed && (
-              <div style={{ position: 'relative', marginRight: '12px' }}>
-                <div 
-                  onClick={() => {
-                    if (chartRef.current) {
-                      chartRef.current.resetZoom();
-                      setIsZoomed(false);
-                    }
-                  }}
-                  style={{
-                    background: 'rgba(59, 130, 246, 0.15)',
-                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                    borderRadius: '12px',
-                    padding: '8px 16px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    color: '#3b82f6',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    fontFamily: "'Inter', sans-serif",
-                    transition: 'all 0.2s ease',
-                    userSelect: 'none'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background = 'rgba(59, 130, 246, 0.25)';
-                    e.target.style.borderColor = 'rgba(59, 130, 246, 0.5)';
-                    e.target.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background = 'rgba(59, 130, 246, 0.15)';
-                    e.target.style.borderColor = 'rgba(59, 130, 246, 0.3)';
-                    e.target.style.transform = 'translateY(0px)';
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 3v18h18"/>
-                    <path d="M12 8l4 4-4 4M8 12h13"/>
-                  </svg>
-                  <span>Reset Zoom</span>
-                </div>
-              </div>
-            )}
             
             {/* Botón Reset */}
             <div style={{ position: 'relative' }}>
