@@ -1,10 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Chart, TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import zoomPlugin from 'chartjs-plugin-zoom';
 import 'chartjs-adapter-date-fns';
 
-// Registrar escalas
-Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
+// Registrar escalas y plugins
+Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler, zoomPlugin);
 
 // Plugin de brillo personalizado con color dinámico
 const glowPlugin = {
@@ -190,6 +191,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
   const [showEndCalendar, setShowEndCalendar] = useState(false);
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [processedTimelineData, setProcessedTimelineData] = useState([]);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const chartRef = useRef(null);
   
   // Inicializar fechas
   useEffect(() => {
@@ -756,10 +759,10 @@ const TimelineChart = ({ portfolioData, theme }) => {
     
     if (showTotalInvested && viewMode === 'both') {
       // Determinar el tipo de profit mostrado basado en datos disponibles
-      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
+      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
       content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     } else if (viewMode === 'balance') {
-      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
+      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
       content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>`;
     }
     
@@ -858,32 +861,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
     // Usar datos ya procesados del useEffect
     timelineData = processedTimelineData.length > 0 ? processedTimelineData : timelineData;
     
-    const labels = timelineData.map(entry => {
-      const date = new Date(entry.date);
-      
-      switch (periodMode) {
-        case 'week':
-          return date.toLocaleDateString('es-ES', { 
-            day: '2-digit', 
-            month: '2-digit',
-            year: '2-digit'
-          }) + ' (Sem)';
-        case 'month':
-          const monthStr = date.toLocaleDateString('en-US', { 
-            month: 'long',
-            year: 'numeric'
-          });
-          return monthStr.charAt(0).toUpperCase() + monthStr.slice(1);
-        case 'year':
-          return date.getFullYear().toString();
-        default: // 'day'
-          return date.toLocaleDateString('es-ES', { 
-            day: '2-digit', 
-            month: '2-digit',
-            year: '2-digit'
-          });
-      }
-    });
+    // Para zoom, usar fechas reales en lugar de labels personalizados
+    const labels = timelineData.map(entry => entry.date);
 
     const investedValues = timelineData.map(entry => entry.cost || 0);
     const portfolioValues = timelineData.map(entry => entry.value || 0);
@@ -1203,45 +1182,6 @@ const TimelineChart = ({ portfolioData, theme }) => {
       });
     }
 
-    // Dataset para marcar puntos de venta
-    const salesData = timelineData.map(entry => entry.sales ? entry.value : null);
-    const hasSales = timelineData.some(entry => entry.sales !== null);
-    
-    if (hasSales) {
-      datasets.push({
-        label: 'Sales Points',
-        data: salesData,
-        borderColor: 'transparent',
-        backgroundColor: 'transparent',
-        pointRadius: function(ctx) {
-          const entry = timelineData[ctx.dataIndex];
-          return entry?.sales ? 6 : 0;
-        },
-        pointHoverRadius: function(ctx) {
-          const entry = timelineData[ctx.dataIndex];
-          return entry?.sales ? 8 : 0;
-        },
-        pointBackgroundColor: function(ctx) {
-          const entry = timelineData[ctx.dataIndex];
-          return entry?.sales ? '#fbbf24' : 'transparent'; // Color amarillo/naranja para ventas
-        },
-        pointBorderColor: function(ctx) {
-          const entry = timelineData[ctx.dataIndex];
-          return entry?.sales ? '#ffffff' : 'transparent';
-        },
-        pointBorderWidth: function(ctx) {
-          const entry = timelineData[ctx.dataIndex];
-          return entry?.sales ? 2 : 0;
-        },
-        pointHoverBorderWidth: function(ctx) {
-          const entry = timelineData[ctx.dataIndex];
-          return entry?.sales ? 3 : 0;
-        },
-        showLine: false,
-        order: 0, // Orden más alto para que aparezca encima
-        tension: 0
-      });
-    }
 
     return {
       labels,
@@ -1396,101 +1336,97 @@ const TimelineChart = ({ portfolioData, theme }) => {
         display: false // Ocultamos la leyenda porque ya tenemos nuestra propia leyenda personalizada
       },
       tooltip: {
-        enabled: true,
-        external: function(context) {
-          // Solo mostrar tooltip para puntos de venta
-          const tooltipModel = context.tooltip;
-          
-          if (tooltipModel.opacity === 0) {
-            const tooltipEl = document.getElementById('chartjs-tooltip');
-            if (tooltipEl) {
-              tooltipEl.style.opacity = 0;
-            }
-            return;
-          }
-          
-          const dataIndex = tooltipModel.dataPoints[0].dataIndex;
-          const entry = timelineData[dataIndex];
-          
-          // Solo mostrar si hay ventas
-          if (!entry || !entry.sales) {
-            return;
-          }
-          
-          const sales = entry.sales;
-          const totalRealizedGainColor = sales.total_realized_gain >= 0 ? '#22c55e' : '#ef4444';
-          
-          let salesContent = `
-            <div style="
-              background: rgba(0, 0, 0, 0.9);
-              border: 1px solid rgba(255, 187, 36, 0.5);
-              border-radius: 12px;
-              padding: 16px;
-              color: white;
-              font-family: Inter, sans-serif;
-              font-size: 14px;
-              min-width: 300px;
-              max-width: 400px;
-              box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-            ">
-              <div style="color: #fbbf24; font-weight: 700; font-size: 18px; margin-bottom: 12px;">SALES</div>
-              <div style="color: rgba(160, 160, 160, 0.8); font-size: 16px; margin-bottom: 6px;">
-                VOLUME&nbsp;&nbsp;<span style="color: #ffffff; font-size: 18px;">${formatCurrencyEuroAfter(sales.total_volume_eur)}</span>
-              </div>
-              <div style="color: rgba(160, 160, 160, 0.8); font-size: 16px; margin-bottom: 16px;">
-                REALIZED P&L&nbsp;&nbsp;<span style="color: ${totalRealizedGainColor}; font-size: 18px;">${sales.total_realized_gain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(sales.total_realized_gain)}</span>
-              </div>
-          `;
-          
-          // Agregar ventas individuales
-          sales.sales.forEach(sale => {
-            const saleRealizedGainColor = sale.realized_gain >= 0 ? '#22c55e' : '#ef4444';
-            salesContent += `
-              <div style="color: rgba(160, 160, 160, 0.6); font-size: 14px; margin-bottom: 4px;">
-                • <span style="color: #ffffff;">${sale.asset}</span>&nbsp;&nbsp;<span style="color: #ffffff;">${sale.volume}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.6);">→</span>&nbsp;&nbsp;<span style="color: #ffffff;">${formatCurrencyEuroAfter(sale.volume_eur)}</span>&nbsp;&nbsp;<span style="color: ${saleRealizedGainColor};">(${sale.realized_gain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(sale.realized_gain)})</span>
-              </div>
-            `;
-          });
-          
-          if (sales.additional_sales > 0) {
-            salesContent += `
-              <div style="color: rgba(160, 160, 160, 0.6); font-size: 14px; margin-top: 8px;">
-                ... and ${sales.additional_sales} more sale${sales.additional_sales > 1 ? 's' : ''}
-              </div>
-            `;
-          }
-          
-          salesContent += '</div>';
-          
-          // Crear tooltip personalizado
-          let tooltipEl = document.getElementById('chartjs-tooltip');
-          if (!tooltipEl) {
-            tooltipEl = document.createElement('div');
-            tooltipEl.id = 'chartjs-tooltip';
-            tooltipEl.style.position = 'absolute';
-            tooltipEl.style.pointerEvents = 'none';
-            tooltipEl.style.zIndex = '10000';
-            document.body.appendChild(tooltipEl);
-          }
-          
-          tooltipEl.innerHTML = salesContent;
-          tooltipEl.style.opacity = 1;
-          
-          const position = context.chart.canvas.getBoundingClientRect();
-          
-          tooltipEl.style.left = position.left + window.pageXOffset + tooltipModel.caretX + 'px';
-          tooltipEl.style.top = position.top + window.pageYOffset + tooltipModel.caretY + 'px';
+        enabled: false
+      },
+      zoom: {
+        pan: {
+          enabled: false  // Deshabilitar pan
         },
-        filter: function(tooltipItem) {
-          // Solo mostrar tooltip para el dataset de sales points
-          const datasets = tooltipItem.chart.data.datasets;
-          return tooltipItem.datasetIndex === datasets.findIndex(d => d.label === 'Sales Points');
+        zoom: {
+          wheel: {
+            enabled: false  // Deshabilitar zoom con rueda
+          },
+          pinch: {
+            enabled: false  // Deshabilitar zoom con pinch
+          },
+          drag: {
+            enabled: true,
+            backgroundColor: 'rgba(34, 197, 94, 0.2)',  // Verde semitransparente
+            borderColor: 'rgba(34, 197, 94, 0.8)',      // Borde verde
+            borderWidth: 2
+          },
+          mode: 'x',  // Solo zoom horizontal
+          onZoomComplete: function(chart) {
+            // Obtener las nuevas fechas del zoom
+            const xScale = chart.scales.x;
+            if (xScale && xScale.min && xScale.max) {
+              // Convertir a formato DD/MM/YYYY usado en la aplicación
+              const startDateObj = new Date(xScale.min);
+              const endDateObj = new Date(xScale.max);
+              
+              const newStartDate = startDateObj.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              });
+              
+              const newEndDate = endDateObj.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              });
+              
+              // Actualizar los calendarios (esto activará el filtro)
+              setStartDate(newStartDate);
+              setEndDate(newEndDate);
+              setIsZoomed(true);
+              
+              // Resetear el zoom del chart pero mantener las fechas filtradas
+              setTimeout(() => {
+                chart.resetZoom('none');
+                
+                // Actualizar tooltip después del reset
+                const tooltipArea = document.querySelector('#tooltip-area');
+                if (tooltipArea) {
+                  tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
+                }
+              }, 50);
+            }
+          },
+          onZoomRejected: function() {
+            setIsZoomed(false);
+          }
         }
       }
     },
     scales: {
       x: {
-        display: false
+        type: 'time',
+        time: {
+          unit: periodMode === 'year' ? 'year' : periodMode === 'month' ? 'month' : periodMode === 'week' ? 'week' : 'day',
+          displayFormats: {
+            day: 'dd/MM',
+            week: 'dd/MM',
+            month: 'MMM yyyy',
+            year: 'yyyy'
+          }
+        },
+        display: false,
+        grid: {
+          display: false
+        },
+        ticks: {
+          color: '#b5b5b5',
+          font: {
+            size: 12,
+            family: "'Inter', sans-serif",
+            weight: '500'
+          },
+          maxTicksLimit: 6
+        },
+        border: {
+          display: false
+        }
       },
       y: {
         ticks: {
@@ -2898,7 +2834,7 @@ const TimelineChart = ({ portfolioData, theme }) => {
         </div>
         
         {/* Botones Reset/Apply alineados a la derecha */}
-        {!isUsingDefaultRange && (
+        {(!isUsingDefaultRange || isZoomed) && (
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -2907,6 +2843,52 @@ const TimelineChart = ({ portfolioData, theme }) => {
             alignSelf: 'flex-start',
             marginTop: '-10px'
           }}>
+            {/* Botón Reset Zoom - solo aparece si hay zoom activo */}
+            {isZoomed && (
+              <div style={{ position: 'relative', marginRight: '12px' }}>
+                <div 
+                  onClick={() => {
+                    if (chartRef.current) {
+                      chartRef.current.resetZoom();
+                      setIsZoomed(false);
+                    }
+                  }}
+                  style={{
+                    background: 'rgba(59, 130, 246, 0.15)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '12px',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    color: '#3b82f6',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    fontFamily: "'Inter', sans-serif",
+                    transition: 'all 0.2s ease',
+                    userSelect: 'none'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.background = 'rgba(59, 130, 246, 0.25)';
+                    e.target.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+                    e.target.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.background = 'rgba(59, 130, 246, 0.15)';
+                    e.target.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+                    e.target.style.transform = 'translateY(0px)';
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 3v18h18"/>
+                    <path d="M12 8l4 4-4 4M8 12h13"/>
+                  </svg>
+                  <span>Reset Zoom</span>
+                </div>
+              </div>
+            )}
+            
             {/* Botón Reset */}
             <div style={{ position: 'relative' }}>
               <div 
@@ -3011,37 +2993,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
         )}
       </div>
       
-      {/* Contenedor del gráfico expandido */}
-      <div 
-        style={{ 
-          width: 'calc(100% + 100px)', // Expandir más para llegar hasta los botones
-          height: '800px', // Aumentar altura
-          minHeight: '800px', 
-          position: 'relative',
-          background: 'transparent',
-          borderRadius: '0',
-          padding: '10px 0 0 0', // Padding mínimo superior
-          margin: '0.2rem 0',
-          boxSizing: 'border-box',
-          transform: isChartLoading ? 'translateX(-50px) scale(0.98)' : 'translateX(-50px) scale(1)',
-          border: 'none',
-          overflow: 'visible',
-          opacity: isChartLoading ? 0.6 : 1,
-          transition: 'opacity 0.3s ease-out',
-          pointerEvents: isChartLoading ? 'none' : 'auto'
-        }}
-        onMouseLeave={() => {
-          // Cuando el mouse sale del contenedor, volver al estado por defecto
-          const tooltipArea = document.querySelector('#tooltip-area');
-          if (tooltipArea) {
-            tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
-          }
-        }}
-      >
-        <Line data={timelineData} options={timelineOptions} />
+      <div>
+        <Line ref={chartRef} data={timelineData} options={timelineOptions} />
       </div>
-    </div>
-    </div>
     </div>
   );
 };
