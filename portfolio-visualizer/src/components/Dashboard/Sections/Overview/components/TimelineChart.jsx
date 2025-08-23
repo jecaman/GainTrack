@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Chart, TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import zoomPlugin from 'chartjs-plugin-zoom';
@@ -54,13 +55,15 @@ const glowPlugin = {
           const marketDataset = datasets.find(d => d.label === 'Market Value');
           const investedDataset = datasets.find(d => d.label === 'Total Invested');
           
-          if (marketDataset && investedDataset && dataIndex < marketDataset.data.length) {
+          // Solo comparar colores si la línea de Total Invested está visible (borderWidth > 0)
+          if (marketDataset && investedDataset && investedDataset.borderWidth > 0 && dataIndex < marketDataset.data.length) {
             const marketValue = marketDataset.data[dataIndex];
             const investedValue = investedDataset.data[dataIndex];
             
             // Verde si market > invested, rojo si market < invested
             pointColor = marketValue >= investedValue ? '#22c55e' : '#ef4444';
           }
+          // En modo full view sin invested, mantener color verde por defecto
         }
       }
       
@@ -165,7 +168,7 @@ const glowPlugin = {
 // Registrar el plugin
 Chart.register(glowPlugin);
 
-const TimelineChart = ({ portfolioData, theme }) => {
+const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate }) => {
   // Constantes de estilo reutilizables
   const COLORS = {
     HOVER_LIGHT: 'rgba(255, 255, 255, 0.12)',
@@ -185,8 +188,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
   const [showTotalInvested, setShowTotalInvested] = useState(true);
   const [viewMode, setViewMode] = useState('both'); // 'both', 'balance'
   const [periodMode, setPeriodMode] = useState('day'); // 'week', 'month', 'year', 'day'
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(externalStartDate || '');
+  const [endDate, setEndDate] = useState(externalEndDate || '');
   const [showStartCalendar, setShowStartCalendar] = useState(false);
   const [showEndCalendar, setShowEndCalendar] = useState(false);
   const [isChartLoading, setIsChartLoading] = useState(false);
@@ -197,7 +200,59 @@ const TimelineChart = ({ portfolioData, theme }) => {
   // Flag para saber si el cambio de fechas viene del zoom (no re-renderizar) o del usuario (sí re-renderizar)
   const isCalendarChangeFromZoom = useRef(false);
   
+  // Sincronizar fechas externas con estados locales
+  useEffect(() => {
+    if (externalStartDate && externalStartDate !== startDate) {
+      setStartDate(externalStartDate);
+    }
+  }, [externalStartDate]);
   
+  useEffect(() => {
+    if (externalEndDate && externalEndDate !== endDate) {
+      setEndDate(externalEndDate);
+    }
+  }, [externalEndDate]);
+  
+  // Sincronizar cambios locales con props externas
+  useEffect(() => {
+    if (setExternalStartDate && startDate !== externalStartDate) {
+      setExternalStartDate(startDate);
+    }
+  }, [startDate]);
+  
+  useEffect(() => {
+    if (setExternalEndDate && endDate !== externalEndDate) {
+      setExternalEndDate(endDate);
+    }
+  }, [endDate]);
+  
+  // Funciones para manejar el popup
+  const showApplyToAllPopup = () => setShowApplyPopup(true);
+  const hideApplyPopup = () => setShowApplyPopup(false);
+
+  // Agregar estilos para la animación del popup
+  React.useEffect(() => {
+    if (!document.getElementById('popup-slide-animation')) {
+      const style = document.createElement('style');
+      style.id = 'popup-slide-animation';
+      style.textContent = `
+        @keyframes slideInFromBottom {
+          0% {
+            opacity: 0;
+            transform: translateY(100%) scale(0.9);
+          }
+          60% {
+            transform: translateY(-5%) scale(1.02);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
   
   // Referencias para acceder a las funciones de setState desde callbacks de Chart.js
   const setStartDateRef = useRef(setStartDate);
@@ -431,6 +486,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
     });
     setStartDate(formattedDate);
     setShowStartCalendar(false);
+    // Mostrar popup cuando se cambie la fecha
+    setShowApplyPopup(true);
   };
 
   const handleEndDateChange = (event) => {
@@ -442,6 +499,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
     });
     setEndDate(formattedDate);
     setShowEndCalendar(false);
+    // Mostrar popup cuando se cambie la fecha
+    setShowApplyPopup(true);
   };
 
   // Convertir fecha DD/MM/YYYY a YYYY-MM-DD para input date
@@ -566,6 +625,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
       }
       setShowStartCalendar(false);
       setShowEndCalendar(true);
+      // Mostrar popup cuando se seleccione fecha de inicio
+      setShowApplyPopup(true);
       
     } else {
       // Validar que fecha fin no sea anterior a fecha inicio
@@ -575,6 +636,8 @@ const TimelineChart = ({ portfolioData, theme }) => {
       
       setEndDate(formattedDate);
       setShowEndCalendar(false);
+      // Mostrar popup cuando se seleccione fecha de fin
+      setShowApplyPopup(true);
       
       // NO abrir automáticamente el calendario de inicio - ROMPER EL BUCLE
       // El usuario tendrá que hacer clic manual si quiere cambiar la fecha inicio
@@ -941,44 +1004,13 @@ const TimelineChart = ({ portfolioData, theme }) => {
           const {ctx, chartArea} = chart;
           if (!chartArea) return balanceAreaColor;
           
-          // Crear gradiente horizontal segmentado que cambie según los valores
-          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-          
-          // Dividir en segmentos según los puntos de datos
-          const segmentSize = 1 / Math.max(balanceValues.length - 1, 1);
-          
-          for (let i = 0; i < balanceValues.length; i++) {
-            const position = i * segmentSize;
-            const value = balanceValues[i];
-            
-            // Color base según el valor, con opacidad más intensa
-            const baseColor = value > 0 ? '34, 197, 94' : '239, 68, 68';
-            const color = `rgba(${baseColor}, 0.3)`;
-            
-            gradient.addColorStop(position, color);
-            
-            // Añadir transiciones suaves entre cambios de color
-            if (i < balanceValues.length - 1) {
-              const nextValue = balanceValues[i + 1];
-              const nextBaseColor = nextValue > 0 ? '34, 197, 94' : '239, 68, 68';
-              
-              // Solo añadir transición si hay cambio de color
-              if ((value > 0) !== (nextValue > 0)) {
-                const transitionStart = position + (segmentSize * 0.4);
-                const transitionEnd = position + (segmentSize * 0.6);
-                
-                // Crear zona de transición gradual
-                const blendColor = `rgba(${baseColor}, 0.15)`;
-                const nextBlendColor = `rgba(${nextBaseColor}, 0.15)`;
-                
-                gradient.addColorStop(transitionStart, blendColor);
-                gradient.addColorStop(transitionEnd, nextBlendColor);
-              }
-            }
-          }
+          // Gradiente vertical neutro - gris azulado suave
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(120, 140, 180, 0.4)');
+          gradient.addColorStop(0.5, 'rgba(120, 140, 180, 0.25)');
+          gradient.addColorStop(1, 'rgba(120, 140, 180, 0.08)');
           
           return gradient;
-        
         },
         fill: 'origin', // Rellenar hasta el eje X (línea de 0)
         tension: 0.5,
@@ -1062,50 +1094,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
           const {ctx, chartArea} = chart;
           if (!chartArea) return 'transparent';
           
-          // Crear gradiente horizontal segmentado que cambie según profit/loss
-          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-          
-          // Dividir en segmentos según los puntos de datos
-          const segmentSize = 1 / Math.max(portfolioValues.length - 1, 1);
-          
-          for (let i = 0; i < portfolioValues.length; i++) {
-            const position = i * segmentSize;
-            const marketValue = portfolioValues[i];
-            const investedValue = investedValues[i] || 0;
-            
-            // Determinar color: rojo si market < invested, verde si market > invested
-            const isProfit = marketValue > investedValue;
-            const color = isProfit 
-              ? 'rgba(34, 197, 94, 0.35)' // Verde para ganancia (más intenso)
-              : 'rgba(239, 68, 68, 0.35)'; // Rojo para pérdida (más intenso)
-            
-            gradient.addColorStop(position, color);
-            
-            // Añadir transiciones suaves entre cambios de profit/loss
-            if (i < portfolioValues.length - 1) {
-              const nextMarketValue = portfolioValues[i + 1];
-              const nextInvestedValue = investedValues[i + 1] || 0;
-              const nextIsProfit = nextMarketValue > nextInvestedValue;
-              
-              // Solo añadir transición si hay cambio de profit/loss
-              if (isProfit !== nextIsProfit) {
-                const transitionStart = position + (segmentSize * 0.4);
-                const transitionEnd = position + (segmentSize * 0.6);
-                
-                // Crear zona de transición gradual con opacidades reducidas
-                const blendColor = isProfit 
-                  ? 'rgba(34, 197, 94, 0.18)' // Verde más transparente
-                  : 'rgba(239, 68, 68, 0.18)'; // Rojo más transparente
-                
-                const nextBlendColor = nextIsProfit 
-                  ? 'rgba(34, 197, 94, 0.18)' 
-                  : 'rgba(239, 68, 68, 0.18)';
-                
-                gradient.addColorStop(transitionStart, blendColor);
-                gradient.addColorStop(transitionEnd, nextBlendColor);
-              }
-            }
-          }
+          // Gradiente vertical neutro - gris azulado suave
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(120, 140, 180, 0.4)');
+          gradient.addColorStop(0.5, 'rgba(120, 140, 180, 0.25)');
+          gradient.addColorStop(1, 'rgba(120, 140, 180, 0.08)');
           
           return gradient;
         },
@@ -1127,15 +1120,15 @@ const TimelineChart = ({ portfolioData, theme }) => {
         borderColor: '#22c55e', // Color base, se sobrescribe con segment
         backgroundColor: function(context) {
           if (!showTotalInvested) {
-            // Sin invested = gradiente verde suave
+            // Sin invested = gradiente verde muy suave
             const chart = context.chart;
             const {ctx, chartArea} = chart;
             if (!chartArea) return 'transparent';
             
             const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            gradient.addColorStop(0, 'rgba(34, 197, 94, 0.4)');
-            gradient.addColorStop(0.5, 'rgba(34, 197, 94, 0.25)');
-            gradient.addColorStop(1, 'rgba(34, 197, 94, 0.08)');
+            gradient.addColorStop(0, 'rgba(34, 197, 94, 0.2)'); // Verde arriba
+            gradient.addColorStop(0.6, 'rgba(34, 197, 94, 0.1)'); // Transición moderada
+            gradient.addColorStop(1, 'rgba(34, 197, 94, 0.01)'); // Casi transparente abajo
             return gradient;
           }
           
@@ -1143,14 +1136,14 @@ const TimelineChart = ({ portfolioData, theme }) => {
           return 'transparent';
         },
         fill: !showTotalInvested ? 'origin' : false, // Solo fill cuando no hay invested
-        tension: 0.5,
+        tension: 0.1, // Ángulos más rectos, menos suavizado
         pointRadius: 0,
         pointHoverRadius: 6,
         pointBackgroundColor: 'rgba(255, 255, 255, 1)',
         pointBorderColor: 'rgba(255, 255, 255, 0.3)',
         pointBorderWidth: 0,
         pointHoverBorderWidth: 20,
-        borderWidth: 4,
+        borderWidth: 2,
         pointStyle: 'circle',
         order: showTotalInvested ? 3 : 1,
         segment: {
@@ -1356,6 +1349,9 @@ const TimelineChart = ({ portfolioData, theme }) => {
               setEndDateRef.current(newEndDate);
               
               console.log('✅ Zoom completado con calendarios actualizados');
+              
+              // Mostrar popup después del zoom
+              showApplyToAllPopup();
               
             } catch (error) {
               console.error('❌ [ZOOM] Error en onZoomComplete:', error);
@@ -2274,6 +2270,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                         const { defaultStartDate } = getDefaultDates();
                         setStartDate(defaultStartDate);
                         setShowStartCalendar(false);
+                        
+                        // Cancelar popup si está abierto
+                        if (setShowApplyPopup) {
+                          setShowApplyPopup(false);
+                        }
                       }}
                       style={{
                         flex: '1',
@@ -2713,6 +2714,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                         const { defaultEndDate } = getDefaultDates();
                         setEndDate(defaultEndDate);
                         setShowEndCalendar(false);
+                        
+                        // Cancelar popup si está abierto
+                        if (setShowApplyPopup) {
+                          setShowApplyPopup(false);
+                        }
                       }}
                       style={{
                         flex: '1',
@@ -2821,6 +2827,11 @@ const TimelineChart = ({ portfolioData, theme }) => {
                   const { defaultStartDate, defaultEndDate } = getDefaultDates();
                   setStartDate(defaultStartDate);
                   setEndDate(defaultEndDate);
+                  
+                  // Cancelar popup si está abierto
+                  if (setShowApplyPopup) {
+                    setShowApplyPopup(false);
+                  }
                 }}
                 style={{
                   background: 'rgba(255, 255, 255, 0.08)',
@@ -2864,68 +2875,22 @@ const TimelineChart = ({ portfolioData, theme }) => {
               </div>
             </div>
             
-            {/* Botón Apply to All */}
-            <div style={{ position: 'relative' }}>
-              <div 
-                onClick={() => {
-                  // Placeholder - no implementation yet
-                  console.log('Apply to all pages:', { startDate, endDate });
-                }}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '8px',
-                  padding: '7px 12px',
-                  color: '#f59e0b',
-                  fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  transition: 'all 0.25s ease-out',
-                  backdropFilter: 'blur(10px)',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  whiteSpace: 'nowrap',
-                  userSelect: 'none'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.12)';
-                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-                  e.target.style.color = '#f59e0b';
-                  e.target.style.transform = 'translateY(-1px)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.08)';
-                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                  e.target.style.color = '#f59e0b';
-                  e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
-                  <path d="M2 12h20"/>
-                </svg>
-                <span>Apply to All</span>
-              </div>
-            </div>
           </div>
         )}
       </div>
       
       <div style={{
         height: '800px',
-        width: '100%',
+        width: '104%',
+        marginLeft: '-2.5%',
         position: 'relative'
       }}>
         <Line ref={chartRef} data={timelineData} options={timelineOptions} />
+        
       </div>
       </div>
       </div>
+
     </div>
   );
 };

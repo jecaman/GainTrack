@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './Filters.css';
 
-const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => {
+const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showApplyPopup, setShowApplyPopup, startDate, endDate }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showTabPulse, setShowTabPulse] = useState(false);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
@@ -12,6 +12,105 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
   const [baseCurrency, setBaseCurrency] = useState('EUR');
   const [activeFilters, setActiveFilters] = useState(0);
   const tabButtonRef = useRef(null);
+  
+  // Estados para animaciones del popup
+  const [popupAnimation, setPopupAnimation] = useState('entering');
+  const [isApplying, setIsApplying] = useState(false);
+  
+  // Estados para el timer automático
+  const [timeRemaining, setTimeRemaining] = useState(9); // 9 segundos
+  const [isTimerPaused, setIsTimerPaused] = useState(false);
+  const timerRef = useRef(null);
+  const intervalRef = useRef(null);
+  
+  // Efecto para animación de entrada del popup y timer automático
+  useEffect(() => {
+    if (showApplyPopup) {
+      setPopupAnimation('entering');
+      setTimeRemaining(9);
+      setIsTimerPaused(false);
+      
+      const timer = setTimeout(() => {
+        setPopupAnimation('visible');
+        
+        // Iniciar timer automático después de que aparezca
+        startAutoCloseTimer();
+      }, 20);
+      
+      return () => {
+        clearTimeout(timer);
+        clearAutoCloseTimer();
+      };
+    }
+  }, [showApplyPopup]);
+  
+  // Función para iniciar el timer automático
+  const startAutoCloseTimer = () => {
+    intervalRef.current = setInterval(() => {
+      setTimeRemaining(prev => {
+        if (prev <= 1) {
+          // Tiempo agotado - cerrar popup
+          handleAutoClose();
+          return 0;
+        }
+        return prev - 0.1; // Decrementar cada 100ms para suavidad
+      });
+    }, 100);
+  };
+  
+  // Función para limpiar timers
+  const clearAutoCloseTimer = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+  
+  // Función para cierre automático
+  const handleAutoClose = () => {
+    clearAutoCloseTimer();
+    setPopupAnimation('exitingRight');
+    setTimeout(() => {
+      setShowApplyPopup(false);
+      setPopupAnimation('entering');
+    }, 400);
+  };
+  
+  // Pausar/reanudar timer en hover
+  const handlePopupMouseEnter = () => {
+    setIsTimerPaused(true);
+    clearAutoCloseTimer();
+  };
+  
+  const handlePopupMouseLeave = () => {
+    setIsTimerPaused(false);
+    if (timeRemaining > 0) {
+      startAutoCloseTimer();
+    }
+  };
+  
+  // Funciones para manejar las salidas animadas
+  const handleClosePopup = () => {
+    clearAutoCloseTimer();
+    setPopupAnimation('exitingRight');
+    setTimeout(() => {
+      setShowApplyPopup(false);
+      setPopupAnimation('entering');
+    }, 400);
+  };
+  
+  const handleApplyFilter = () => {
+    clearAutoCloseTimer();
+    console.log('Aplicando período a toda la página:', { startDate, endDate });
+    setPopupAnimation('applying');
+    setTimeout(() => {
+      setPopupAnimation('exitingRight');
+      setTimeout(() => {
+        setShowApplyPopup(false);
+        setPopupAnimation('entering');
+      }, 400);
+    }, 250);
+  };
 
   // Get available assets from portfolio data
   const availableAssets = portfolioData?.portfolio_data ? 
@@ -613,7 +712,166 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle }) => 
   };
 
   // Render sidebar as portal to avoid any parent container interference
-  return createPortal(sidebarContent, getPortalTarget());
+  return (
+    <>
+      {createPortal(sidebarContent, getPortalTarget())}
+      
+      {/* Apply Filter Popup */}
+      {showApplyPopup && (() => {
+        // Crear un contenedor específico para el popup que no tenga restricciones
+        let popupRoot = document.getElementById('popup-portal-root');
+        if (!popupRoot) {
+          popupRoot = document.createElement('div');
+          popupRoot.id = 'popup-portal-root';
+          popupRoot.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 999999;
+          `;
+          document.body.appendChild(popupRoot);
+        }
+        
+        // Función para obtener el transform según la animación
+        const getTransform = () => {
+          switch(popupAnimation) {
+            case 'entering':
+              return 'translateY(100px) translateX(0)';
+            case 'visible':
+              return 'translateY(0) translateX(0)';
+            case 'applying':
+              return 'translateY(-10px) translateX(0) scale(0.9)';
+            case 'exitingRight':
+              return 'translateY(0) translateX(300px)';
+            default:
+              return 'translateY(0) translateX(0)';
+          }
+        };
+        
+        return createPortal(
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '20px',
+              right: '10px',
+              background: 'rgba(0, 0, 0, 0.9)',
+              border: '1px solid #00ff88',
+              borderRadius: '6px',
+              padding: '8px',
+              fontFamily: 'Inter, sans-serif',
+              pointerEvents: 'auto',
+              boxShadow: popupAnimation === 'applying' ? '0 0 40px rgba(0, 255, 136, 0.8)' : '0 0 20px rgba(0, 255, 136, 0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              transition: popupAnimation === 'entering' ? 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'all 0.4s ease-out',
+              transform: getTransform(),
+              opacity: popupAnimation === 'exitingRight' ? 0 : 1,
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseEnter={handlePopupMouseEnter}
+            onMouseLeave={handlePopupMouseLeave}
+          >
+            {/* Contenedor de botones */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}>
+            <button
+              onClick={handleApplyFilter}
+              style={{
+                background: '#00ff88',
+                color: '#000000',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '6px 12px',
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                letterSpacing: '0.2px',
+                pointerEvents: 'auto',
+                transition: 'all 0.2s ease',
+                transform: 'scale(1)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#00ff99';
+                e.currentTarget.style.transform = 'scale(1.02)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#00ff88';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              Apply Filter to Page
+            </button>
+            
+            <button
+              onClick={handleClosePopup}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '16px',
+                cursor: 'pointer',
+                width: '28px',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '4px',
+                transition: 'all 0.2s ease',
+                pointerEvents: 'auto',
+                transform: 'scale(1) rotate(0deg)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.color = '#ff6666';
+                e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+              }}
+            >
+              ×
+            </button>
+            </div>
+            
+            {/* Barra de progreso del timer */}
+            <div style={{
+              width: '100%',
+              height: '3px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '2px',
+              overflow: 'hidden',
+              marginTop: '6px',
+            }}>
+              <div
+                style={{
+                  height: '100%',
+                  background: isTimerPaused ? 
+                    'linear-gradient(90deg, #ffaa00, #ff6600)' : 
+                    'linear-gradient(90deg, #00ff88, #00cc66)',
+                  borderRadius: '2px',
+                  transition: isTimerPaused ? 'none' : 'width 0.1s linear',
+                  width: `${(timeRemaining / 9) * 100}%`,
+                  boxShadow: isTimerPaused ? 
+                    '0 0 6px rgba(255, 170, 0, 0.6)' : 
+                    '0 0 6px rgba(0, 255, 136, 0.6)',
+                }}
+              />
+            </div>
+          </div>,
+          popupRoot
+        );
+      })()}
+    </>
+  );
 };
 
 export default Filters;

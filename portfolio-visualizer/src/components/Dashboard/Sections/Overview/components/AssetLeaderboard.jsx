@@ -398,7 +398,7 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                   animation: `slideInRow 0.3s ease-out ${index * 0.05}s both`
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
+                  e.currentTarget.style.backgroundColor = 'rgba(252, 252, 252, 0.1)'; // Blanco más visible
                   e.currentTarget.style.transform = 'translateY(-1px)';
                 }}
                 onMouseLeave={(e) => {

@@ -167,7 +167,7 @@ const ZigzagLogo = ({
   );
 };
 
-const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {} }) => {
+const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, showApplyPopup, setShowApplyPopup, startDate, endDate, setStartDate, setEndDate }) => {
   const [sloganGlow, setSloganGlow] = useState(false);
   const lastProfitRef = useRef(null);
 
@@ -269,7 +269,16 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         width: '100%',
         marginTop: '3.5rem'
       }}>
-        <TimelineChart portfolioData={portfolioData} theme={theme} />
+        <TimelineChart 
+          portfolioData={portfolioData} 
+          theme={theme}
+          showApplyPopup={showApplyPopup}
+          setShowApplyPopup={setShowApplyPopup}
+          startDate={startDate}
+          endDate={endDate}
+          setStartDate={setStartDate}
+          setEndDate={setEndDate}
+        />
       </div>
 
       {/* Layout del resto de elementos */}

@@ -16,6 +16,9 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('overview');
+  const [showApplyPopup, setShowApplyPopup] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const handleFiltersChange = (newFilters) => {
     setFilters(newFilters);
@@ -36,6 +39,12 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             theme={theme}
             onShowGainTrack={onShowGainTrack}
             filters={filters}
+            showApplyPopup={showApplyPopup}
+            setShowApplyPopup={setShowApplyPopup}
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
           />
         );
       case 'analytics':
@@ -76,6 +85,10 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
           onFiltersChange={handleFiltersChange} 
           portfolioData={portfolioData}
           onSidebarToggle={setSidebarOpen}
+          showApplyPopup={showApplyPopup}
+          setShowApplyPopup={setShowApplyPopup}
+          startDate={startDate}
+          endDate={endDate}
         />
       )}
       
