@@ -8,165 +8,191 @@ import 'chartjs-adapter-date-fns';
 // Registrar escalas y plugins
 Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler, zoomPlugin);
 
-// Plugin de brillo personalizado con color dinámico
-const glowPlugin = {
-  id: 'customGlow',
+
+// Plugin para mostrar punto y línea en hover
+const hoverPlugin = {
+  id: 'hoverPlugin',
   afterDraw(chart) {
     const { ctx } = chart;
-    
-    // Obtener elementos activos en hover
     const activeElements = chart.getActiveElements();
     
     if (activeElements.length > 0) {
-      // Buscar el dataset con el order más alto (Market Value)
-      let targetElement = activeElements[0];
-      let highestOrder = -1;
-      
+      // Buscar el dataset Portfolio Value
+      let targetElement = null;
       activeElements.forEach(el => {
         const dataset = chart.data.datasets[el.datasetIndex];
-        const order = dataset.order || 0;
-        
-        if (order > highestOrder) {
-          highestOrder = order;
+        if (dataset.label === 'Portfolio Value') {
           targetElement = el;
         }
       });
+      
+      if (!targetElement) return;
       
       const x = targetElement.element.x;
       const y = targetElement.element.y;
       const dataIndex = targetElement.index;
       
-      // Determinar el color basado en los datos
-      let pointColor = '#22c55e'; // Verde por defecto
-      
-      // Acceder a los datos para determinar profit/loss
-      if (chart.config._config && chart.config._config.data && chart.config._config.data.datasets) {
-        const datasets = chart.config._config.data.datasets;
-        
-        // Buscar dataset de Balance (P&L) para vista P&L
-        const balanceDataset = datasets.find(d => d.label === 'Balance (P&L)');
-        
-        if (balanceDataset && dataIndex < balanceDataset.data.length) {
-          const balanceValue = balanceDataset.data[dataIndex];
-          // Verde si balance positivo, rojo si balance negativo
-          pointColor = balanceValue >= 0 ? '#22c55e' : '#ef4444';
-        } else {
-          // Fallback para vista completa: buscar dataset de Market Value y Total Invested
-          const marketDataset = datasets.find(d => d.label === 'Market Value');
-          const investedDataset = datasets.find(d => d.label === 'Total Invested');
-          
-          // Solo comparar colores si la línea de Total Invested está visible (borderWidth > 0)
-          if (marketDataset && investedDataset && investedDataset.borderWidth > 0 && dataIndex < marketDataset.data.length) {
-            const marketValue = marketDataset.data[dataIndex];
-            const investedValue = investedDataset.data[dataIndex];
-            
-            // Verde si market > invested, rojo si market < invested
-            pointColor = marketValue >= investedValue ? '#22c55e' : '#ef4444';
-          }
-          // En modo full view sin invested, mantener color verde por defecto
-        }
-      }
-      
       ctx.save();
       
-      // Lógica de posicionamiento dinámico del tooltip
-      const lineLength = 105; // Longitud deseada de la línea (extendida)
+      // Línea vertical
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 60);
+      ctx.lineTo(x, y - 8);
+      ctx.stroke();
       
-      // Estrategia inteligente: acortar línea cuando el texto se salga
-      const shouldPlaceAbove = true;
-      const textMargin = 20; // Margen mínimo desde el borde superior para el texto
+      // Punto luminoso
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#22c55e';
+      ctx.fill();
       
-      let lineTop, lineBottom, textY;
+      // Borde del punto
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
       
-      // Calcular si la línea completa cabría
-      const fullLineTop = y - lineLength;
-      const fullTextY = fullLineTop - 10;
+      // Efecto de brillo pulsante sutil y difuso
+      const time = Date.now() * 0.004; 
+      const pulseIntensity = (Math.sin(time) + 1) * 0.15 + 0.12; // Un poco más intenso
       
-      if (fullTextY >= textMargin) {
-        // La línea completa cabe - usar tamaño original
-        lineTop = fullLineTop;
-        lineBottom = y - 15;
-        textY = fullTextY;
-      } else {
-        // La línea no cabe - acortarla para que el texto quede visible
-        textY = textMargin; // Texto en la posición mínima
-        lineTop = textY + 10; // Línea 10px abajo del texto
-        lineBottom = y - 15; // Final de línea como siempre
+      // Múltiples capas para difuminar la forma circular
+      for (let i = 0; i < 3; i++) {
+        const offset = i * 10; // Área más pequeña
+        const gradient = ctx.createRadialGradient(x + offset/3, y + offset/4, 0, x, y, 35 + offset); // Radio más pequeño
+        gradient.addColorStop(0, `rgba(34, 197, 94, ${pulseIntensity * (0.7 - i * 0.2)})`); // Más intenso
+        gradient.addColorStop(0.3, `rgba(74, 222, 128, ${pulseIntensity * (0.5 - i * 0.15)})`);
+        gradient.addColorStop(0.6, `rgba(134, 239, 172, ${pulseIntensity * (0.3 - i * 0.1)})`);
+        gradient.addColorStop(1, `rgba(220, 252, 231, 0)`);
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 35 + offset, 0, Math.PI * 2); // Radio más pequeño
+        ctx.fillStyle = gradient;
+        ctx.fill();
       }
       
-      // Línea punteada vertical
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x, lineTop);
-      ctx.lineTo(x, lineBottom);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      
-      // Mostrar fecha con posicionamiento dinámico
+      // Mostrar fecha
       if (chart.data.labels && chart.data.labels[dataIndex]) {
         const label = chart.data.labels[dataIndex];
+        const textY = y - 68;
         
-        ctx.font = 'bold 18px Inter, sans-serif';
+        ctx.font = 'bold 14px "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace';
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
-        ctx.textBaseline = shouldPlaceAbove ? 'bottom' : 'top';
         
-        // Fondo semi-transparente para la fecha
+        // Fondo para la fecha
         const textWidth = ctx.measureText(label).width;
         const padding = 12;
-        
-        // Sin restricciones de posición X - el texto sigue exactamente al cursor
-        const adjustedX = x;
-        
-        // Ajustar altura del fondo según posición
         const bgHeight = 26;
-        const bgY = shouldPlaceAbove ? textY - bgHeight + 4 : textY - 4;
+        const bgY = textY - bgHeight + 4;
         
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.fillRect(adjustedX - textWidth/2 - padding, bgY, textWidth + padding*2, bgHeight);
+        ctx.fillRect(x - textWidth/2 - padding, bgY, textWidth + padding*2, bgHeight);
         
         // Texto de la fecha
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(label, adjustedX, textY);
+        ctx.fillText(label, x, textY);
       }
       
-      // Crear punto central sólido más visible
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = pointColor;
-      ctx.fill();
-      
-      // Añadir borde blanco para contraste
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI * 2);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      
-      // Crear gradiente radial para el brillo externo más intenso
-      const gradient = ctx.createRadialGradient(x, y, 6, x, y, 20);
-      const rgb = pointColor === '#22c55e' ? '34, 197, 94' : '239, 68, 68';
-      
-      gradient.addColorStop(0, `rgba(${rgb}, 0.6)`);
-      gradient.addColorStop(0.4, `rgba(${rgb}, 0.4)`);
-      gradient.addColorStop(0.7, `rgba(${rgb}, 0.2)`);
-      gradient.addColorStop(1, `rgba(${rgb}, 0)`);
-      
-      // Dibujar el halo de brillo
-      ctx.beginPath();
-      ctx.arc(x, y, 20, 0, Math.PI * 2);
-      ctx.fillStyle = gradient;
-      ctx.fill();
+      // Requerir animación continua para el parpadeo
+      requestAnimationFrame(() => {
+        chart.update('none');
+      });
       
       ctx.restore();
     }
   }
 };
 
-// Registrar el plugin
-Chart.register(glowPlugin);
+// Plugin para dividir línea en activa/futura
+const splitLinePlugin = {
+  id: 'splitLine',
+  afterDraw(chart) {
+    const { ctx, data, scales } = chart;
+    const activeElements = chart.getActiveElements();
+    
+    if (activeElements.length === 0) return;
+    
+    // Obtener el índice del punto activo
+    const activeIndex = activeElements[0].index;
+    
+    // Para cada dataset visible
+    data.datasets.forEach((dataset, datasetIndex) => {
+      if (dataset.hidden || !dataset.data || dataset.data.length === 0) return;
+      
+      const meta = chart.getDatasetMeta(datasetIndex);
+      if (!meta.visible || !meta.data || meta.data.length === 0) return;
+      
+      // No dibujar línea futura para Cost Basis si showTotalInvested es false
+      if (dataset.label === 'Cost Basis') {
+        // Buscar el valor de showTotalInvested desde el componente
+        const showTotalInvested = dataset.borderColor !== 'rgba(208, 208, 208, 0)';
+        if (!showTotalInvested) return;
+      }
+      
+      ctx.save();
+      
+      // Dibujar línea futura (después del cursor) en gris apagado
+      if (activeIndex < dataset.data.length - 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(100, 100, 100, 0.25)'; // Gris más apagado
+        ctx.lineWidth = (dataset.borderWidth || 2) * 0.8; // Un poco más fina
+        ctx.setLineDash([8, 4]); // Línea discontinua más sutil
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        // Aplicar la tensión del dataset original para mantener curvatura
+        const tension = dataset.tension || (dataset.label === 'Cost Basis' ? 0.05 : 0.1);
+        
+        for (let i = activeIndex; i < dataset.data.length - 1; i++) {
+          const currentPoint = meta.data[i];
+          const nextPoint = meta.data[i + 1];
+          
+          if (currentPoint && nextPoint) {
+            // Evitar líneas casi verticales (bug de línea vertical)
+            const deltaX = Math.abs(nextPoint.x - currentPoint.x);
+            const deltaY = Math.abs(nextPoint.y - currentPoint.y);
+            
+            // Si la línea es demasiado vertical (más Y que X), saltar este segmento
+            if (deltaX < 2 && deltaY > deltaX * 3) {
+              continue;
+            }
+            
+            if (i === activeIndex) {
+              ctx.moveTo(currentPoint.x, currentPoint.y);
+            }
+            
+            if (tension > 0 && i < dataset.data.length - 2) {
+              // Crear curva suave usando tensión
+              const prevPoint = i > 0 ? meta.data[i - 1] : currentPoint;
+              const afterNextPoint = i + 2 < meta.data.length ? meta.data[i + 2] : nextPoint;
+              
+              const cp1x = currentPoint.x + (nextPoint.x - prevPoint.x) * tension;
+              const cp1y = currentPoint.y + (nextPoint.y - prevPoint.y) * tension;
+              const cp2x = nextPoint.x - (afterNextPoint.x - currentPoint.x) * tension;
+              const cp2y = nextPoint.y - (afterNextPoint.y - currentPoint.y) * tension;
+              
+              ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, nextPoint.x, nextPoint.y);
+            } else {
+              ctx.lineTo(nextPoint.x, nextPoint.y);
+            }
+          }
+        }
+        
+        ctx.stroke();
+        ctx.setLineDash([]); // Resetear línea discontinua
+      }
+      
+      ctx.restore();
+    });
+  }
+};
+
+// Registrar los plugins
+Chart.register(hoverPlugin, splitLinePlugin);
 
 const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate }) => {
   // Constantes de estilo reutilizables
@@ -268,7 +294,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     chartRefForCallback.current = chartRef.current;
   }, [setStartDate, setEndDate, setIsZoomed, chartRef.current]);
 
-  
+
   // Inicializar fechas
   useEffect(() => {
     if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
@@ -855,15 +881,15 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         });
     }
     
-    let content = `<span style="color: #ffffff; font-size: 18px; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+    let content = `<span style="color: #ffffff; font-size: 20px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     
     if (showTotalInvested && viewMode === 'both') {
       // Determinar el tipo de profit mostrado basado en datos disponibles
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     } else if (viewMode === 'balance') {
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>`;
+      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>`;
     }
     
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
@@ -883,7 +909,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         width: 100%;
         display: flex;
         align-items: baseline;
-        font-family: 'Inter', sans-serif;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
         font-size: 22px;
         font-weight: 700;
         opacity: 1;
@@ -1015,23 +1041,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         fill: 'origin', // Rellenar hasta el eje X (línea de 0)
         tension: 0.5,
         pointRadius: 0,
-        pointHoverRadius: 6,
-        pointBackgroundColor: function(context) {
-          if (!context.parsed) return '#ffffff';
-          const dataIndex = context.dataIndex;
-          const balanceValue = balanceValues[dataIndex];
-          // Verde si es ganancia, rojo si es pérdida
-          return balanceValue >= 0 ? '#22c55e' : '#ef4444';
-        },
-        pointBorderColor: function(context) {
-          if (!context.parsed) return 'rgba(255, 255, 255, 0.3)';
-          const dataIndex = context.dataIndex;
-          const balanceValue = balanceValues[dataIndex];
-          // Borde más intenso del mismo color
-          return balanceValue >= 0 ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)';
-        },
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
         pointBorderWidth: 0,
-        pointHoverBorderWidth: 20,
+        pointHoverBorderWidth: 0,
         borderWidth: 4,
         pointStyle: 'circle',
         segment: {
@@ -1064,12 +1078,25 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
       // Total Invested - siempre presente, pero con transparencia condicional
       datasets.push({
-        label: 'Total Invested',
+        label: 'Cost Basis',
         data: investedValues,
         borderColor: showTotalInvested ? 'rgba(208, 208, 208, 0.8)' : 'rgba(208, 208, 208, 0)',
-        backgroundColor: 'transparent',
-        fill: false,
-        tension: 0.5,
+        backgroundColor: function(context) {
+          if (!showTotalInvested) return 'transparent';
+          
+          // Área blanca con degradado para Total Invested
+          const chart = context.chart;
+          const {ctx, chartArea} = chart;
+          if (!chartArea) return 'transparent';
+          
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.12)'); // Blanco arriba un poco más visible
+          gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.06)'); // Transición moderada un poco más visible
+          gradient.addColorStop(1, 'rgba(255, 255, 255, 0.008)'); // Casi transparente abajo
+          return gradient;
+        },
+        fill: showTotalInvested ? 'origin' : false, // Solo fill cuando está visible
+        tension: 0.05, // Más angular que la línea verde
         pointRadius: 0,
         pointHoverRadius: 0,
         pointBackgroundColor: 'transparent',
@@ -1080,7 +1107,28 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         borderWidth: showTotalInvested ? 3 : 0,
         pointStyle: 'line',
         order: 1,
-        hidden: false // Siempre visible para Chart.js, controlamos con transparencia
+        hidden: false, // Siempre visible para Chart.js, controlamos con transparencia
+        segment: {
+          borderColor: function(ctx) {
+            if (!showTotalInvested) return 'transparent';
+            
+            const chart = ctx.chart;
+            const activeElements = chart.getActiveElements ? chart.getActiveElements() : [];
+            
+            if (activeElements.length > 0) {
+              const activeIndex = activeElements[0].index;
+              const currentIndex = ctx.p0DataIndex;
+              
+              // Si estamos después del punto activo, hacer transparente
+              if (currentIndex >= activeIndex) {
+                return 'transparent';
+              }
+            }
+            
+            // Color normal para la parte activa
+            return 'rgba(208, 208, 208, 0.8)';
+          }
+        }
       });
       
       // Dataset para el área entre las líneas (siempre presente, controlado por transparencia)
@@ -1090,16 +1138,15 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         backgroundColor: function(context) {
           if (!showTotalInvested) return 'transparent';
           
+          // Área blanca entre Cost Basis y Portfolio Value
           const chart = context.chart;
           const {ctx, chartArea} = chart;
           if (!chartArea) return 'transparent';
           
-          // Gradiente vertical neutro - gris azulado suave
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(120, 140, 180, 0.4)');
-          gradient.addColorStop(0.5, 'rgba(120, 140, 180, 0.25)');
-          gradient.addColorStop(1, 'rgba(120, 140, 180, 0.08)');
-          
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.15)'); // Más visible arriba
+          gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.08)'); // Transición
+          gradient.addColorStop(1, 'rgba(255, 255, 255, 0.02)'); // Sutil abajo
           return gradient;
         },
         fill: '-1', // Rellenar hasta el dataset anterior (Total Invested)
@@ -1115,27 +1162,22 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
       // Market Value con sombreado
       datasets.push({
-        label: 'Market Value',
+        label: 'Portfolio Value',
         data: portfolioValues,
         borderColor: '#22c55e', // Color base, se sobrescribe con segment
         backgroundColor: function(context) {
-          if (!showTotalInvested) {
-            // Sin invested = gradiente verde muy suave
-            const chart = context.chart;
-            const {ctx, chartArea} = chart;
-            if (!chartArea) return 'transparent';
-            
-            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            gradient.addColorStop(0, 'rgba(34, 197, 94, 0.2)'); // Verde arriba
-            gradient.addColorStop(0.6, 'rgba(34, 197, 94, 0.1)'); // Transición moderada
-            gradient.addColorStop(1, 'rgba(34, 197, 94, 0.01)'); // Casi transparente abajo
-            return gradient;
-          }
+          // Siempre mostrar área verde de Market Value
+          const chart = context.chart;
+          const {ctx, chartArea} = chart;
+          if (!chartArea) return 'transparent';
           
-          // Con invested, no backgroundColor en este dataset
-          return 'transparent';
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(34, 197, 94, 0.2)'); // Verde arriba
+          gradient.addColorStop(0.6, 'rgba(34, 197, 94, 0.1)'); // Transición moderada
+          gradient.addColorStop(1, 'rgba(34, 197, 94, 0.01)'); // Casi transparente abajo
+          return gradient;
         },
-        fill: !showTotalInvested ? 'origin' : false, // Solo fill cuando no hay invested
+        fill: 'origin', // Siempre mostrar área hasta el eje X
         tension: 0.1, // Ángulos más rectos, menos suavizado
         pointRadius: 0,
         pointHoverRadius: 6,
@@ -1148,34 +1190,21 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         order: showTotalInvested ? 3 : 1,
         segment: {
           borderColor: function(ctx) {
-            if (!showTotalInvested) {
-              return '#22c55e'; // Sin invested = siempre verde
+            const chart = ctx.chart;
+            const activeElements = chart.getActiveElements ? chart.getActiveElements() : [];
+            
+            if (activeElements.length > 0) {
+              const activeIndex = activeElements[0].index;
+              const currentIndex = ctx.p0DataIndex;
+              
+              // Si estamos después del punto activo, hacer transparente
+              if (currentIndex >= activeIndex) {
+                return 'transparent';
+              }
             }
             
-            const startIndex = ctx.p0DataIndex;
-            const endIndex = ctx.p1DataIndex;
-            const startMarket = portfolioValues[startIndex];
-            const startInvested = investedValues[startIndex] || 0;
-            const endMarket = portfolioValues[endIndex];
-            const endInvested = investedValues[endIndex] || 0;
-            
-            const startIsWinning = startMarket > startInvested;
-            const endIsWinning = endMarket > endInvested;
-            
-            // Si ambos puntos están del mismo lado, usar ese color
-            if (startIsWinning && endIsWinning) return '#22c55e';
-            if (!startIsWinning && !endIsWinning) return '#ef4444';
-            
-            // Si hay cambio, determinar qué domina el segmento
-            const startGap = Math.abs(startMarket - startInvested);
-            const endGap = Math.abs(endMarket - endInvested);
-            
-            // El que tenga mayor diferencia (gap) domina el color del segmento
-            if (endGap > startGap) {
-              return endIsWinning ? '#22c55e' : '#ef4444';
-            } else {
-              return startIsWinning ? '#22c55e' : '#ef4444';
-            }
+            // Color normal para la parte activa
+            return '#22c55e';
           }
         }
       });
@@ -1384,7 +1413,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           color: '#b5b5b5',
           font: {
             size: 12,
-            family: "'Inter', sans-serif",
+            family: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
             weight: '500'
           },
           maxTicksLimit: 6
@@ -1398,7 +1427,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           color: '#b5b5b5',
           font: {
             size: 16,
-            family: "'Inter', sans-serif",
+            family: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
             weight: '600'
           },
           padding: 15,
@@ -1434,7 +1463,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         alignItems: 'center',
         justifyContent: 'center',
         color: theme.textSecondary,
-        fontFamily: "'Inter', sans-serif"
+        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
       }}>
         No timeline data available
       </div>
@@ -1478,7 +1507,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           justifyContent: 'space-between',
           alignItems: 'center',
           fontSize: '14px',
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
           fontWeight: '600',
           zIndex: 10
         }}>
@@ -1526,7 +1555,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '8px 14px',
                   color: viewMode === 'both' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '15px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
@@ -1568,7 +1597,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '8px 14px',
                   color: viewMode === 'balance' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '15px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
@@ -1622,7 +1651,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '7px 12px',
                   color: showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)',
                   fontSize: '15px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '600',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
@@ -1670,7 +1699,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                     ? '0 2px 8px rgba(255, 255, 255, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5)' 
                     : 'none'
                 }}></span>
-                Invested
+                Cost Basis
               </button>
             </div>
             
@@ -1694,7 +1723,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '6px 12px',
                   color: periodMode === 'day' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
@@ -1729,7 +1758,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '6px 12px',
                   color: periodMode === 'week' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
@@ -1764,7 +1793,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '6px 12px',
                   color: periodMode === 'month' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
@@ -1799,7 +1828,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '6px 12px',
                   color: periodMode === 'year' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
@@ -1843,7 +1872,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   color: '#f5f5f5', 
                   fontWeight: '600',
                   fontSize: '15px'
-                }}>Market Value</span>
+                }}>Portfolio Value</span>
               </div>
             )}
             
@@ -1864,7 +1893,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   color: '#f5f5f5', 
                   fontWeight: '600',
                   fontSize: '15px'
-                }}>Total Invested</span>
+                }}>Cost Basis</span>
               </div>
             )}
             
@@ -1910,7 +1939,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 padding: '12px 13px',
                 color: '#ffffff',
                 fontSize: '14px',
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                 fontWeight: '700',
                 cursor: 'pointer',
                 transition: 'all 0.25s ease-out',
@@ -2001,7 +2030,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                     color: '#ffffff',
                     fontSize: '16px',
                     fontWeight: '600',
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
                     paddingBottom: '10px'
                   }}>
@@ -2014,7 +2043,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                     justifyContent: 'center',
                     alignItems: 'center',
                     marginBottom: '20px',
-                    fontFamily: "'Inter', sans-serif"
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
                   }}>
                     {/* Navigation with arrows */}
                     <div style={{
@@ -2025,7 +2054,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                       color: '#ffffff',
                       fontSize: '18px',
                       fontWeight: '500',
-                      fontFamily: "'Inter', sans-serif"
+                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
                     }}>
                       {/* Month navigation */}
                       <div style={{ 
@@ -2155,7 +2184,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                     marginBottom: '16px', // Más espacio
                     fontSize: '16px', // Más grande
                     color: 'rgba(255, 255, 255, 0.7)',
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     fontWeight: '600',
                     textAlign: 'center'
                   }}>
@@ -2213,7 +2242,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                             padding: '12px',
                             cursor: day ? (dayState === 'disabled' ? 'not-allowed' : 'pointer') : 'default',
                             fontSize: '16px',
-                            fontFamily: "'Inter', sans-serif",
+                            fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                             fontWeight: dayState === 'selected' ? '800' : '600',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             minHeight: '42px',
@@ -2284,7 +2313,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                         padding: '10px 16px',
                         color: 'rgba(239, 68, 68, 0.9)',
                         fontSize: '14px',
-                        fontFamily: "'Inter', sans-serif",
+                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                         fontWeight: '500',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -2314,7 +2343,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                         padding: '10px 16px',
                         color: 'rgba(0, 255, 136, 0.9)',
                         fontSize: '14px',
-                        fontFamily: "'Inter', sans-serif",
+                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                         fontWeight: '500',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -2355,7 +2384,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 padding: '12px 13px',
                 color: '#ffffff',
                 fontSize: '14px',
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                 fontWeight: '700',
                 cursor: 'pointer',
                 transition: 'all 0.25s ease-out',
@@ -2445,7 +2474,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                     color: '#ffffff',
                     fontSize: '16px',
                     fontWeight: '600',
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
                     paddingBottom: '10px'
                   }}>
@@ -2458,7 +2487,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                     justifyContent: 'center',
                     alignItems: 'center',
                     marginBottom: '20px',
-                    fontFamily: "'Inter', sans-serif"
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
                   }}>
                     {/* Navigation with arrows */}
                     <div style={{
@@ -2469,7 +2498,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                       color: '#ffffff',
                       fontSize: '18px',
                       fontWeight: '500',
-                      fontFamily: "'Inter', sans-serif"
+                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
                     }}>
                       {/* Month navigation */}
                       <div style={{ 
@@ -2599,7 +2628,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                     marginBottom: '16px', // Más espacio
                     fontSize: '16px', // Más grande
                     color: 'rgba(255, 255, 255, 0.7)',
-                    fontFamily: "'Inter', sans-serif",
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     fontWeight: '600',
                     textAlign: 'center'
                   }}>
@@ -2657,7 +2686,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                             padding: '12px',
                             cursor: day ? (dayState === 'disabled' ? 'not-allowed' : 'pointer') : 'default',
                             fontSize: '16px',
-                            fontFamily: "'Inter', sans-serif",
+                            fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                             fontWeight: dayState === 'selected' ? '800' : '600',
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             minHeight: '42px',
@@ -2728,7 +2757,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                         padding: '10px 16px',
                         color: 'rgba(239, 68, 68, 0.9)',
                         fontSize: '14px',
-                        fontFamily: "'Inter', sans-serif",
+                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                         fontWeight: '500',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -2758,7 +2787,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                         padding: '10px 16px',
                         color: 'rgba(0, 255, 136, 0.9)',
                         fontSize: '14px',
-                        fontFamily: "'Inter', sans-serif",
+                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                         fontWeight: '500',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
@@ -2840,7 +2869,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   padding: '7px 12px',
                   color: '#ef4444',
                   fontSize: '13px',
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '600',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
@@ -2879,6 +2908,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         )}
       </div>
       
+
       <div style={{
         height: '800px',
         width: '104%',
