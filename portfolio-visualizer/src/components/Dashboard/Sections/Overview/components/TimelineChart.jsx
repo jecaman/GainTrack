@@ -12,101 +12,158 @@ Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Fille
 // Plugin para mostrar punto y línea en hover
 const hoverPlugin = {
   id: 'hoverPlugin',
+  beforeDatasetsDraw(chart) {
+    // Almacenar información del hover para usar en afterDraw
+    if (chart.hoveredDataIndex !== undefined) {
+      this._hoveredIndex = chart.hoveredDataIndex;
+    }
+  },
   afterDraw(chart) {
     const { ctx } = chart;
-    const activeElements = chart.getActiveElements();
     
-    if (activeElements.length > 0) {
-      // Buscar el dataset Portfolio Value
-      let targetElement = null;
-      activeElements.forEach(el => {
-        const dataset = chart.data.datasets[el.datasetIndex];
-        if (dataset.label === 'Portfolio Value') {
-          targetElement = el;
-        }
-      });
-      
-      if (!targetElement) return;
-      
-      const x = targetElement.element.x;
-      const y = targetElement.element.y;
-      const dataIndex = targetElement.index;
-      
-      ctx.save();
-      
-      // Línea vertical
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, y - 60);
-      ctx.lineTo(x, y - 8);
-      ctx.stroke();
-      
-      // Punto luminoso
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = '#22c55e';
-      ctx.fill();
-      
-      // Borde del punto
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      
-      // Efecto de brillo pulsante sutil y difuso
-      const time = Date.now() * 0.004; 
-      const pulseIntensity = (Math.sin(time) + 1) * 0.15 + 0.12; // Un poco más intenso
-      
-      // Múltiples capas para difuminar la forma circular
-      for (let i = 0; i < 3; i++) {
-        const offset = i * 10; // Área más pequeña
-        const gradient = ctx.createRadialGradient(x + offset/3, y + offset/4, 0, x, y, 35 + offset); // Radio más pequeño
-        gradient.addColorStop(0, `rgba(34, 197, 94, ${pulseIntensity * (0.7 - i * 0.2)})`); // Más intenso
-        gradient.addColorStop(0.3, `rgba(74, 222, 128, ${pulseIntensity * (0.5 - i * 0.15)})`);
-        gradient.addColorStop(0.6, `rgba(134, 239, 172, ${pulseIntensity * (0.3 - i * 0.1)})`);
-        gradient.addColorStop(1, `rgba(220, 252, 231, 0)`);
-        
-        ctx.beginPath();
-        ctx.arc(x, y, 35 + offset, 0, Math.PI * 2); // Radio más pequeño
-        ctx.fillStyle = gradient;
-        ctx.fill();
-      }
-      
-      // Mostrar fecha
-      if (chart.data.labels && chart.data.labels[dataIndex]) {
-        const label = chart.data.labels[dataIndex];
-        const textY = y - 68;
-        
-        ctx.font = 'bold 14px "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace';
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        
-        // Fondo para la fecha
-        const textWidth = ctx.measureText(label).width;
-        const padding = 12;
-        const bgHeight = 26;
-        const bgY = textY - bgHeight + 4;
-        
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.fillRect(x - textWidth/2 - padding, bgY, textWidth + padding*2, bgHeight);
-        
-        // Texto de la fecha
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(label, x, textY);
-      }
-      
-      // Requerir animación continua para el parpadeo
-      requestAnimationFrame(() => {
+    // Usar el índice almacenado desde onHover
+    if (chart.hoveredDataIndex === undefined) return;
+    
+    const dataIndex = chart.hoveredDataIndex;
+    const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Balance (P&L)');
+    if (!portfolioDataset) return;
+    
+    const meta = chart.getDatasetMeta(chart.data.datasets.indexOf(portfolioDataset));
+    const point = meta.data[dataIndex];
+    if (!point) return;
+    
+    const x = point.x;
+    const y = point.y;
+    
+    // Obtener el valor del P&L para determinar el color
+    const currentValue = portfolioDataset.data[dataIndex];
+    const isNegative = currentValue < 0;
+    const pointColor = isNegative ? '#ff4444' : '#00ff88';
+    const waveColor = isNegative ? '255, 68, 68' : '0, 255, 136';
+    
+    // Programar la siguiente animación
+    if (!chart._animationFrameId) {
+      chart._animationFrameId = requestAnimationFrame(() => {
+        chart._animationFrameId = null;
         chart.update('none');
       });
-      
-      ctx.restore();
     }
-  }
-};
-
+    
+    ctx.save();
+    
+    // Línea vertical eliminada para evitar bug visual
+    
+    // Punto luminoso moderado
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fillStyle = pointColor;
+    ctx.fill();
+    
+    // Borde del punto
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Resplandor suave alrededor del punto
+    const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
+    glowGradient.addColorStop(0, `rgba(${waveColor}, 0.6)`);
+    glowGradient.addColorStop(0.6, `rgba(${waveColor}, 0.2)`);
+    glowGradient.addColorStop(1, `rgba(${waveColor}, 0)`);
+    ctx.beginPath();
+    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.fillStyle = glowGradient;
+    ctx.fill();
+    
+    // Efecto de ondas expandiéndose continuamente
+    const time = Date.now() * 0.001;
+    
+    // Emitir 3 ondas con diferentes tiempos de inicio
+    for (let i = 0; i < 3; i++) {
+      const waveDelay = i * 1.5; // Desfase entre ondas
+      const waveTime = (time + waveDelay) % 4; // Ciclo de 4 segundos por onda
+      const waveRadius = waveTime * 10; // Expansión de 0 a 40px
+      const waveOpacity = Math.max(0, 1 - (waveTime / 4)); // Se desvanece al expandirse
+      
+      if (waveRadius > 3) { // Solo mostrar cuando la onda se ha separado del punto
+        ctx.beginPath();
+        ctx.arc(x, y, waveRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${waveColor}, ${waveOpacity * 0.6})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+    
+    // Línea fina conectora entre punto y fecha
+    if (chart.data.labels && chart.data.labels[dataIndex]) {
+      const { chartArea } = chart;
+      let textY = y - 68;
+      const minY = chartArea.top + 30;
+      if (textY < minY) {
+        textY = y + 35;
+      }
+      
+      // Dibujar línea fina conectora
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (textY < y) {
+        // Fecha arriba del punto
+        ctx.moveTo(x, y - 8);
+        ctx.lineTo(x, textY + 15);
+      } else {
+        // Fecha debajo del punto
+        ctx.moveTo(x, y + 8);
+        ctx.lineTo(x, textY - 15);
+      }
+      ctx.stroke();
+    }
+    
+    // Mostrar fecha con ajuste automático para evitar cortes
+    if (chart.data.labels && chart.data.labels[dataIndex]) {
+      const label = chart.data.labels[dataIndex];
+      const { chartArea } = chart;
+      
+      // Calcular posición Y adaptativa
+      let textY = y - 68;
+      const minY = chartArea.top + 30; // Margen mínimo desde arriba
+      if (textY < minY) {
+        textY = y + 35; // Mover debajo del punto si está muy arriba
+      }
+      
+      ctx.font = 'bold 16px "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      
+      // Fondo para la fecha con ajuste horizontal
+      const textWidth = ctx.measureText(label).width;
+      const padding = 12;
+      const bgHeight = 26;
+      const bgY = textY - bgHeight + 4;
+      
+      // Ajustar X si se sale por los lados
+      let adjustedX = x;
+      const bgWidth = textWidth + padding * 2;
+      if (adjustedX - bgWidth/2 < chartArea.left) {
+        adjustedX = chartArea.left + bgWidth/2;
+      } else if (adjustedX + bgWidth/2 > chartArea.right) {
+        adjustedX = chartArea.right - bgWidth/2;
+      }
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillRect(adjustedX - textWidth/2 - padding, bgY, textWidth + padding*2, bgHeight);
+      
+      // Texto de la fecha
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, adjustedX, textY);
+    }
+    
+    // Las ondas se animan automáticamente con el tiempo
+    
+    ctx.restore();
+    }
+  };
 // Plugin para dividir línea en activa/futura
 const splitLinePlugin = {
   id: 'splitLine',
@@ -156,8 +213,8 @@ const splitLinePlugin = {
             const deltaX = Math.abs(nextPoint.x - currentPoint.x);
             const deltaY = Math.abs(nextPoint.y - currentPoint.y);
             
-            // Si la línea es demasiado vertical (más Y que X), saltar este segmento
-            if (deltaX < 2 && deltaY > deltaX * 3) {
+            // Si la línea es demasiado vertical, saltar este segmento
+            if (deltaX < 1 || (deltaY > deltaX * 5)) {
               continue;
             }
             
@@ -211,7 +268,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     return `${day}/${month}/${year}`;
   };
 
-  const [showTotalInvested, setShowTotalInvested] = useState(true);
+  const [showTotalInvested, setShowTotalInvested] = useState(false);
   const [viewMode, setViewMode] = useState('both'); // 'both', 'balance'
   const [periodMode, setPeriodMode] = useState('day'); // 'week', 'month', 'year', 'day'
   const [startDate, setStartDate] = useState(externalStartDate || '');
@@ -390,6 +447,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       return () => clearTimeout(timer);
     }
   }, [startDate, endDate, portfolioData, periodMode]);
+
 
   // Procesar datos para tooltip cuando cambien las dependencias
   useEffect(() => {
@@ -881,17 +939,22 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         });
     }
     
-    let content = `<span style="color: #ffffff; font-size: 20px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+    let content;
+    
+    if (viewMode === 'balance') {
+      // En P&L View, mostrar fecha + P&L acumulados y porcentaje
+      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
+      content = `<span style="color: #ffffff; font-size: 20px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+    } else {
+      // Full View - mostrar portfolio value primero
+      content = `<span style="color: #ffffff; font-size: 20px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+    }
     
     if (showTotalInvested && viewMode === 'both') {
       // Determinar el tipo de profit mostrado basado en datos disponibles
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
       content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
-    } else if (viewMode === 'balance') {
-      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>`;
     }
-    
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
     return `
@@ -921,6 +984,191 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       </div>
     `;
   };
+
+  // Configurar eventos de mouse personalizados para el hover
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const canvas = chart.canvas;
+    
+    const handleMouseMove = (event) => {
+      // Throttle dinámico basado en complejidad
+      if (chart._mouseThrottle) return;
+      chart._mouseThrottle = true;
+      
+      // Throttling más agresivo si hay menos datasets activos
+      const activeDatasets = chart.data.datasets.filter(d => !d.hidden && !d.skipDuringMouseMove).length;
+      const throttleTime = activeDatasets <= 2 ? 0 : 2; // Sin throttle para pocos datasets
+      
+      setTimeout(() => {
+        chart._mouseThrottle = false;
+      }, throttleTime);
+
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      
+      // Verificar que estemos dentro del área del gráfico
+      if (!chart.chartArea) return;
+      
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const canvasX = x * scaleX;
+      const canvasY = y * scaleY;
+      
+      if (canvasX < chart.chartArea.left || canvasX > chart.chartArea.right || 
+          canvasY < chart.chartArea.top || canvasY > chart.chartArea.bottom) {
+        // Fuera del área del gráfico
+        const tooltipArea = document.querySelector('#tooltip-area');
+        if (tooltipArea) {
+          tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
+        }
+        if (chart.hoveredDataIndex !== undefined) {
+          chart.hoveredDataIndex = undefined;
+          
+          // Restaurar todos los datos para mostrar las líneas completas
+          const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Balance (P&L)');
+          const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
+          const positiveAreaDataset = chart.data.datasets.find(d => d.label === 'Balance (P&L) Positive Area');
+          const negativeAreaDataset = chart.data.datasets.find(d => d.label === 'Balance (P&L) Negative Area');
+          
+          if (portfolioDataset && portfolioDataset.originalData) {
+            portfolioDataset.data = [...portfolioDataset.originalData]; // Restaurar datos completos
+          }
+          
+          if (costBasisDataset && costBasisDataset.originalData) {
+            costBasisDataset.data = [...costBasisDataset.originalData]; // Restaurar datos completos
+          }
+          
+          if (positiveAreaDataset && positiveAreaDataset.originalData) {
+            positiveAreaDataset.data = [...positiveAreaDataset.originalData]; // Restaurar datos completos
+          }
+          
+          if (negativeAreaDataset && negativeAreaDataset.originalData) {
+            negativeAreaDataset.data = [...negativeAreaDataset.originalData]; // Restaurar datos completos
+          }
+          
+          chart.update('show'); // Animación suave al restaurar línea completa
+        }
+        return;
+      }
+      
+      // Buscar el dataset principal (Portfolio Value o Balance P&L)
+      const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Balance (P&L)');
+      if (!portfolioDataset) return;
+      
+      const meta = chart.getDatasetMeta(chart.data.datasets.indexOf(portfolioDataset));
+      
+      // Encontrar el punto más cercano en X
+      let closestIndex = -1;
+      let minDistance = Infinity;
+      
+      meta.data.forEach((point, index) => {
+        const distance = Math.abs(point.x - canvasX);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestIndex = index;
+        }
+      });
+      
+      if (closestIndex >= 0) {
+        const tooltipArea = document.querySelector('#tooltip-area');
+        if (tooltipArea) {
+          tooltipArea.innerHTML = renderTooltipContent(closestIndex, processedTimelineData);
+        }
+        // Solo actualizar si el índice cambió
+        if (chart.hoveredDataIndex !== closestIndex) {
+          chart.hoveredDataIndex = closestIndex;
+          
+          // Actualizar solo los datasets principales para mostrar carga progresiva hasta el punto hover
+          const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Balance (P&L)');
+          const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
+          const positiveAreaDataset = chart.data.datasets.find(d => d.label === 'Balance (P&L) Positive Area');
+          const negativeAreaDataset = chart.data.datasets.find(d => d.label === 'Balance (P&L) Negative Area');
+          
+          if (portfolioDataset && portfolioDataset.originalData) {
+            portfolioDataset.data = portfolioDataset.originalData.slice(0, closestIndex + 1).concat(
+              new Array(portfolioDataset.originalData.length - closestIndex - 1).fill(null)
+            );
+          }
+          
+          if (costBasisDataset && costBasisDataset.originalData && !costBasisDataset.hidden) {
+            costBasisDataset.data = costBasisDataset.originalData.slice(0, closestIndex + 1).concat(
+              new Array(costBasisDataset.originalData.length - closestIndex - 1).fill(null)
+            );
+          }
+          
+          if (positiveAreaDataset && positiveAreaDataset.originalData) {
+            positiveAreaDataset.data = positiveAreaDataset.originalData.slice(0, closestIndex + 1).concat(
+              new Array(positiveAreaDataset.originalData.length - closestIndex - 1).fill(null)
+            );
+          }
+          
+          if (negativeAreaDataset && negativeAreaDataset.originalData) {
+            negativeAreaDataset.data = negativeAreaDataset.originalData.slice(0, closestIndex + 1).concat(
+              new Array(negativeAreaDataset.originalData.length - closestIndex - 1).fill(null)
+            );
+          }
+          
+          // No modificar datasets marcados como skipDuringMouseMove
+          chart.data.datasets.forEach(dataset => {
+            if (dataset.skipDuringMouseMove && dataset.originalData) {
+              dataset.data = [...dataset.originalData]; // Mantener datos completos
+            }
+          });
+          
+          chart.update('none');
+        }
+      }
+    };
+
+    const handleMouseLeave = () => {
+      const tooltipArea = document.querySelector('#tooltip-area');
+      if (tooltipArea) {
+        tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
+      }
+      
+      // Usar timeout para asegurar que la animación funcione tanto para movimiento gradual como rápido
+      setTimeout(() => {
+        if (chart.hoveredDataIndex !== undefined) {
+          chart.hoveredDataIndex = undefined;
+          
+          // Restaurar todos los datos para mostrar las líneas completas
+          const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Balance (P&L)');
+          const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
+          const positiveAreaDataset = chart.data.datasets.find(d => d.label === 'Balance (P&L) Positive Area');
+          const negativeAreaDataset = chart.data.datasets.find(d => d.label === 'Balance (P&L) Negative Area');
+          
+          if (portfolioDataset && portfolioDataset.originalData) {
+            portfolioDataset.data = [...portfolioDataset.originalData]; // Restaurar datos completos
+          }
+          
+          if (costBasisDataset && costBasisDataset.originalData) {
+            costBasisDataset.data = [...costBasisDataset.originalData]; // Restaurar datos completos
+          }
+          
+          if (positiveAreaDataset && positiveAreaDataset.originalData) {
+            positiveAreaDataset.data = [...positiveAreaDataset.originalData]; // Restaurar datos completos
+          }
+          
+          if (negativeAreaDataset && negativeAreaDataset.originalData) {
+            negativeAreaDataset.data = [...negativeAreaDataset.originalData]; // Restaurar datos completos
+          }
+          
+          chart.update('show'); // Animación suave al restaurar línea completa
+        }
+      }, 10); // Pequeño delay para asegurar que el estado se procese correctamente
+    };
+
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
+    
+    return () => {
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [portfolioData, processedTimelineData, viewMode, showTotalInvested, periodMode]);
   
   // Check if using default date range
   const { defaultStartDate, defaultEndDate } = getDefaultDates();
@@ -965,7 +1213,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     timelineData = processedTimelineData.length > 0 ? processedTimelineData : timelineData;
     
     // Para zoom, usar fechas reales en lugar de labels personalizados
-    const labels = timelineData.map(entry => entry.date);
+    // Labels base
+    const baseLabels = timelineData.map(entry => entry.date);
+    
+    // Para P&L View, usar labels interpoladas (se definirá más abajo)
+    let labels = baseLabels;
 
     const investedValues = timelineData.map(entry => entry.cost || 0);
     const portfolioValues = timelineData.map(entry => entry.value || 0);
@@ -986,10 +1238,17 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
 
     // PRE-CALCULAR COLORES PARA EVITAR PROBLEMAS
     
-    // Para P&L: calcular si hay mayoría positiva
-    const positiveBalanceCount = balanceValues.filter(val => val > 0).length;
-    const balanceIsPositive = positiveBalanceCount > balanceValues.length / 2;
+    // Para P&L: usar el valor final para determinar color (más intuitivo)
+    const finalBalanceValue = balanceValues[balanceValues.length - 1] || 0;
+    const balanceIsPositive = finalBalanceValue > 0;
     const balanceAreaColor = balanceIsPositive ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+    
+    console.log('PRE-CALCULO P&L (usando valor final):', {
+      finalValue: finalBalanceValue,
+      isPositive: balanceIsPositive,
+      totalPoints: balanceValues.length,
+      lastValues: balanceValues.slice(-10)
+    });
         
     // Para Full View: calcular si market gana
     let marketWinsCount = 0;
@@ -1010,65 +1269,184 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     // Construir datasets según el modo de vista
     let datasets = [];
     
-    // Si estamos en modo balance, solo mostrar la línea de balance
+    // Si estamos en modo balance, crear área con colores dinámicos
     if (viewMode === 'balance') {
+      // Función para interpolar puntos en cruces de 0
+      const interpolateZeroCrossings = (values, inputLabels) => {
+        const newValues = [];
+        const newLabels = [];
+        
+        for (let i = 0; i < values.length; i++) {
+          newValues.push(values[i]);
+          newLabels.push(inputLabels[i]);
+          
+          // Si hay un siguiente punto y cruzan el 0
+          if (i < values.length - 1) {
+            const current = values[i];
+            const next = values[i + 1];
+            
+            if ((current > 0 && next < 0) || (current < 0 && next > 0)) {
+              // Interpolar el punto exacto donde cruza 0
+              const ratio = Math.abs(current) / (Math.abs(current) + Math.abs(next));
+              const currentDate = new Date(inputLabels[i]);
+              const nextDate = new Date(inputLabels[i + 1]);
+              const interpolatedDate = new Date(currentDate.getTime() + (nextDate.getTime() - currentDate.getTime()) * ratio);
+              
+              // Agregar punto imaginario en 0
+              newValues.push(0);
+              newLabels.push(interpolatedDate.toISOString().split('T')[0]);
+            }
+          }
+        }
+        
+        return { values: newValues, labels: newLabels };
+      };
+      
+      // Aplicar interpolación
+      const interpolated = interpolateZeroCrossings(balanceValues, baseLabels);
+      const interpolatedBalanceValues = interpolated.values;
+      
+      // Actualizar las labels para este modo
+      labels = interpolated.labels;
+      
+      console.log('Interpolación:', {
+        original: balanceValues.length,
+        interpolated: interpolatedBalanceValues.length,
+        newPoints: interpolatedBalanceValues.length - balanceValues.length
+      });
+      
+      // Crear datasets con transiciones suaves - incluir algunos puntos de transición
+      const positiveData = interpolatedBalanceValues.map((val, index) => {
+        if (val > 0) return val; // Definitivamente positivo
+        if (val === 0) return 0; // Punto de cruce
+        // Para negativos, incluir el punto si es parte de una transición suave
+        if (val < 0 && index > 0 && interpolatedBalanceValues[index - 1] > 0) return val;
+        if (val < 0 && index < interpolatedBalanceValues.length - 1 && interpolatedBalanceValues[index + 1] > 0) return val;
+        return null;
+      });
+      
+      const negativeData = interpolatedBalanceValues.map((val, index) => {
+        if (val < 0) return val; // Definitivamente negativo
+        if (val === 0) return 0; // Punto de cruce
+        // Para positivos, incluir el punto si es parte de una transición suave
+        if (val > 0 && index > 0 && interpolatedBalanceValues[index - 1] < 0) return val;
+        if (val > 0 && index < interpolatedBalanceValues.length - 1 && interpolatedBalanceValues[index + 1] < 0) return val;
+        return null;
+      });
+      
+      // Área para valores positivos (verde)
       datasets.push({
-        label: 'Balance (P&L)',
-        data: balanceValues,
-        borderColor: function(context) {
-          // Contar cuántos valores están por encima de 0
-          const aboveZero = balanceValues.filter(val => val > 0).length;
-          const totalPoints = balanceValues.length;
-          const isPositive = aboveZero > totalPoints / 2;
-          
-          console.log('P&L: ' + aboveZero + '/' + totalPoints + ' above zero = ' + (isPositive ? 'GREEN' : 'RED'));
-          
-          return isPositive ? '#22c55e' : '#ef4444';
+        label: 'Balance (P&L) Positive Area',
+        data: positiveData,
+        pointRadius: function(context) {
+          // Ocultar puntos imaginarios (los que son exactamente 0)
+          return interpolatedBalanceValues[context.dataIndex] === 0 ? 0 : 0;
         },
+        borderColor: 'transparent',
+        borderWidth: 0,
         backgroundColor: function(context) {
           const chart = context.chart;
           const {ctx, chartArea} = chart;
-          if (!chartArea) return balanceAreaColor;
           
-          // Gradiente vertical neutro - gris azulado suave
+          // Gradiente verde más suave para zonas positivas
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(120, 140, 180, 0.4)');
-          gradient.addColorStop(0.5, 'rgba(120, 140, 180, 0.25)');
-          gradient.addColorStop(1, 'rgba(120, 140, 180, 0.08)');
+          gradient.addColorStop(0, 'rgba(16, 213, 110, 0.5)');
+          gradient.addColorStop(0.3, 'rgba(16, 213, 110, 0.35)');
+          gradient.addColorStop(0.7, 'rgba(16, 213, 110, 0.2)');
+          gradient.addColorStop(1, 'rgba(16, 213, 110, 0.05)');
           
           return gradient;
         },
-        fill: 'origin', // Rellenar hasta el eje X (línea de 0)
-        tension: 0.5,
+        fill: 'origin',
+        tension: 0.15, // Igual que Full View pero un poco menos suave
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        skipDuringMouseMove: true,
+        originalData: [...positiveData]
+      });
+      
+      // Área para valores negativos (roja)
+      datasets.push({
+        label: 'Balance (P&L) Negative Area',
+        data: negativeData,
+        pointRadius: function(context) {
+          // Ocultar puntos imaginarios (los que son exactamente 0)
+          return interpolatedBalanceValues[context.dataIndex] === 0 ? 0 : 0;
+        },
+        borderColor: 'transparent',
+        borderWidth: 0,
+        backgroundColor: function(context) {
+          const chart = context.chart;
+          const {ctx, chartArea} = chart;
+          
+          // Gradiente rojo más suave para zonas negativas
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(255, 71, 87, 0.5)');
+          gradient.addColorStop(0.3, 'rgba(255, 71, 87, 0.35)');
+          gradient.addColorStop(0.7, 'rgba(255, 71, 87, 0.2)');
+          gradient.addColorStop(1, 'rgba(255, 71, 87, 0.05)');
+          
+          return gradient;
+        },
+        fill: 'origin',
+        tension: 0.15, // Igual que Full View pero un poco menos suave
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        skipDuringMouseMove: true,
+        originalData: [...negativeData]
+      });
+      
+      // Línea principal (con efecto progresivo) - estilo copiado de Full View
+      datasets.push({
+        label: 'Balance (P&L)',
+        data: interpolatedBalanceValues,
+        originalData: [...interpolatedBalanceValues], // Para el efecto de línea progresiva
+        pointRadius: function(context) {
+          // Ocultar puntos imaginarios pero permitir hover en puntos reales
+          const value = interpolatedBalanceValues[context.dataIndex];
+          const isZeroCrossing = value === 0;
+          return isZeroCrossing ? 0 : 0; // Todos los puntos ocultos visualmente
+        },
+        pointHitRadius: function(context) {
+          // Permitir selección solo en puntos reales (no en cruces de 0)
+          const value = interpolatedBalanceValues[context.dataIndex];
+          const isZeroCrossing = value === 0;
+          return isZeroCrossing ? 0 : 5; // Sin hit radius para puntos imaginarios
+        },
+        borderColor: '#10d56e', // Color base - los segmentos manejarán el color real
+        backgroundColor: 'transparent', // Sin área de relleno
+        fill: false, // No fill para este dataset
+        tension: 0.15, // Igual que Full View pero un poco menos suave
         pointRadius: 0,
         pointHoverRadius: 0,
         pointBackgroundColor: 'transparent',
         pointBorderColor: 'transparent',
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
-        borderWidth: 4,
+        borderWidth: 4, // Más grueso como Full View
+        order: 1, // Render encima del área
         pointStyle: 'circle',
         segment: {
           borderColor: function(ctx) {
             const startIndex = ctx.p0DataIndex;
             const endIndex = ctx.p1DataIndex;
-            const startValue = balanceValues[startIndex];
-            const endValue = balanceValues[endIndex];
+            const startValue = interpolatedBalanceValues[startIndex];
+            const endValue = interpolatedBalanceValues[endIndex];
             
-            // Si ambos puntos están del mismo lado de 0, usar ese color
-            if (startValue > 0 && endValue > 0) return '#22c55e';
-            if (startValue <= 0 && endValue <= 0) return '#ef4444';
+            // Transiciones más suaves con colores gradualmente mezclados cerca del 0
+            const avgValue = (startValue + endValue) / 2;
             
-            // Si cruzan el 0, determinar qué color domina el segmento
-            const zeroLine = 0;
-            const startDistance = Math.abs(startValue - zeroLine);
-            const endDistance = Math.abs(endValue - zeroLine);
-            
-            // Si el punto final está más lejos de 0, su color domina
-            if (endDistance > startDistance) {
-              return endValue > 0 ? '#22c55e' : '#ef4444';
+            // Si el promedio del segmento es cercano a 0, usar colores más suaves
+            if (Math.abs(avgValue) < 5) {
+              // Cerca del 0, usar colores menos saturados
+              return avgValue >= 0 ? 'rgba(16, 213, 110, 0.8)' : 'rgba(255, 71, 87, 0.8)';
             } else {
-              return startValue > 0 ? '#22c55e' : '#ef4444';
+              // Lejos del 0, usar colores completos
+              return avgValue > 0 ? '#10d56e' : '#ff4757';
             }
           }
         }
@@ -1076,80 +1454,87 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     } else {
       // Modo normal: líneas con sombreado simple pero visible
       
-      // Total Invested - siempre presente, pero con transparencia condicional
-      datasets.push({
-        label: 'Cost Basis',
-        data: investedValues,
-        borderColor: showTotalInvested ? 'rgba(208, 208, 208, 0.8)' : 'rgba(208, 208, 208, 0)',
-        backgroundColor: function(context) {
-          if (!showTotalInvested) return 'transparent';
-          
-          // Área blanca con degradado para Total Invested
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          if (!chartArea) return 'transparent';
-          
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.12)'); // Blanco arriba un poco más visible
-          gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.06)'); // Transición moderada un poco más visible
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0.008)'); // Casi transparente abajo
-          return gradient;
-        },
-        fill: showTotalInvested ? 'origin' : false, // Solo fill cuando está visible
-        tension: 0.05, // Más angular que la línea verde
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        pointBackgroundColor: 'transparent',
-        pointBorderColor: 'transparent',
-        pointBorderWidth: 0,
-        pointHoverBorderWidth: 0,
-        borderDash: [10, 5],
-        borderWidth: showTotalInvested ? 3 : 0,
-        pointStyle: 'line',
-        order: 1,
-        hidden: false, // Siempre visible para Chart.js, controlamos con transparencia
-        segment: {
-          borderColor: function(ctx) {
-            if (!showTotalInvested) return 'transparent';
+      // Cost Basis Shadow (área) - siempre completa cuando está visible
+      if (showTotalInvested) {
+        datasets.push({
+          label: 'Cost Basis Shadow',
+          data: investedValues, // Siempre datos completos
+          borderColor: 'transparent', // Sin línea
+          borderWidth: 0,
+          backgroundColor: function(context) {
+            // Área blanca con degradado más visible para Total Invested
+            const chart = context.chart;
+            const {ctx, chartArea} = chart;
+            if (!chartArea) return 'transparent';
             
-            const chart = ctx.chart;
-            const activeElements = chart.getActiveElements ? chart.getActiveElements() : [];
-            
-            if (activeElements.length > 0) {
-              const activeIndex = activeElements[0].index;
-              const currentIndex = ctx.p0DataIndex;
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.35)'); // Más intenso arriba
+            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.22)'); // Transición más visible
+            gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.12)'); // Más color en el medio
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)'); // Más visible abajo
+            return gradient;
+          },
+          fill: 'origin',
+          tension: 0.05,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          pointBackgroundColor: 'transparent',
+          pointBorderColor: 'transparent',
+          pointBorderWidth: 0,
+          pointHoverBorderWidth: 0,
+          order: 3, // Render detrás de ambas líneas
+          skipDuringMouseMove: true // No modificar durante el hover para mayor fluidez
+        });
+      }
+
+      // Cost Basis Line - solo agregar si está habilitado
+      if (showTotalInvested) {
+        datasets.push({
+          label: 'Cost Basis',
+          data: investedValues,
+          originalData: [...investedValues], // Copia de los datos originales
+          borderColor: 'rgba(200, 220, 255, 0.9)',
+          backgroundColor: 'transparent', // Sin área de relleno
+          fill: false, // No fill para este dataset
+          tension: 0.05, // Más angular que la línea verde
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          pointBackgroundColor: 'transparent',
+          pointBorderColor: 'transparent',
+          pointBorderWidth: 0,
+          pointHoverBorderWidth: 0,
+          borderDash: [8, 3],
+          borderWidth: 3,
+          pointStyle: 'line',
+          order: 1,
+          segment: {
+            borderColor: function(ctx) {
+              const chart = ctx.chart;
+              const activeElements = chart.getActiveElements ? chart.getActiveElements() : [];
               
-              // Si estamos después del punto activo, hacer transparente
-              if (currentIndex >= activeIndex) {
-                return 'transparent';
+              if (activeElements.length > 0) {
+                const activeIndex = activeElements[0].index;
+                const currentIndex = ctx.p0DataIndex;
+                
+                // Si estamos después del punto activo, hacer transparente
+                if (currentIndex >= activeIndex) {
+                  return 'transparent';
+                }
               }
+              
+              // Color más brillante con un tono azulado para diferenciarlo
+              return 'rgba(200, 220, 255, 0.9)';
             }
-            
-            // Color normal para la parte activa
-            return 'rgba(208, 208, 208, 0.8)';
           }
-        }
-      });
+        });
+      }
       
-      // Dataset para el área entre las líneas (siempre presente, controlado por transparencia)
+      // Dataset para el área entre las líneas - completamente deshabilitado para evitar interferencias
       datasets.push({
         label: 'P&L Area',
         data: portfolioValues,
-        backgroundColor: function(context) {
-          if (!showTotalInvested) return 'transparent';
-          
-          // Área blanca entre Cost Basis y Portfolio Value
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          if (!chartArea) return 'transparent';
-          
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.15)'); // Más visible arriba
-          gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.08)'); // Transición
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0.02)'); // Sutil abajo
-          return gradient;
-        },
-        fill: '-1', // Rellenar hasta el dataset anterior (Total Invested)
+        backgroundColor: 'transparent', // Completamente transparente
+        fill: false, // No rellenar
         borderColor: 'transparent',
         borderWidth: 0,
         pointRadius: 0,
@@ -1157,56 +1542,58 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointBackgroundColor: 'transparent',
         pointBorderColor: 'transparent',
         tension: 0.5,
-        order: 2
+        order: 2,
+        hidden: true // Ocultar completamente
       });
       
-      // Market Value con sombreado
+      // Dataset para la sombra (área) - siempre completa, datos fijos para evitar líneas fantasma
       datasets.push({
-        label: 'Portfolio Value',
-        data: portfolioValues,
-        borderColor: '#22c55e', // Color base, se sobrescribe con segment
+        label: 'Portfolio Shadow',
+        data: [...portfolioValues], // Copia fija de los datos completos
+        borderColor: 'transparent', // Sin línea visible
+        borderWidth: 0,
         backgroundColor: function(context) {
-          // Siempre mostrar área verde de Market Value
           const chart = context.chart;
           const {ctx, chartArea} = chart;
           if (!chartArea) return 'transparent';
           
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(34, 197, 94, 0.2)'); // Verde arriba
-          gradient.addColorStop(0.6, 'rgba(34, 197, 94, 0.1)'); // Transición moderada
-          gradient.addColorStop(1, 'rgba(34, 197, 94, 0.01)'); // Casi transparente abajo
+          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.4)');
+          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.25)');
+          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.1)');
+          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.05)');
           return gradient;
         },
-        fill: 'origin', // Siempre mostrar área hasta el eje X
-        tension: 0.1, // Ángulos más rectos, menos suavizado
+        fill: 'origin',
+        tension: 0.1,
         pointRadius: 0,
-        pointHoverRadius: 6,
-        pointBackgroundColor: 'rgba(255, 255, 255, 1)',
-        pointBorderColor: 'rgba(255, 255, 255, 0.3)',
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
         pointBorderWidth: 0,
-        pointHoverBorderWidth: 20,
-        borderWidth: 2,
-        pointStyle: 'circle',
-        order: showTotalInvested ? 3 : 1,
-        segment: {
-          borderColor: function(ctx) {
-            const chart = ctx.chart;
-            const activeElements = chart.getActiveElements ? chart.getActiveElements() : [];
-            
-            if (activeElements.length > 0) {
-              const activeIndex = activeElements[0].index;
-              const currentIndex = ctx.p0DataIndex;
-              
-              // Si estamos después del punto activo, hacer transparente
-              if (currentIndex >= activeIndex) {
-                return 'transparent';
-              }
-            }
-            
-            // Color normal para la parte activa
-            return '#22c55e';
-          }
-        }
+        pointHoverBorderWidth: 0,
+        order: 2, // Render detrás de la línea
+        skipDuringMouseMove: true // Marcar para no modificar durante mouse move
+      });
+
+      // Dataset para la línea - se corta dinámicamente
+      datasets.push({
+        label: 'Portfolio Value',
+        data: portfolioValues, // Los datos se actualizarán dinámicamente
+        originalData: [...portfolioValues], // Copia de los datos originales
+        borderColor: '#00ff88',
+        backgroundColor: 'transparent', // Sin área de relleno
+        fill: false, // No fill para este dataset
+        tension: 0.1,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderWidth: 4,
+        order: 1, // Render encima de la sombra
+        pointStyle: 'circle'
       });
     }
 
@@ -1233,6 +1620,18 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             easing: 'easeOutBounce'
           }
         }
+      },
+      show: {
+        animations: {
+          x: {
+            duration: 600,
+            easing: 'easeOutQuart'
+          },
+          y: {
+            duration: 600,
+            easing: 'easeOutQuart'
+          }
+        }
       }
     },
     layout: {
@@ -1245,26 +1644,21 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     },
     interaction: {
       mode: 'nearest',
-      intersect: false,
-      axis: 'x'
+      intersect: false
+    },
+    animation: {
+      duration: 1200,
+      easing: 'easeOutExpo'
     },
     hover: {
+      mode: 'point',
+      intersect: false,
+      animationDuration: 200
+    },
+    interaction: {
       mode: 'nearest',
       intersect: false,
-      animationDuration: 0
-    },
-    onHover: (event, activeElements) => {
-      const tooltipArea = document.querySelector('#tooltip-area');
-      if (tooltipArea) {
-        if (activeElements.length > 0) {
-          // Actualizar tooltip con el punto hover
-          const dataIndex = activeElements[0].index;
-          tooltipArea.innerHTML = renderTooltipContent(dataIndex, processedTimelineData);
-        } else {
-          // Sin hover - volver a la última fecha (estado por defecto)
-          tooltipArea.innerHTML = renderTooltipContent(null, processedTimelineData);
-        }
-      }
+      axis: 'x'
     },
     elements: {
       point: {
@@ -1286,7 +1680,15 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         display: false // Ocultamos la leyenda porque ya tenemos nuestra propia leyenda personalizada
       },
       tooltip: {
-        enabled: false
+        enabled: false,
+        displayColors: false,
+        intersect: false,
+        mode: 'nearest'
+      },
+      crosshair: {
+        line: {
+          display: false
+        }
       },
       zoom: {
         pan: {
@@ -1632,7 +2034,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               display: 'flex',
               alignItems: 'center',
               opacity: viewMode === 'both' ? 1 : 0,
-              width: viewMode === 'both' ? '130px' : '0px',
+              width: viewMode === 'both' ? '140px' : '0px',
               overflow: 'hidden',
               transition: 'all 0.25s ease-out',
               pointerEvents: viewMode === 'both' ? 'auto' : 'none',
@@ -1862,16 +2264,16 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 transition: 'all 0.3s ease'
               }}>
                 <div style={{
-                  width: '20px',
-                  height: '2px',
+                  width: '28px',
+                  height: '3px',
                   background: 'linear-gradient(90deg, #10b981, #22c55e, #34d399)',
-                  borderRadius: '1px',
-                  boxShadow: '0 0 6px rgba(34, 197, 94, 0.3)'
+                  borderRadius: '2px',
+                  boxShadow: '0 0 8px rgba(34, 197, 94, 0.4)'
                 }}></div>
                 <span style={{ 
                   color: '#f5f5f5', 
                   fontWeight: '600',
-                  fontSize: '15px'
+                  fontSize: '16px'
                 }}>Portfolio Value</span>
               </div>
             )}
@@ -1884,15 +2286,15 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 transition: 'all 0.3s ease'
               }}>
                 <div style={{
-                  width: '20px',
-                  height: '2px',
-                  background: 'repeating-linear-gradient(to right, rgba(200, 200, 200, 0.8) 0px, rgba(200, 200, 200, 0.8) 3px, transparent 3px, transparent 6px)',
-                  borderRadius: '1px'
+                  width: '28px',
+                  height: '3px',
+                  background: 'repeating-linear-gradient(to right, rgba(220, 220, 220, 0.9) 0px, rgba(220, 220, 220, 0.9) 4px, transparent 4px, transparent 8px)',
+                  borderRadius: '2px'
                 }}></div>
                 <span style={{ 
                   color: '#f5f5f5', 
                   fontWeight: '600',
-                  fontSize: '15px'
+                  fontSize: '16px'
                 }}>Cost Basis</span>
               </div>
             )}
@@ -1905,16 +2307,16 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 transition: 'all 0.3s ease'
               }}>
                 <div style={{
-                  width: '20px',
-                  height: '2px',
+                  width: '28px',
+                  height: '3px',
                   background: 'linear-gradient(90deg, #10b981, #22c55e, #34d399)',
-                  borderRadius: '1px',
-                  boxShadow: '0 0 6px rgba(34, 197, 94, 0.3)'
+                  borderRadius: '2px',
+                  boxShadow: '0 0 8px rgba(34, 197, 94, 0.4)'
                 }}></div>
                 <span style={{ 
                   color: '#f5f5f5', 
                   fontWeight: '600',
-                  fontSize: '15px'
+                  fontSize: '16px'
                 }}>Balance (P&L)</span>
               </div>
             )}
@@ -1936,9 +2338,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 background: 'rgba(255, 255, 255, 0.08)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '10px',
-                padding: '12px 13px',
+                padding: '12px 14px',
                 color: '#ffffff',
-                fontSize: '14px',
+                fontSize: '15px',
                 fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -2348,16 +2750,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                       }}
-                      onMouseEnter={(e) => {
-                        e.target.style.background = 'rgba(0, 255, 136, 0.15)';
-                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.5)';
-                        e.target.style.color = '#00ff88';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.background = 'rgba(0, 255, 136, 0.1)';
-                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.3)';
-                        e.target.style.color = 'rgba(0, 255, 136, 0.9)';
-                      }}
                     >
                       Done
                     </button>
@@ -2381,9 +2773,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 background: 'rgba(255, 255, 255, 0.08)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '10px',
-                padding: '12px 13px',
+                padding: '12px 14px',
                 color: '#ffffff',
-                fontSize: '14px',
+                fontSize: '15px',
                 fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -2708,20 +3100,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                             e.target.style.boxShadow = '0 8px 24px rgba(34, 197, 94, 0.25), inset 0 2px 4px rgba(255, 255, 255, 0.15)';
                             e.target.style.zIndex = '10';
                           } : undefined}
-                          onMouseLeave={day && dayState !== 'disabled' ? (e) => {
-                            const currentBackground = backgroundColor === 'rgba(34, 197, 94, 0.7)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.8), rgba(16, 185, 129, 0.6))' :
-                                                    backgroundColor === 'rgba(34, 197, 94, 0.3)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.35), rgba(16, 185, 129, 0.25))' :
-                                                    backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent';
-                            e.target.style.background = currentBackground;
-                            e.target.style.borderColor = dayState === 'selected' ? 'rgba(34, 197, 94, 0.9)' : 
-                                                        dayState === 'inRange' ? 'rgba(34, 197, 94, 0.4)' :
-                                                        'rgba(255, 255, 255, 0.08)';
-                            e.target.style.transform = 'scale(1)';
-                            e.target.style.boxShadow = dayState === 'selected' ? '0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' :
-                                                      dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
-                                                      '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)';
-                            e.target.style.zIndex = 'auto';
-                          } : undefined}
                         >
                           {day}
                         </button>
@@ -2792,16 +3170,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                       }}
-                      onMouseEnter={(e) => {
-                        e.target.style.background = 'rgba(0, 255, 136, 0.15)';
-                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.5)';
-                        e.target.style.color = '#00ff88';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.background = 'rgba(0, 255, 136, 0.1)';
-                        e.target.style.borderColor = 'rgba(0, 255, 136, 0.3)';
-                        e.target.style.color = 'rgba(0, 255, 136, 0.9)';
-                      }}
                     >
                       Done
                     </button>
@@ -2857,46 +3225,49 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   setStartDate(defaultStartDate);
                   setEndDate(defaultEndDate);
                   
+                  // Reset zoom state
+                  setIsZoomed(false);
+                  
                   // Cancelar popup si está abierto
                   if (setShowApplyPopup) {
                     setShowApplyPopup(false);
                   }
                 }}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '8px',
-                  padding: '7px 12px',
-                  color: '#ef4444',
-                  fontSize: '13px',
+                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(200, 200, 200, 0.08))',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  color: '#00ff88',
+                  fontSize: '14px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                  fontWeight: '600',
+                  fontWeight: '1000',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
                   backdropFilter: 'blur(10px)',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '5px',
+                  gap: '6px',
                   whiteSpace: 'nowrap',
                   userSelect: 'none'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.12)';
-                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-                  e.target.style.color = '#ef4444';
+                  e.target.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(220, 220, 220, 0.15))';
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                  e.target.style.color = '#00ff88';
                   e.target.style.transform = 'translateY(-1px)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+                  e.target.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.2)';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.08)';
-                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                  e.target.style.color = '#ef4444';
+                  e.target.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(200, 200, 200, 0.08))';
+                  e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                  e.target.style.color = '#00ff88';
                   e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                  e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1)';
                 }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
                   <path d="M3 3v5h5"/>
                 </svg>
@@ -2915,7 +3286,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         marginLeft: '-2.5%',
         position: 'relative'
       }}>
-        <Line ref={chartRef} data={timelineData} options={timelineOptions} />
+        <Line 
+          ref={chartRef} 
+          data={timelineData} 
+          options={timelineOptions}
+          plugins={[hoverPlugin]}
+        />
         
       </div>
       </div>
