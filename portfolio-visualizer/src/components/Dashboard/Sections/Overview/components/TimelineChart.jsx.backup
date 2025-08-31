@@ -1717,6 +1717,25 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           borderWidth: 3,
           pointStyle: 'line',
           order: 1,
+          segment: {
+            borderColor: function(ctx) {
+              const chart = ctx.chart;
+              const activeElements = chart.getActiveElements ? chart.getActiveElements() : [];
+              
+              if (activeElements.length > 0) {
+                const activeIndex = activeElements[0].index;
+                const currentIndex = ctx.p0DataIndex;
+                
+                // Si estamos después del punto activo, hacer transparente
+                if (currentIndex >= activeIndex) {
+                  return 'transparent';
+                }
+              }
+              
+              // Color más brillante con un tono azulado para diferenciarlo
+              return 'rgba(200, 220, 255, 0.9)';
+            }
+          }
         });
       }
       
@@ -1795,177 +1814,301 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     };
   };
 
-  const timelineData = createTimelineData();
-  
-  const getDynamicTimelineOptions = () => {
     return {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: {
-        duration: 1000,
-        easing: 'easeOutQuart'
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: (() => {
+      switch (currentAnimationType) {
+        case 'none':
+          return { duration: 0 }; // Sin animación
+        case 'fade':
+          return { 
+            duration: 600,
+            easing: 'easeInOutCubic' // Más suave para transiciones de muchos puntos
+          };
+        case 'smooth':
+          return { 
+            duration: 400,
+            easing: 'easeOutCubic' // Rápido pero suave
+          };
+        default:
+          return { 
+            duration: 1000,
+            easing: 'easeOutQuart' // Animación normal
+          };
+      }
+    })(),
+    animations: (() => {
+      if (currentAnimationType === 'fade') {
+        // Para transiciones de pocos a muchos puntos: fade suave
+        return {
+          x: {
+            type: 'number',
+            easing: 'linear',
+            duration: 600,
+            from: (ctx) => ctx.parsed ? ctx.parsed.x : undefined, // Mantener posición para evitar movimientos extraños
+          },
+          y: {
+            type: 'number', 
+            easing: 'easeInOutCubic',
+            duration: 600,
+          }
+        };
+      }
+      
+      return {}; // Sin animaciones especiales para otros casos
+    })(),
+    layout: {
+      padding: {
+        left: 40,
+        right: 40,
+        top: 20, // Reducido para acercar al tooltip
+        bottom: 30
+      }
+    },
+    interaction: {
+      mode: 'nearest',
+      intersect: false,
+      axis: 'x'
+    },
+    hover: {
+      mode: 'point',
+      intersect: false,
+      animationDuration: 0
+    },
+    elements: {
+      point: {
+        radius: 0,
+        hoverRadius: 0,
+        borderWidth: 0,
+        hoverBorderWidth: 0,
+        backgroundColor: 'transparent',
+        borderColor: 'transparent',
+        hoverBackgroundColor: 'transparent',
+        hoverBorderColor: 'transparent'
       },
-      layout: {
-        padding: {
-          right: 40
-        }
+      line: {
+        tension: 0.4
+      }
+    },
+    plugins: {
+      legend: {
+        display: false
       },
-      plugins: {
-        legend: {
+      tooltip: {
+        enabled: false,
+        displayColors: false,
+        intersect: false,
+        mode: 'nearest'
+      }
+    },
+    scales: {
+      x: {
+        type: 'time',
+        display: true,
+        grid: {
           display: false
         },
-        tooltip: {
-          enabled: false
+        ticks: {
+          display: false
         },
-        zoom: {
-          zoom: {
-            drag: {
-              enabled: true,
-              backgroundColor: 'rgba(34, 197, 94, 0.2)',
-              borderColor: 'rgba(34, 197, 94, 0.8)',
-              borderWidth: 2
-            },
-            wheel: {
-              enabled: false
-            },
-            pinch: {
-              enabled: false
-            },
-            mode: 'x',
-            onZoomComplete: function(chart) {
-              console.log('🔍 Zoom complete event triggered!');
-              
-              try {
-                let targetChart = chart;
-                
-                if (!targetChart || !targetChart.scales) {
-                  if (chartRef.current) {
-                    targetChart = chartRef.current;
-                  }
-                }
-                
-                if (!targetChart || !targetChart.scales || !targetChart.scales.x) {
-                  return;
-                }
-                
-                const xScale = targetChart.scales.x;
-                
-                if (typeof xScale.min === 'undefined' || typeof xScale.max === 'undefined') {
-                  return;
-                }
-                
-                if (isNaN(xScale.min) || isNaN(xScale.max)) {
-                  return;
-                }
-                
-                const minDate = new Date(xScale.min);
-                const maxDate = new Date(xScale.max);
-                
-                if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime())) {
-                  return;
-                }
-                
-                const newStartDate = minDate.toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit', 
-                  year: 'numeric'
-                });
-                
-                const newEndDate = maxDate.toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric'
-                });
-                
-                if (!setStartDateRef.current || !setEndDateRef.current || !setIsZoomedRef.current) {
-                  return;
-                }
-                
-                isCalendarChangeFromZoom.current = true;
-                setIsZoomed(true);
-                
-                console.log('🔍 Actualizando calendarios desde zoom:', newStartDate, 'a', newEndDate);
-                setStartDateRef.current(newStartDate);
-                setEndDateRef.current(newEndDate);
-                
-                console.log('✅ Zoom completado con calendarios actualizados');
-                
-                if (showApplyToAllPopup) {
-                  showApplyToAllPopup();
-                }
-                
-              } catch (error) {
-                console.error('❌ [ZOOM] Error en onZoomComplete:', error);
-              }
-            },
-            onZoomRejected: function() {
-              if (setIsZoomed) {
-                setIsZoomed(false);
-              }
-            }
-          },
-          pan: {
-            enabled: false
-          },
-          limits: {
-            x: {
-              min: 'original',
-              max: 'original'
-            }
-          }
-        },
-        resetZoom: {
-          display: true,
-          position: 'top'
+        border: {
+          display: false
         }
       },
-      scales: {
-        x: {
-          type: 'time',
-          display: false,
-          time: {
-            unit: 'day',
-            displayFormats: {
-              day: 'dd/MM/yyyy'
-            }
-          },
-          grid: {
-            display: false
-          },
-          border: {
-            display: false
-          }
+      y: {
+        display: false,
+        grid: {
+          display: false
         },
-        y: {
-          display: true,
-          position: 'left',
-          grid: {
-            display: false
+        border: {
+          display: false
+        }
+      }
+    },
+    onHover: (event, elements, chart) => {
+      if (elements.length > 0) {
+        const dataIndex = elements[0].index;
+        chart.hoveredDataIndex = dataIndex;
+      } else {
+        chart.hoveredDataIndex = undefined;
+      }
+      chart.update('none');
+    }
+            backgroundColor: 'rgba(34, 197, 94, 0.2)',
+            borderColor: 'rgba(34, 197, 94, 0.8)',
+            borderWidth: 2
           },
-          border: {
-            display: false
+          wheel: {
+            enabled: false
           },
-          ticks: {
-            color: '#ffffff',
-            font: {
-              size: 14,
-              family: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-              weight: '600'
-            },
-            padding: 5,
-            maxTicksLimit: 6,
-            callback: function(value) {
-              if (value >= 1000000) {
-                return '€' + (value / 1000000).toFixed(1) + 'M';
-              } else if (value >= 1000) {
-                return '€' + (value / 1000).toFixed(1) + 'K';
+          pinch: {
+            enabled: false
+          },
+          mode: 'x',
+          onZoomComplete: function(chart) {
+            console.log('🔍 Zoom complete event triggered!');
+            
+            // Verificación más robusta del chart y escalas
+            try {
+              // Intentar múltiples formas de acceder al chart
+              let targetChart = chart;
+              
+              // Si el chart pasado como parámetro no tiene escalas, usar chartRef
+              if (!targetChart || !targetChart.scales) {
+                if (chartRef.current) {
+                  targetChart = chartRef.current;
+                }
               }
-              return '€' + Math.round(value);
+              
+              if (!targetChart) {
+                console.log('❌ No se pudo acceder a ningún chart');
+                return;
+              }
+              
+              if (!targetChart.scales || !targetChart.scales.x) {
+                return;
+              }
+              
+              const xScale = targetChart.scales.x;
+              
+              // Verificar que min y max sean valores válidos
+              if (typeof xScale.min === 'undefined' || typeof xScale.max === 'undefined') {
+                return;
+              }
+              
+              if (isNaN(xScale.min) || isNaN(xScale.max)) {
+                return;
+              }
+              
+              const minDate = new Date(xScale.min);
+              const maxDate = new Date(xScale.max);
+              
+              // Verificar que las fechas sean válidas
+              if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime())) {
+                return;
+              }
+              
+              const newStartDate = minDate.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit', 
+                year: 'numeric'
+              });
+              
+              const newEndDate = maxDate.toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              });
+              
+              // Verificar que las referencias estén disponibles
+              if (!setStartDateRef.current || !setEndDateRef.current || !setIsZoomedRef.current) {
+                return;
+              }
+              
+              // Activar flag: el próximo cambio de fechas viene del zoom
+              isCalendarChangeFromZoom.current = true;
+              
+              // Marcar como zoomed
+              setIsZoomed(true);
+              
+              // Actualizar calendarios (esto disparará useEffects pero serán ignorados por la flag)
+              console.log('🔍 Actualizando calendarios desde zoom:', newStartDate, 'a', newEndDate);
+              setStartDateRef.current(newStartDate);
+              setEndDateRef.current(newEndDate);
+              
+              console.log('✅ Zoom completado con calendarios actualizados');
+              
+              // Mostrar popup después del zoom
+              showApplyToAllPopup();
+              
+            } catch (error) {
+              console.error('❌ [ZOOM] Error en onZoomComplete:', error);
             }
+            
+          },
+          onZoomRejected: function() {
+            setIsZoomed(false);
           }
         }
       }
-    };
+    },
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          unit: periodMode === 'year' ? 'year' : periodMode === 'month' ? 'month' : periodMode === 'week' ? 'week' : 'day',
+          displayFormats: {
+            day: 'dd/MM',
+            week: 'dd/MM',
+            month: 'MMM yyyy',
+            year: 'yyyy'
+          }
+        },
+        display: false,
+        grid: {
+          display: false
+        },
+        ticks: {
+          color: '#b5b5b5',
+          font: {
+            size: 12,
+            family: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+            weight: '500'
+          },
+          maxTicksLimit: 6
+        },
+        border: {
+          display: false
+        }
+      },
+      y: {
+        ticks: {
+          color: '#b5b5b5',
+          font: {
+            size: 16,
+            family: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+            weight: '600'
+          },
+          padding: 15,
+          callback: function(value) {
+            if (value >= 1000000) {
+              return '€' + (value / 1000000).toFixed(1) + 'M';
+            } else if (value >= 1000) {
+              return '€' + (value / 1000).toFixed(1) + 'K';
+            }
+            return '€' + Math.round(value);
+          }
+        },
+        grid: {
+          display: false
+        },
+        border: {
+          display: false
+        },
+        title: {
+          display: false
+        }
+      }
+    }
+  };
+
+  const timelineData = createTimelineData();
+  
+  // Generar opciones dinámicamente para manejar transiciones problemáticas
+  const getDynamicTimelineOptions = () => {
+    // Calcular tipo de animación con los datos actuales
+    const currentAnimationType = getAnimationType(timelineData);
+    const currentDataLength = timelineData?.labels?.length || 0;
+    const prevLength = previousDataLength.current;
+    
+    // Detectar aumento de puntos ANTES de actualizar referencia
+    const hasDataIncrease = currentDataLength > prevLength && prevLength > 0;
+    
+    // Actualizar referencia
+    previousDataLength.current = currentDataLength;
+    
+    }; // Final de la configuración options
   };
 
   if (!timelineData) {
@@ -3070,8 +3213,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
 
       <div style={{
         height: '800px',
-        width: '100%',
-        marginLeft: '0',
+        width: '104%',
+        marginLeft: '-2.5%',
         position: 'relative'
       }}>
         <Line 
@@ -3087,7 +3230,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
 
     </div>
   );
-}
+};
+
 
 
 export default TimelineChart;
