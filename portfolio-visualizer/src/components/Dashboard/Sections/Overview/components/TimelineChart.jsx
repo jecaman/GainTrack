@@ -3076,6 +3076,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       }}>
         <Line 
           ref={chartRef} 
+          key={`timeline-${startDate}-${endDate}-${isZoomed}-${viewMode}-${periodMode}`}
           data={timelineData} 
           options={getDynamicTimelineOptions()}
           plugins={[]}
