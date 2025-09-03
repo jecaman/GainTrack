@@ -20,7 +20,7 @@ const hoverPlugin = {
       lastHoverIndex: -1,
       animationFrame: null,
       startTime: 0,
-      duration: 800 // 0.8 segundos
+      duration: 1200 // 1.2 segundos - más lento
     };
   },
   beforeDatasetsDraw(chart) {
@@ -1531,70 +1531,44 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         return null;
       });
       
-      // Área para valores positivos (verde)
+      // Área unificada que cambia de color según el valor final - evita superposición
       datasets.push({
-        label: 'Total P&L Positive Area',
-        data: positiveData,
-        pointRadius: function(context) {
-          // Ocultar puntos imaginarios (los que son exactamente 0)
-          return interpolatedBalanceValues[context.dataIndex] === 0 ? 0 : 0;
-        },
+        label: 'Total P&L Area',
+        data: interpolatedBalanceValues,
+        pointRadius: 0,
         borderColor: 'transparent',
         borderWidth: 0,
         backgroundColor: function(context) {
           const chart = context.chart;
           const {ctx, chartArea} = chart;
           
-          // Gradiente verde igual que Full View
+          // Determinar el color basado en el valor final para estabilidad
+          const finalValue = interpolatedBalanceValues[interpolatedBalanceValues.length - 1] || 0;
+          const isPositive = finalValue >= 0;
+          
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.4)');
-          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.25)');
-          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.1)');
-          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.05)');
+          if (isPositive) {
+            gradient.addColorStop(0, 'rgba(0, 255, 136, 0.4)');
+            gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.25)');
+            gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.1)');
+            gradient.addColorStop(1, 'rgba(0, 255, 136, 0.05)');
+          } else {
+            gradient.addColorStop(0, 'rgba(255, 68, 68, 0.4)');
+            gradient.addColorStop(0.4, 'rgba(255, 68, 68, 0.25)');
+            gradient.addColorStop(0.8, 'rgba(255, 68, 68, 0.1)');
+            gradient.addColorStop(1, 'rgba(255, 68, 68, 0.05)');
+          }
           
           return gradient;
         },
         fill: 'origin',
-        tension: 0.15, // Igual que Full View pero un poco menos suave
+        tension: 0.15,
         pointRadius: 0,
         pointHoverRadius: 0,
         pointBackgroundColor: 'transparent',
         pointBorderColor: 'transparent',
         skipDuringMouseMove: true,
-        originalData: [...positiveData]
-      });
-      
-      // Área para valores negativos (roja)
-      datasets.push({
-        label: 'Total P&L Negative Area',
-        data: negativeData,
-        pointRadius: function(context) {
-          // Ocultar puntos imaginarios (los que son exactamente 0)
-          return interpolatedBalanceValues[context.dataIndex] === 0 ? 0 : 0;
-        },
-        borderColor: 'transparent',
-        borderWidth: 0,
-        backgroundColor: function(context) {
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          
-          // Gradiente rojo con misma estructura que Full View
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(255, 68, 68, 0.4)');
-          gradient.addColorStop(0.4, 'rgba(255, 68, 68, 0.25)');
-          gradient.addColorStop(0.8, 'rgba(255, 68, 68, 0.1)');
-          gradient.addColorStop(1, 'rgba(255, 68, 68, 0.05)');
-          
-          return gradient;
-        },
-        fill: 'origin',
-        tension: 0.15, // Igual que Full View pero un poco menos suave
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        pointBackgroundColor: 'transparent',
-        pointBorderColor: 'transparent',
-        skipDuringMouseMove: true,
-        originalData: [...negativeData]
+        originalData: [...interpolatedBalanceValues]
       });
       
       // Línea principal (con efecto progresivo) - estilo copiado de Full View
@@ -1647,17 +1621,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             const startValue = interpolatedBalanceValues[startIndex];
             const endValue = interpolatedBalanceValues[endIndex];
             
-            // Transiciones más suaves con colores gradualmente mezclados cerca del 0
-            const avgValue = (startValue + endValue) / 2;
-            
-            // Si el promedio del segmento es cercano a 0, usar colores más suaves
-            if (Math.abs(avgValue) < 5) {
-              // Cerca del 0, usar colores menos saturados
-              return avgValue >= 0 ? 'rgba(16, 213, 110, 0.8)' : 'rgba(255, 71, 87, 0.8)';
-            } else {
-              // Lejos del 0, usar colores completos
-              return avgValue > 0 ? '#10d56e' : '#ff4757';
-            }
+            // Usar solo el valor final del segmento para evitar cambios durante transiciones
+            return endValue >= 0 ? '#10d56e' : '#ff4757';
           }
         }
       });
@@ -1802,8 +1767,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       responsive: true,
       maintainAspectRatio: false,
       animation: {
-        duration: 1000,
-        easing: 'easeOutQuart'
+        duration: 1500,
+        easing: 'easeOutQuart',
+        animateRotate: false,
+        animateScale: false
       },
       layout: {
         padding: {
@@ -1917,6 +1884,18 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         resetZoom: {
           display: true,
           position: 'top'
+        },
+        transitions: {
+          zoom: {
+            animation: {
+              duration: 0 // Sin animación en operaciones de zoom
+            }
+          },
+          reset: {
+            animation: {
+              duration: 0 // Sin animación en reset
+            }
+          }
         }
       },
       scales: {
