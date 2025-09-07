@@ -59,11 +59,13 @@ const hoverPlugin = {
     const pointColor = isNegative ? '#ff4444' : '#00ff88';
     const waveColor = isNegative ? '255, 68, 68' : '0, 255, 136';
     
-    // Programar la siguiente animación
-    if (!chart._animationFrameId) {
+    // Programar la siguiente animación - NO durante zoom
+    if (!chart._animationFrameId && !chart.isZoomingInProgress) {
       chart._animationFrameId = requestAnimationFrame(() => {
         chart._animationFrameId = null;
-        chart.update('none');
+        if (!chart.isZoomingInProgress) {
+          chart.update('none');
+        }
       });
     }
     
@@ -360,11 +362,59 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [processedTimelineData, setProcessedTimelineData] = useState([]);
   const [isZoomed, setIsZoomed] = useState(false);
+  const isZoomedRef = useRef(false); // Para zoom visual sin re-render
   const chartRef = useRef(null);
+  const pendingDatesUpdate = useRef(null); // Fechas pendientes de actualizar
+  const updateDatesTimer = useRef(null); // Timer para actualizar fechas
+  
+  // Refs para fechas durante zoom - no causan re-renders
+  const zoomStartDateRef = useRef(startDate);
+  const zoomEndDateRef = useRef(endDate);
+  const zoomCalendarDateRef = useRef(null); // Para actualizar calendario durante zoom
+  
+  // Sincronizar refs cuando cambie el state normalmente
+  useEffect(() => {
+    if (!isZoomedRef.current) {
+      zoomStartDateRef.current = startDate;
+    }
+  }, [startDate]);
+  
+  useEffect(() => {
+    if (!isZoomedRef.current) {
+      zoomEndDateRef.current = endDate;
+    }
+  }, [endDate]);
   
   
-  // Flag para saber si el cambio de fechas viene del zoom (no re-renderizar) o del usuario (sí re-renderizar)
+  // Flag para saber si el cambio de fechas viene del zoom (no re-renderizar) o del usuario (sí re-renderizar)  
   const isCalendarChangeFromZoom = useRef(false);
+  
+  // Contador de useEffects que necesitan procesar el cambio de zoom
+  const useEffectCounterRef = useRef(0);
+  const totalUseEffectsForZoom = 4; // Total de useEffects que verifican el flag de zoom
+  
+  // Helper function para proteger useEffects del zoom
+  const shouldSkipDuringZoom = () => {
+    if (isCalendarChangeFromZoom.current) {
+      console.log('🔴 Cambio viene del ZOOM - SKIPEANDO useEffect');
+      
+      // Incrementar contador y resetear flag si es el último useEffect
+      useEffectCounterRef.current += 1;
+      console.log(`🔢 UseEffect ${useEffectCounterRef.current}/${totalUseEffectsForZoom} procesado`);
+      
+      if (useEffectCounterRef.current >= totalUseEffectsForZoom) {
+        // Es el último useEffect, resetear todo
+        requestAnimationFrame(() => {
+          isCalendarChangeFromZoom.current = false;
+          useEffectCounterRef.current = 0;
+          console.log('🔴 [FLAG] Flag zoom reseteado - todos los useEffects procesados');
+        });
+      }
+      
+      return true;
+    }
+    return false;
+  };
   
   // Track previous period mode y data length para detectar cambios
   const previousPeriodMode = useRef(periodMode);
@@ -556,6 +606,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   useEffect(() => {
     if (viewMode === 'balance') return; // Skip para P&L View
     
+    // Protección contra zoom
+    if (shouldSkipDuringZoom()) {
+      return;
+    }
+    
     const tooltipArea = document.querySelector('#tooltip-area');
     if (tooltipArea && portfolioData?.timeline) {
       const dataToUse = processedTimelineData.length > 0 ? processedTimelineData : null;
@@ -566,24 +621,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Gestionar transición suave del gráfico cuando cambian las fechas
   useEffect(() => {
     // Si el cambio viene del zoom, NO re-renderizar
-    if (isCalendarChangeFromZoom.current) {
-      console.log('🔴 [FILTRO] Cambio viene del ZOOM - NO re-renderizar');
-      isCalendarChangeFromZoom.current = false; // Reset flag
+    if (shouldSkipDuringZoom()) {
       return;
     }
-    
-    // Si viene del usuario, SÍ re-renderizar normalmente
-    console.log('🔴 [FILTRO] Cambio viene del USUARIO - re-renderizando');
     if (portfolioData?.timeline) {
       setIsChartLoading(true);
       
-      // Forzar update sin animación para cambios de filtros
-      const chart = chartRef.current;
-      if (chart) {
-        setTimeout(() => {
-          chart.update('none');
-        }, 0);
-      }
+      // Chart update deshabilitado para evitar interferencia con zoom
       
       // Delay optimizado para permitir transición visual suave
       const timer = setTimeout(() => {
@@ -598,12 +642,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Procesar datos para tooltip cuando cambien las dependencias
   useEffect(() => {
     // Si el cambio viene del zoom, procesar datos silenciosamente
-    if (isCalendarChangeFromZoom.current) {
-      console.log('🔵 [PROCESAMIENTO] Cambio viene del ZOOM - procesamiento silencioso');
-      // No resetear la flag aquí porque se resetea en el otro useEffect
-    } else {
-      console.log('🔵 [PROCESAMIENTO] Cambio viene del USUARIO - procesamiento normal');
+    if (shouldSkipDuringZoom()) {
+      return;
     }
+    console.log('🔵 [PROCESAMIENTO] Cambio viene del USUARIO - procesamiento normal');
     
     if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
       setProcessedTimelineData([]);
@@ -696,6 +738,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       }).sort((a, b) => new Date(a.date) - new Date(b.date));
     };
 
+    // Protección contra zoom
+    if (isCalendarChangeFromZoom.current) {
+      console.log('🔴 [PROCESS] Cambio viene del ZOOM - NO procesar');
+      return;
+    }
+    
     // Aplicar agrupación
     const processedData = groupDataByPeriod(timelineData, periodMode);
     setProcessedTimelineData(processedData);
@@ -765,6 +813,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Inicializar tooltip estático para P&L View (usando datos interpolados)
   useEffect(() => {
     if (viewMode !== 'balance') return; // Solo para P&L View
+    
+    // Protección contra zoom
+    if (shouldSkipDuringZoom()) {
+      return;
+    }
     
     const tooltipArea = document.querySelector('#tooltip-area');
     if (tooltipArea && portfolioData?.timeline) {
@@ -925,8 +978,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       setTimeout(() => {
         setCalendarType('end');
         // Establecer calendario en la fecha fin al abrir
-        if (endDate) {
-          const [day, month, year] = endDate.split('/');
+        const dateToUse = isZoomedRef.current ? zoomEndDateRef.current : endDate;
+        if (dateToUse) {
+          const [day, month, year] = dateToUse.split('/');
           setCalendarDate(new Date(year, month - 1, day));
         }
         // Mantener el calendario abierto para la transición suave
@@ -1775,12 +1829,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     return {
       responsive: true,
       maintainAspectRatio: false,
-      animation: {
-        duration: 1500,
-        easing: 'easeOutQuart',
-        animateRotate: false,
-        animateScale: false
-      },
+      animation: false,
       layout: {
         padding: {
           right: 40
@@ -1809,69 +1858,52 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             },
             mode: 'x',
             onZoomComplete: function(chart) {
-              console.log('🔍 Zoom complete event triggered!');
-              
               try {
-                let targetChart = chart;
-                
-                if (!targetChart || !targetChart.scales) {
-                  if (chartRef.current) {
-                    targetChart = chartRef.current;
-                  }
+                const actualChart = chartRef.current;
+                if (actualChart && actualChart.scales && actualChart.scales.x) {
+                  const xScale = actualChart.scales.x;
+                  
+                  const newStartDate = new Date(xScale.min).toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit', 
+                    year: 'numeric'
+                  });
+                  
+                  const newEndDate = new Date(xScale.max).toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                  });
+                  
+                  // Marcar que viene del zoom ANTES de actualizar
+                  isCalendarChangeFromZoom.current = true;
+                  
+                  // Actualizar refs de fechas sin causar re-renders
+                  zoomStartDateRef.current = newStartDate;
+                  zoomEndDateRef.current = newEndDate;
+                  isZoomedRef.current = true;
+                  
+                  // Actualizar fecha del calendario interno sin re-render
+                  const [startDay, startMonth, startYear] = newStartDate.split('/');
+                  zoomCalendarDateRef.current = new Date(startYear, startMonth - 1, startDay);
+                  
+                  // Actualizar visualmente los campos de fecha sin re-render
+                  requestAnimationFrame(() => {
+                    const startDateElement = document.getElementById('timeline-start-date-display');
+                    const endDateElement = document.getElementById('timeline-end-date-display');
+                    
+                    if (startDateElement) {
+                      startDateElement.textContent = newStartDate;
+                    }
+                    if (endDateElement) {
+                      endDateElement.textContent = newEndDate;
+                    }
+                  });
+                  
+                  console.log('📅 Fechas actualizadas desde zoom:', newStartDate, 'a', newEndDate);
                 }
-                
-                if (!targetChart || !targetChart.scales || !targetChart.scales.x) {
-                  return;
-                }
-                
-                const xScale = targetChart.scales.x;
-                
-                if (typeof xScale.min === 'undefined' || typeof xScale.max === 'undefined') {
-                  return;
-                }
-                
-                if (isNaN(xScale.min) || isNaN(xScale.max)) {
-                  return;
-                }
-                
-                const minDate = new Date(xScale.min);
-                const maxDate = new Date(xScale.max);
-                
-                if (isNaN(minDate.getTime()) || isNaN(maxDate.getTime())) {
-                  return;
-                }
-                
-                const newStartDate = minDate.toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit', 
-                  year: 'numeric'
-                });
-                
-                const newEndDate = maxDate.toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric'
-                });
-                
-                if (!setStartDateRef.current || !setEndDateRef.current || !setIsZoomedRef.current) {
-                  return;
-                }
-                
-                isCalendarChangeFromZoom.current = true;
-                setIsZoomed(true);
-                
-                console.log('🔍 Actualizando calendarios desde zoom:', newStartDate, 'a', newEndDate);
-                setStartDateRef.current(newStartDate);
-                setEndDateRef.current(newEndDate);
-                
-                console.log('✅ Zoom completado con calendarios actualizados');
-                
-                if (showApplyToAllPopup) {
-                  showApplyToAllPopup();
-                }
-                
               } catch (error) {
-                console.error('❌ [ZOOM] Error en onZoomComplete:', error);
+                console.error('❌ Error en zoom:', error);
               }
             },
             onZoomRejected: function() {
@@ -1897,12 +1929,14 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         transitions: {
           zoom: {
             animation: {
-              duration: 0 // Sin animación en operaciones de zoom
+              duration: 400,
+              easing: 'easeOutQuad'
             }
           },
           reset: {
             animation: {
-              duration: 0 // Sin animación en reset para evitar bug visual
+              duration: 300,
+              easing: 'easeOutQuad'
             }
           }
         }
@@ -2469,9 +2503,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               }}
               onClick={() => {
                 setCalendarType('start');
-                // Establecer calendario en la fecha actual del botón
-                if (startDate) {
-                  const [day, month, year] = startDate.split('/');
+                // Usar fecha de zoom si estamos en zoom, sino la fecha normal
+                const dateToUse = isZoomedRef.current ? zoomStartDateRef.current : startDate;
+                if (dateToUse) {
+                  const [day, month, year] = dateToUse.split('/');
                   setCalendarDate(new Date(year, month - 1, day));
                 }
                 // Usar estado unificado para el calendario
@@ -2486,7 +2521,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span>{startDate}</span>
+                <span id="timeline-start-date-display">{startDate}</span>
                 {(() => {
                   const { defaultStartDate } = getDefaultDates();
                   return startDate && startDate !== defaultStartDate && (
@@ -2917,9 +2952,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               }}
               onClick={() => {
                 setCalendarType('end');
-                // Establecer calendario en la fecha actual del botón
-                if (endDate) {
-                  const [day, month, year] = endDate.split('/');
+                // Usar fecha de zoom si estamos en zoom, sino la fecha normal
+                const dateToUse = isZoomedRef.current ? zoomEndDateRef.current : endDate;
+                if (dateToUse) {
+                  const [day, month, year] = dateToUse.split('/');
                   setCalendarDate(new Date(year, month - 1, day));
                 }
                 // Usar estado unificado para el calendario - mostrar en la posición del botón de inicio
@@ -2934,7 +2970,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span>{endDate}</span>
+                <span id="timeline-end-date-display">{endDate}</span>
                 {(() => {
                   const { defaultEndDate } = getDefaultDates();
                   return endDate && endDate !== defaultEndDate && (
@@ -2982,7 +3018,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         </div>
         
         {/* Botones Reset/Apply alineados a la derecha */}
-        {(!isUsingDefaultRange || isZoomed) && (
+        {(!isUsingDefaultRange || isZoomed || isZoomedRef.current) && (
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -3001,12 +3037,28 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   setStartDate(defaultStartDate);
                   setEndDate(defaultEndDate);
                   
-                  // Reset zoom state
+                  // Reset zoom state y sincronizar fechas
+                  isZoomedRef.current = false;
                   setIsZoomed(false);
+                  
+                  // Sincronizar fechas del zoom con el state si había zoom activo
+                  if (isZoomedRef.current) {
+                    if (zoomStartDateRef.current !== startDate) {
+                      setStartDate(zoomStartDateRef.current);
+                    }
+                    if (zoomEndDateRef.current !== endDate) {
+                      setEndDate(zoomEndDateRef.current);
+                    }
+                  }
                   
                   // Cancelar popup si está abierto
                   if (setShowApplyPopup) {
                     setShowApplyPopup(false);
+                  }
+                  
+                  // Reset chart zoom using Chart.js native method
+                  if (chartRef.current) {
+                    chartRef.current.resetZoom();
                   }
                 }}
                 style={{
