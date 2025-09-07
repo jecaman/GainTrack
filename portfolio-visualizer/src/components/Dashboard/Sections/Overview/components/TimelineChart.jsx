@@ -1568,7 +1568,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointBackgroundColor: 'transparent',
         pointBorderColor: 'transparent',
         skipDuringMouseMove: true,
-        originalData: [...interpolatedBalanceValues]
+        originalData: [...interpolatedBalanceValues],
+        animation: {
+          backgroundColor: false // Deshabilitar animación de gradiente en reset
+        }
       });
       
       // Línea principal (con efecto progresivo) - estilo copiado de Full View
@@ -1658,7 +1661,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           pointBorderWidth: 0,
           pointHoverBorderWidth: 0,
           order: 3, // Render detrás de ambas líneas
-          skipDuringMouseMove: true // No modificar durante el hover para mayor fluidez
+          skipDuringMouseMove: true, // No modificar durante el hover para mayor fluidez
+          animation: {
+            backgroundColor: false // Deshabilitar animación de gradiente en reset
+          }
         });
       }
 
@@ -1729,7 +1735,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
         order: 2, // Render detrás de la línea
-        skipDuringMouseMove: true // Marcar para no modificar durante mouse move
+        skipDuringMouseMove: true, // Marcar para no modificar durante mouse move
+        animation: {
+          backgroundColor: false // Deshabilitar animación de gradiente en reset
+        }
       });
 
       // Dataset para la línea - se corta dinámicamente
@@ -1893,7 +1902,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           },
           reset: {
             animation: {
-              duration: 0 // Sin animación en reset
+              duration: 0 // Sin animación en reset para evitar bug visual
             }
           }
         }
