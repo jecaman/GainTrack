@@ -346,6 +346,45 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     return hierarchy[prevMode] > hierarchy[currentMode] || 
            (currentMode === 'day' && prevMode !== 'day');
   };
+
+  // Función para verificar si hay suficientes datos para cada tipo de agregación
+  const canAggregate = (period) => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return false;
+    
+    const timelineData = portfolioData.timeline;
+    const uniquePeriods = new Set();
+    
+    timelineData.forEach(entry => {
+      const date = new Date(entry.date);
+      let periodKey;
+      
+      switch (period) {
+        case 'week':
+          const weekStart = new Date(date);
+          const day = weekStart.getDay();
+          const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+          weekStart.setDate(diff);
+          periodKey = weekStart.toISOString().split('T')[0];
+          break;
+          
+        case 'month':
+          periodKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+          break;
+          
+        case 'year':
+          periodKey = date.getFullYear().toString();
+          break;
+          
+        default:
+          return true; // Para 'day' siempre está disponible
+      }
+      
+      uniquePeriods.add(periodKey);
+    });
+    
+    // Necesitamos al menos 2 períodos únicos para que tenga sentido agregar
+    return uniquePeriods.size >= 2;
+  };
   
   // Helper para detectar cambios que requieren animaciones especiales
   const getAnimationType = (timelineData) => {
@@ -1331,32 +1370,25 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       setIsDragging(true);
       chart.isDragging = true;
       
-      // Aplicar la misma animación que handleMouseLeave
-      const tooltipArea = document.querySelector('#tooltip-area');
-      if (tooltipArea) {
-        tooltipArea.innerHTML = renderTooltipContent(null, getDataForTooltip());
-      }
-      
-      // Usar timeout para asegurar que la animación funcione tanto para movimiento gradual como rápido
-      setTimeout(() => {
-        if (chart.hoveredDataIndex !== undefined) {
-          chart.hoveredDataIndex = undefined;
-          
-          // Restaurar solo las líneas principales, las áreas ya están completas
-          const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
-          const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
-          
-          if (portfolioDataset && portfolioDataset.originalData) {
-            portfolioDataset.data = [...portfolioDataset.originalData];
-          }
-          
-          if (costBasisDataset && costBasisDataset.originalData) {
-            costBasisDataset.data = [...costBasisDataset.originalData];
-          }
-          
-          chart.update('none');
+      // No resetear el tooltip - mantenerlo tal como está
+      // Solo restaurar las líneas sin delay para evitar efectos visuales bruscos
+      if (chart.hoveredDataIndex !== undefined) {
+        chart.hoveredDataIndex = undefined;
+        
+        // Restaurar solo las líneas principales, las áreas ya están completas
+        const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
+        const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
+        
+        if (portfolioDataset && portfolioDataset.originalData) {
+          portfolioDataset.data = [...portfolioDataset.originalData];
         }
-      }, 10); // Pequeño delay para asegurar que el estado se procese correctamente
+        
+        if (costBasisDataset && costBasisDataset.originalData) {
+          costBasisDataset.data = [...costBasisDataset.originalData];
+        }
+        
+        chart.update('none');
+      }
     };
 
     const handleMouseUp = () => {
@@ -1800,8 +1832,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       responsive: true,
       maintainAspectRatio: false,
       animation: {
-        duration: 400,
-        easing: 'easeOutQuart',
+        duration: 500,
+        easing: 'easeOutCirc',
         animateRotate: false,
         animateScale: false
       },
@@ -1828,8 +1860,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             },
             drag: {
               enabled: true,
-              backgroundColor: 'rgba(34, 197, 94, 0.1)',
-              borderColor: 'rgba(34, 197, 94, 0.5)',
+              backgroundColor: 'rgba(34, 197, 94, 0.3)',
+              borderColor: 'rgba(34, 197, 94, 0.8)',
               borderWidth: 2,
             },
             mode: 'x',
@@ -2209,32 +2241,42 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               </button>
               
               <button
-                onClick={() => setPeriodMode('week')}
+                onClick={() => canAggregate('week') && setPeriodMode('week')}
+                disabled={!canAggregate('week')}
                 style={{
                   background: periodMode === 'week' 
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                    : 'rgba(255, 255, 255, 0.06)',
+                    : !canAggregate('week') 
+                      ? 'rgba(255, 255, 255, 0.02)' 
+                      : 'rgba(255, 255, 255, 0.06)',
                   border: periodMode === 'week' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
-                    : '1px solid rgba(255, 255, 255, 0.12)',
+                    : !canAggregate('week') 
+                      ? '1px solid rgba(255, 255, 255, 0.04)' 
+                      : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
                   padding: '6px 12px',
-                  color: periodMode === 'week' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  color: periodMode === 'week' 
+                    ? '#ffffff' 
+                    : !canAggregate('week') 
+                      ? 'rgba(245, 245, 245, 0.3)' 
+                      : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
-                  cursor: 'pointer',
+                  cursor: !canAggregate('week') ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s ease',
-                  backdropFilter: 'blur(8px)'
+                  backdropFilter: 'blur(8px)',
+                  opacity: !canAggregate('week') ? 0.4 : 1
                 }}
                 onMouseEnter={(e) => {
-                  if (periodMode !== 'week') {
+                  if (periodMode !== 'week' && canAggregate('week')) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.12)';
                     e.target.style.color = '#ffffff';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (periodMode !== 'week') {
+                  if (periodMode !== 'week' && canAggregate('week')) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.06)';
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                   }
@@ -2244,32 +2286,42 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               </button>
               
               <button
-                onClick={() => setPeriodMode('month')}
+                onClick={() => canAggregate('month') && setPeriodMode('month')}
+                disabled={!canAggregate('month')}
                 style={{
                   background: periodMode === 'month' 
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                    : 'rgba(255, 255, 255, 0.06)',
+                    : !canAggregate('month') 
+                      ? 'rgba(255, 255, 255, 0.02)' 
+                      : 'rgba(255, 255, 255, 0.06)',
                   border: periodMode === 'month' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
-                    : '1px solid rgba(255, 255, 255, 0.12)',
+                    : !canAggregate('month') 
+                      ? '1px solid rgba(255, 255, 255, 0.04)' 
+                      : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
                   padding: '6px 12px',
-                  color: periodMode === 'month' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  color: periodMode === 'month' 
+                    ? '#ffffff' 
+                    : !canAggregate('month') 
+                      ? 'rgba(245, 245, 245, 0.3)' 
+                      : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
-                  cursor: 'pointer',
+                  cursor: !canAggregate('month') ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s ease',
-                  backdropFilter: 'blur(8px)'
+                  backdropFilter: 'blur(8px)',
+                  opacity: !canAggregate('month') ? 0.4 : 1
                 }}
                 onMouseEnter={(e) => {
-                  if (periodMode !== 'month') {
+                  if (periodMode !== 'month' && canAggregate('month')) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.12)';
                     e.target.style.color = '#ffffff';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (periodMode !== 'month') {
+                  if (periodMode !== 'month' && canAggregate('month')) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.06)';
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                   }
@@ -2279,32 +2331,42 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               </button>
               
               <button
-                onClick={() => setPeriodMode('year')}
+                onClick={() => canAggregate('year') && setPeriodMode('year')}
+                disabled={!canAggregate('year')}
                 style={{
                   background: periodMode === 'year' 
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                    : 'rgba(255, 255, 255, 0.06)',
+                    : !canAggregate('year') 
+                      ? 'rgba(255, 255, 255, 0.02)' 
+                      : 'rgba(255, 255, 255, 0.06)',
                   border: periodMode === 'year' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
-                    : '1px solid rgba(255, 255, 255, 0.12)',
+                    : !canAggregate('year') 
+                      ? '1px solid rgba(255, 255, 255, 0.04)' 
+                      : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
                   padding: '6px 12px',
-                  color: periodMode === 'year' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  color: periodMode === 'year' 
+                    ? '#ffffff' 
+                    : !canAggregate('year') 
+                      ? 'rgba(245, 245, 245, 0.3)' 
+                      : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
-                  cursor: 'pointer',
+                  cursor: !canAggregate('year') ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s ease',
-                  backdropFilter: 'blur(8px)'
+                  backdropFilter: 'blur(8px)',
+                  opacity: !canAggregate('year') ? 0.4 : 1
                 }}
                 onMouseEnter={(e) => {
-                  if (periodMode !== 'year') {
+                  if (periodMode !== 'year' && canAggregate('year')) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.12)';
                     e.target.style.color = '#ffffff';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (periodMode !== 'year') {
+                  if (periodMode !== 'year' && canAggregate('year')) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.06)';
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                   }
