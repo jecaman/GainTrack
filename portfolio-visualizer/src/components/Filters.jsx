@@ -17,81 +17,24 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   const [popupAnimation, setPopupAnimation] = useState('entering');
   const [isApplying, setIsApplying] = useState(false);
   
-  // Estados para el timer automático
-  const [timeRemaining, setTimeRemaining] = useState(9); // 9 segundos
-  const [isTimerPaused, setIsTimerPaused] = useState(false);
-  const timerRef = useRef(null);
-  const intervalRef = useRef(null);
   
-  // Efecto para animación de entrada del popup y timer automático
+  // Efecto para animación de entrada del popup (sin timer automático)
   useEffect(() => {
     if (showApplyPopup) {
       setPopupAnimation('entering');
-      setTimeRemaining(9);
-      setIsTimerPaused(false);
       
       const timer = setTimeout(() => {
         setPopupAnimation('visible');
-        
-        // Iniciar timer automático después de que aparezca
-        startAutoCloseTimer();
       }, 20);
       
       return () => {
         clearTimeout(timer);
-        clearAutoCloseTimer();
       };
     }
   }, [showApplyPopup]);
   
-  // Función para iniciar el timer automático
-  const startAutoCloseTimer = () => {
-    intervalRef.current = setInterval(() => {
-      setTimeRemaining(prev => {
-        if (prev <= 1) {
-          // Tiempo agotado - cerrar popup
-          handleAutoClose();
-          return 0;
-        }
-        return prev - 0.1; // Decrementar cada 100ms para suavidad
-      });
-    }, 100);
-  };
-  
-  // Función para limpiar timers
-  const clearAutoCloseTimer = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  };
-  
-  // Función para cierre automático
-  const handleAutoClose = () => {
-    clearAutoCloseTimer();
-    setPopupAnimation('exitingRight');
-    setTimeout(() => {
-      setShowApplyPopup(false);
-      setPopupAnimation('entering');
-    }, 400);
-  };
-  
-  // Pausar/reanudar timer en hover
-  const handlePopupMouseEnter = () => {
-    setIsTimerPaused(true);
-    clearAutoCloseTimer();
-  };
-  
-  const handlePopupMouseLeave = () => {
-    setIsTimerPaused(false);
-    if (timeRemaining > 0) {
-      startAutoCloseTimer();
-    }
-  };
-  
   // Funciones para manejar las salidas animadas
   const handleClosePopup = () => {
-    clearAutoCloseTimer();
     setPopupAnimation('exitingRight');
     setTimeout(() => {
       setShowApplyPopup(false);
@@ -100,7 +43,6 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   };
   
   const handleApplyFilter = () => {
-    clearAutoCloseTimer();
     console.log('Aplicando período a toda la página:', { startDate, endDate });
     setPopupAnimation('applying');
     setTimeout(() => {
@@ -573,6 +515,54 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                     ))}
                   </div>
                 </div>
+
+                {/* Botón Apply to All */}
+                <div style={{ position: 'relative' }}>
+                  <div 
+                    onClick={() => {
+                      // Placeholder - no implementation yet
+                      console.log('Apply to all pages:', { startDate, endDate });
+                    }}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '8px',
+                      padding: '7px 12px',
+                      color: '#f59e0b',
+                      fontSize: '13px',
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.25s ease-out',
+                      backdropFilter: 'blur(10px)',
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      whiteSpace: 'nowrap',
+                      userSelect: 'none'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(245, 158, 11, 0.15)';
+                      e.currentTarget.style.borderColor = '#f59e0b';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.25)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+                      e.currentTarget.style.transform = 'translateY(0px)';
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                      <path d="M2 12h20"/>
+                    </svg>
+                    <span>Apply to All</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -755,7 +745,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
           <div
             style={{
               position: 'absolute',
-              bottom: '20px',
+              bottom: '10px',
               right: '10px',
               background: 'rgba(0, 0, 0, 0.9)',
               border: '1px solid #00ff88',
@@ -772,8 +762,6 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
               opacity: popupAnimation === 'exitingRight' ? 0 : 1,
             }}
             onClick={(e) => e.stopPropagation()}
-            onMouseEnter={handlePopupMouseEnter}
-            onMouseLeave={handlePopupMouseLeave}
           >
             {/* Contenedor de botones */}
             <div style={{
@@ -788,11 +776,11 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                 color: '#000000',
                 border: 'none',
                 borderRadius: '4px',
-                padding: '6px 12px',
+                padding: '6px 10px',
                 fontSize: '11px',
                 fontWeight: '700',
                 cursor: 'pointer',
-                letterSpacing: '0.2px',
+                letterSpacing: '0.1px',
                 pointerEvents: 'auto',
                 transition: 'all 0.2s ease',
                 transform: 'scale(1)',
@@ -817,8 +805,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                 color: '#ffffff',
                 fontSize: '16px',
                 cursor: 'pointer',
-                width: '28px',
-                height: '28px',
+                width: '26px',
+                height: '26px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -840,31 +828,6 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
             >
               ×
             </button>
-            </div>
-            
-            {/* Barra de progreso del timer */}
-            <div style={{
-              width: '100%',
-              height: '3px',
-              background: 'rgba(255, 255, 255, 0.1)',
-              borderRadius: '2px',
-              overflow: 'hidden',
-              marginTop: '6px',
-            }}>
-              <div
-                style={{
-                  height: '100%',
-                  background: isTimerPaused ? 
-                    'linear-gradient(90deg, #ffaa00, #ff6600)' : 
-                    'linear-gradient(90deg, #00ff88, #00cc66)',
-                  borderRadius: '2px',
-                  transition: isTimerPaused ? 'none' : 'width 0.1s linear',
-                  width: `${(timeRemaining / 9) * 100}%`,
-                  boxShadow: isTimerPaused ? 
-                    '0 0 6px rgba(255, 170, 0, 0.6)' : 
-                    '0 0 6px rgba(0, 255, 136, 0.6)',
-                }}
-              />
             </div>
           </div>,
           popupRoot

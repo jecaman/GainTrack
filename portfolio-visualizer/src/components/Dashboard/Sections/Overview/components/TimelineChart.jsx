@@ -347,11 +347,28 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
            (currentMode === 'day' && prevMode !== 'day');
   };
 
+  // Función para obtener datos filtrados por el rango de fechas actual
+  const getFilteredTimelineData = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return [];
+    
+    if (!startDate || !endDate) return portfolioData.timeline;
+    
+    const [startDay, startMonth, startYear] = startDate.split('/');
+    const [endDay, endMonth, endYear] = endDate.split('/');
+    const startDateObj = new Date(startYear, startMonth - 1, startDay);
+    const endDateObj = new Date(endYear, endMonth - 1, endDay);
+    
+    return portfolioData.timeline.filter(entry => {
+      const entryDate = new Date(entry.date);
+      return entryDate >= startDateObj && entryDate <= endDateObj;
+    });
+  };
+
   // Función para verificar si hay suficientes datos para cada tipo de agregación
   const canAggregate = (period) => {
-    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return false;
+    const timelineData = getFilteredTimelineData();
+    if (timelineData.length === 0) return false;
     
-    const timelineData = portfolioData.timeline;
     const uniquePeriods = new Set();
     
     timelineData.forEach(entry => {
@@ -385,6 +402,244 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     // Necesitamos al menos 2 períodos únicos para que tenga sentido agregar
     return uniquePeriods.size >= 2;
   };
+
+  // Función para obtener rangos de fechas rápidos
+  const getQuickDateRange = (range) => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return null;
+    
+    const today = new Date();
+    const firstAvailableDate = new Date(portfolioData.timeline[0].date);
+    let calculatedStartDate;
+    
+    switch (range) {
+      case 'all':
+        return null; // No aplicar filtro
+      case '1y':
+        calculatedStartDate = new Date(today);
+        calculatedStartDate.setFullYear(today.getFullYear() - 1);
+        break;
+      case '6m':
+        calculatedStartDate = new Date(today);
+        calculatedStartDate.setMonth(today.getMonth() - 6);
+        break;
+      case '3m':
+        calculatedStartDate = new Date(today);
+        calculatedStartDate.setMonth(today.getMonth() - 3);
+        break;
+      case '1m':
+        calculatedStartDate = new Date(today);
+        calculatedStartDate.setMonth(today.getMonth() - 1);
+        break;
+      case '1w':
+        calculatedStartDate = new Date(today);
+        calculatedStartDate.setDate(today.getDate() - 7);
+        break;
+      default:
+        return null;
+    }
+    
+    // Si la fecha calculada es anterior a la primera fecha disponible, usar la primera fecha
+    const finalStartDate = calculatedStartDate < firstAvailableDate ? firstAvailableDate : calculatedStartDate;
+    
+    return {
+      startDate: formatDate(finalStartDate),
+      endDate: formatDate(today)
+    };
+  };
+
+  // Estado para el filtro rápido activo
+  const [activeQuickFilter, setActiveQuickFilter] = useState('all');
+
+  // Función para detectar combinaciones problemáticas entre agregación y filtro
+  const getProblematicCombination = (currentPeriodMode, filterRange) => {
+    // 'day' siempre es compatible con todos los filtros
+    if (currentPeriodMode === 'day') return false;
+    
+    // 'all' siempre es compatible con todas las agregaciones
+    if (filterRange === 'all') return false;
+    
+    const aggregationHierarchy = { 'week': 2, 'month': 3, 'year': 4 };
+    const filterHierarchy = { '1w': 2, '1m': 3, '3m': 3.5, '6m': 3.8, '1y': 4 };
+    
+    const aggLevel = aggregationHierarchy[currentPeriodMode];
+    const filterLevel = filterHierarchy[filterRange];
+    
+    // Si la agregación es igual o mayor al filtro, es problemático
+    return aggLevel >= filterLevel;
+  };
+
+  // Función para resolver combinaciones problemáticas
+  const resolveProblematicCombination = (filterRange) => {
+    if (filterRange === 'all') return 'day'; // Para 'all', usar siempre 'day'
+    
+    // Mapear filtros a agregaciones seguras
+    const safeAggregations = {
+      '1w': 'day',     // 1 semana -> días
+      '1m': 'day',     // 1 mes -> días  
+      '3m': 'week',    // 3 meses -> semanas
+      '6m': 'week',    // 6 meses -> semanas
+      '1y': 'month'    // 1 año -> meses
+    };
+    
+    return safeAggregations[filterRange] || 'day';
+  };
+
+  // Función para verificar si un filtro es compatible con la agregación actual
+  const isFilterCompatible = (filterRange, currentPeriodMode) => {
+    // 'all' siempre es compatible
+    if (filterRange === 'all') return true;
+    
+    // 'day' siempre es compatible con todos los filtros
+    if (currentPeriodMode === 'day') return true;
+    
+    // Verificar incompatibilidad conceptual
+    if (getProblematicCombination(currentPeriodMode, filterRange)) {
+      return false;
+    }
+    
+    // Simular aplicación del filtro y verificar si la agregación seguiría siendo válida
+    const simulatedDateRange = getQuickDateRange(filterRange);
+    if (!simulatedDateRange) return true;
+    
+    // Simular el filtro temporalmente
+    const filteredData = portfolioData?.timeline?.filter(entry => {
+      const entryDate = new Date(entry.date);
+      const [startDay, startMonth, startYear] = simulatedDateRange.startDate.split('/');
+      const [endDay, endMonth, endYear] = simulatedDateRange.endDate.split('/');
+      const startDateObj = new Date(startYear, startMonth - 1, startDay);
+      const endDateObj = new Date(endYear, endMonth - 1, endDay);
+      return entryDate >= startDateObj && entryDate <= endDateObj;
+    }) || [];
+    
+    // Verificar si habría suficientes períodos únicos para la agregación actual
+    const uniquePeriods = new Set();
+    filteredData.forEach(entry => {
+      const date = new Date(entry.date);
+      let periodKey;
+      
+      switch (currentPeriodMode) {
+        case 'week':
+          const weekStart = new Date(date);
+          const day = weekStart.getDay();
+          const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+          weekStart.setDate(diff);
+          periodKey = weekStart.toISOString().split('T')[0];
+          break;
+        case 'month':
+          periodKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+          break;
+        case 'year':
+          periodKey = date.getFullYear().toString();
+          break;
+        default:
+          return true; // day siempre es válido
+      }
+      uniquePeriods.add(periodKey);
+    });
+    
+    return uniquePeriods.size >= 2;
+  };
+
+  // Función para verificar si una agregación es compatible con el filtro actual
+  const isAggregationCompatible = (aggregationMode, currentFilter) => {
+    if (!currentFilter || currentFilter === 'all') {
+      // Sin filtro específico, verificar con datos actuales
+      return canAggregate(aggregationMode);
+    }
+    
+    // Verificar incompatibilidad conceptual
+    if (getProblematicCombination(aggregationMode, currentFilter)) {
+      return false;
+    }
+    
+    // Verificar si hay suficientes datos con el filtro actual
+    return canAggregate(aggregationMode);
+  };
+
+  // Función para manejar clicks en filtros rápidos
+  const handleQuickFilter = (range) => {
+    if (range === 'all') {
+      // ALL siempre ejecuta reset completo, independientemente del estado actual
+      const { defaultStartDate, defaultEndDate } = getDefaultDates();
+      
+      if (!defaultStartDate || !defaultEndDate) {
+        return;
+      }
+      
+      // Primero resetear zoom y estado
+      if (chartRef.current) {
+        chartRef.current.resetZoom();
+      }
+      setIsZoomed(false);
+      
+      // Marcar como cambio de filtro rápido y establecer fechas
+      isQuickFilterChange.current = true;
+      setStartDate(defaultStartDate);
+      setEndDate(defaultEndDate);
+      
+      // Mostrar popup cuando se seleccione filtro rápido
+      setShowApplyPopup(true);
+      
+      // Establecer el filtro ALL al final para que el botón de reset desaparezca
+      setTimeout(() => {
+        setActiveQuickFilter(range);
+      }, 1);
+    } else if (isFilterCompatible(range, periodMode)) {
+      // Solo aplicar otros filtros si son compatibles
+      const dateRange = getQuickDateRange(range);
+      if (dateRange) {
+        // Marcar que el cambio de fecha es por filtro rápido ANTES de cambiar las fechas
+        isQuickFilterChange.current = true;
+        
+        setStartDate(dateRange.startDate);
+        setEndDate(dateRange.endDate);
+        setActiveQuickFilter(range);
+        
+        // Mostrar popup cuando se seleccione filtro rápido
+        setShowApplyPopup(true);
+      }
+    }
+  };
+
+  // Ref para trackear si el cambio de fecha es por filtro rápido
+  const isQuickFilterChange = useRef(false);
+
+  // Detectar cambios manuales en las fechas para actualizar activeQuickFilter
+  useEffect(() => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return;
+    
+    // Si el cambio es por filtro rápido, no procesarlo aquí
+    if (isQuickFilterChange.current) {
+      isQuickFilterChange.current = false;
+      return;
+    }
+    
+    const { defaultStartDate, defaultEndDate } = getDefaultDates();
+    
+    // Si es el rango completo por defecto
+    if (startDate === defaultStartDate && endDate === defaultEndDate) {
+      setActiveQuickFilter('all');
+      return;
+    }
+    
+    // Verificar si coincide con algún filtro rápido
+    const quickFilters = ['1w', '1m', '3m', '6m', '1y'];
+    let foundMatch = false;
+    
+    for (const filter of quickFilters) {
+      const range = getQuickDateRange(filter);
+      if (range && startDate === range.startDate && endDate === range.endDate) {
+        setActiveQuickFilter(filter);
+        foundMatch = true;
+        break;
+      }
+    }
+    
+    // Si no coincide con ningún filtro rápido, no activar ninguno
+    if (!foundMatch) {
+      setActiveQuickFilter(null);
+    }
+  }, [startDate, endDate, portfolioData]);
   
   // Helper para detectar cambios que requieren animaciones especiales
   const getAnimationType = (timelineData) => {
@@ -1884,6 +2139,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 setStartDate(newStartDate);
                 setEndDate(newEndDate);
                 setIsZoomed(true);
+                
+                // Mostrar popup cuando se haga zoom
+                setShowApplyPopup(true);
               }
             }
           },
@@ -2241,42 +2499,46 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               </button>
               
               <button
-                onClick={() => canAggregate('week') && setPeriodMode('week')}
-                disabled={!canAggregate('week')}
+                onClick={() => {
+                  if (canAggregate('week') && isAggregationCompatible('week', activeQuickFilter)) {
+                    setPeriodMode('week');
+                  }
+                }}
+                disabled={!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter)}
                 style={{
                   background: periodMode === 'week' 
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                    : !canAggregate('week') 
+                    : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
                       ? 'rgba(255, 255, 255, 0.02)' 
                       : 'rgba(255, 255, 255, 0.06)',
                   border: periodMode === 'week' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
-                    : !canAggregate('week') 
+                    : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
                       ? '1px solid rgba(255, 255, 255, 0.04)' 
                       : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
                   padding: '6px 12px',
                   color: periodMode === 'week' 
                     ? '#ffffff' 
-                    : !canAggregate('week') 
+                    : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
                       ? 'rgba(245, 245, 245, 0.3)' 
                       : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
-                  cursor: !canAggregate('week') ? 'not-allowed' : 'pointer',
+                  cursor: (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter)) ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s ease',
                   backdropFilter: 'blur(8px)',
-                  opacity: !canAggregate('week') ? 0.4 : 1
+                  opacity: (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter)) ? 0.4 : 1
                 }}
                 onMouseEnter={(e) => {
-                  if (periodMode !== 'week' && canAggregate('week')) {
+                  if (periodMode !== 'week' && canAggregate('week') && isAggregationCompatible('week', activeQuickFilter)) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.12)';
                     e.target.style.color = '#ffffff';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (periodMode !== 'week' && canAggregate('week')) {
+                  if (periodMode !== 'week' && canAggregate('week') && isAggregationCompatible('week', activeQuickFilter)) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.06)';
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                   }
@@ -2286,42 +2548,46 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               </button>
               
               <button
-                onClick={() => canAggregate('month') && setPeriodMode('month')}
-                disabled={!canAggregate('month')}
+                onClick={() => {
+                  if (canAggregate('month') && isAggregationCompatible('month', activeQuickFilter)) {
+                    setPeriodMode('month');
+                  }
+                }}
+                disabled={!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter)}
                 style={{
                   background: periodMode === 'month' 
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                    : !canAggregate('month') 
+                    : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
                       ? 'rgba(255, 255, 255, 0.02)' 
                       : 'rgba(255, 255, 255, 0.06)',
                   border: periodMode === 'month' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
-                    : !canAggregate('month') 
+                    : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
                       ? '1px solid rgba(255, 255, 255, 0.04)' 
                       : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
                   padding: '6px 12px',
                   color: periodMode === 'month' 
                     ? '#ffffff' 
-                    : !canAggregate('month') 
+                    : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
                       ? 'rgba(245, 245, 245, 0.3)' 
                       : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
-                  cursor: !canAggregate('month') ? 'not-allowed' : 'pointer',
+                  cursor: (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter)) ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s ease',
                   backdropFilter: 'blur(8px)',
-                  opacity: !canAggregate('month') ? 0.4 : 1
+                  opacity: (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter)) ? 0.4 : 1
                 }}
                 onMouseEnter={(e) => {
-                  if (periodMode !== 'month' && canAggregate('month')) {
+                  if (periodMode !== 'month' && canAggregate('month') && isAggregationCompatible('month', activeQuickFilter)) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.12)';
                     e.target.style.color = '#ffffff';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (periodMode !== 'month' && canAggregate('month')) {
+                  if (periodMode !== 'month' && canAggregate('month') && isAggregationCompatible('month', activeQuickFilter)) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.06)';
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                   }
@@ -2331,42 +2597,46 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               </button>
               
               <button
-                onClick={() => canAggregate('year') && setPeriodMode('year')}
-                disabled={!canAggregate('year')}
+                onClick={() => {
+                  if (canAggregate('year') && isAggregationCompatible('year', activeQuickFilter)) {
+                    setPeriodMode('year');
+                  }
+                }}
+                disabled={!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter)}
                 style={{
                   background: periodMode === 'year' 
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                    : !canAggregate('year') 
+                    : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
                       ? 'rgba(255, 255, 255, 0.02)' 
                       : 'rgba(255, 255, 255, 0.06)',
                   border: periodMode === 'year' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
-                    : !canAggregate('year') 
+                    : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
                       ? '1px solid rgba(255, 255, 255, 0.04)' 
                       : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
                   padding: '6px 12px',
                   color: periodMode === 'year' 
                     ? '#ffffff' 
-                    : !canAggregate('year') 
+                    : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
                       ? 'rgba(245, 245, 245, 0.3)' 
                       : 'rgba(245, 245, 245, 0.8)',
                   fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
-                  cursor: !canAggregate('year') ? 'not-allowed' : 'pointer',
+                  cursor: (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter)) ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s ease',
                   backdropFilter: 'blur(8px)',
-                  opacity: !canAggregate('year') ? 0.4 : 1
+                  opacity: (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter)) ? 0.4 : 1
                 }}
                 onMouseEnter={(e) => {
-                  if (periodMode !== 'year' && canAggregate('year')) {
+                  if (periodMode !== 'year' && canAggregate('year') && isAggregationCompatible('year', activeQuickFilter)) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.12)';
                     e.target.style.color = '#ffffff';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (periodMode !== 'year' && canAggregate('year')) {
+                  if (periodMode !== 'year' && canAggregate('year') && isAggregationCompatible('year', activeQuickFilter)) {
                     e.target.style.background = 'rgba(255, 255, 255, 0.06)';
                     e.target.style.color = 'rgba(245, 245, 245, 0.8)';
                   }
@@ -2524,7 +2794,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                       background: '#00ff88',
                       borderRadius: '50%',
                       border: '1px solid rgba(15, 15, 15, 0.8)',
-                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)'
+                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)',
+                      pointerEvents: 'none'
                     }}></div>
                   );
                 })()}
@@ -2979,7 +3250,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                       background: '#00ff88',
                       borderRadius: '50%',
                       border: '1px solid rgba(15, 15, 15, 0.8)',
-                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)'
+                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)',
+                      pointerEvents: 'none'
                     }}></div>
                   );
                 })()}
@@ -3029,8 +3301,76 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           plugins={[]}
         />
         
+        {/* Botones de filtro rápido - debajo del gráfico */}
+        <div style={{
+          position: 'absolute',
+          bottom: '-40px',
+          left: '60px',
+          display: 'flex',
+          gap: '16px',
+          alignItems: 'center',
+          zIndex: 10
+        }}>
+          {[
+            { key: 'all', label: 'ALL' },
+            { key: '1y', label: '1Y' },
+            { key: '6m', label: '6M' },
+            { key: '3m', label: '3M' },
+            { key: '1m', label: '1M' },
+            { key: '1w', label: '1W' }
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => handleQuickFilter(key)}
+              disabled={key !== 'all' && !isFilterCompatible(key, periodMode)}
+              style={{
+                background: activeQuickFilter === key 
+                  ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
+                  : (key !== 'all' && !isFilterCompatible(key, periodMode))
+                    ? 'rgba(255, 255, 255, 0.02)'
+                    : 'rgba(255, 255, 255, 0.06)',
+                border: activeQuickFilter === key 
+                  ? '1px solid rgba(34, 197, 94, 0.8)' 
+                  : (key !== 'all' && !isFilterCompatible(key, periodMode))
+                    ? '1px solid rgba(255, 255, 255, 0.04)'
+                    : '1px solid rgba(255, 255, 255, 0.12)',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                color: activeQuickFilter === key 
+                  ? '#ffffff' 
+                  : (key !== 'all' && !isFilterCompatible(key, periodMode))
+                    ? 'rgba(245, 245, 245, 0.3)'
+                    : 'rgba(245, 245, 245, 0.8)',
+                fontSize: '13px',
+                fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                fontWeight: '700',
+                cursor: (key !== 'all' && !isFilterCompatible(key, periodMode)) ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+                backdropFilter: 'blur(8px)',
+                minWidth: '50px',
+                textAlign: 'center',
+                opacity: (key !== 'all' && !isFilterCompatible(key, periodMode)) ? 0.4 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (activeQuickFilter !== key && (key === 'all' || isFilterCompatible(key, periodMode))) {
+                  e.target.style.background = 'rgba(255, 255, 255, 0.12)';
+                  e.target.style.color = '#ffffff';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (activeQuickFilter !== key && (key === 'all' || isFilterCompatible(key, periodMode))) {
+                  e.target.style.background = 'rgba(255, 255, 255, 0.06)';
+                  e.target.style.color = 'rgba(245, 245, 245, 0.8)';
+                }
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        
         {/* Botón de reset de fechas - posicionado en margen derecho del gráfico */}
-        {(!isUsingDefaultRange || isZoomed) && (
+        {(!isUsingDefaultRange || isZoomed) && activeQuickFilter !== 'all' && !(activeQuickFilter === '1y' && isUsingDefaultRange) && (
           <div
             onClick={(e) => {
               // Añadir efecto visual de click
@@ -3050,9 +3390,14 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               }
               
               // Resetear fechas y estado
+              isQuickFilterChange.current = true;
               setStartDate(defaultStartDate);
               setEndDate(defaultEndDate);
               setIsZoomed(false);
+              setActiveQuickFilter('all');
+              
+              // Mostrar popup cuando se resetee
+              setShowApplyPopup(true);
             }}
             style={{
               position: 'absolute',
