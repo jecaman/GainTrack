@@ -22,6 +22,14 @@ const hoverPlugin = {
       startTime: 0,
       duration: 1200 // 1.2 segundos - más lento
     };
+    
+    // Estado para tooltip congelado
+    chart.frozenTooltip = {
+      isFrozen: false,
+      frozenIndex: -1,
+      lastDrawnIndex: -1, // Para evitar redibujar innecesariamente
+      isTransitioning: false // Nueva bandera para transiciones
+    };
   },
   beforeDatasetsDraw(chart) {
     // Almacenar información del hover para usar en afterDraw
@@ -42,10 +50,16 @@ const hoverPlugin = {
       return;
     }
     
-    // Usar el índice almacenado desde onHover
-    if (chart.hoveredDataIndex === undefined) return;
-    
-    const dataIndex = chart.hoveredDataIndex;
+    // Determinar qué índice usar: congelado tiene prioridad
+    let dataIndex;
+    if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
+      dataIndex = chart.frozenTooltip.frozenIndex;
+      // Cuando está congelado, siempre dibujar (no usar cache de lastDrawnIndex)
+    } else {
+      // Usar el índice almacenado desde onHover
+      if (chart.hoveredDataIndex === undefined) return;
+      dataIndex = chart.hoveredDataIndex;
+    }
     const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
     if (!portfolioDataset) return;
     
@@ -73,28 +87,46 @@ const hoverPlugin = {
     
     ctx.save();
     
-    // Línea vertical eliminada para evitar bug visual
+    // Si está congelado, dibujar línea vertical blanca para indicarlo
+    if (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex) {
+      const { chartArea } = chart;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]); // Línea punteada para mejor distinción
+      ctx.beginPath();
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]); // Resetear dash
+    }
     
-    // Punto luminoso moderado
+    // Punto luminoso moderado (más grande si está congelado)
+    const pointRadius = (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex) ? 9 : 7;
+    const borderWidth = (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex) ? 3 : 2;
+    
     ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
     ctx.fillStyle = pointColor;
     ctx.fill();
     
-    // Borde del punto
+    // Borde del punto (más grueso si está congelado)
     ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.lineWidth = 2;
+    ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = borderWidth;
     ctx.stroke();
     
-    // Resplandor suave alrededor del punto
-    const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
-    glowGradient.addColorStop(0, `rgba(${waveColor}, 0.6)`);
-    glowGradient.addColorStop(0.6, `rgba(${waveColor}, 0.2)`);
+    // Resplandor suave alrededor del punto (más intenso si está congelado)
+    const isFrozen = (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex);
+    const glowRadius = isFrozen ? 20 : 15;
+    const glowIntensity = isFrozen ? 0.8 : 0.6;
+    
+    const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+    glowGradient.addColorStop(0, `rgba(${waveColor}, ${glowIntensity})`);
+    glowGradient.addColorStop(0.6, `rgba(${waveColor}, ${glowIntensity * 0.3})`);
     glowGradient.addColorStop(1, `rgba(${waveColor}, 0)`);
     ctx.beginPath();
-    ctx.arc(x, y, 15, 0, Math.PI * 2);
+    ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
     ctx.fillStyle = glowGradient;
     ctx.fill();
     
@@ -255,12 +287,23 @@ const splitLinePlugin = {
   id: 'splitLine',
   afterDraw(chart) {
     const { ctx, data, scales } = chart;
-    const activeElements = chart.getActiveElements();
     
-    if (activeElements.length === 0) return;
+    let activeIndex;
     
-    // Obtener el índice del punto activo
-    const activeIndex = activeElements[0].index;
+    // Determinar el índice activo: congelado tiene prioridad
+    if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
+      activeIndex = chart.frozenTooltip.frozenIndex;
+      
+      // Solo procesar si es diferente al último dibujado (usar el mismo estado que hoverPlugin)
+      if (chart.frozenTooltip.lastDrawnIndex === activeIndex) {
+        return; // Ya está dibujado, no hacer nada
+      }
+      
+    } else {
+      const activeElements = chart.getActiveElements();
+      if (activeElements.length === 0) return;
+      activeIndex = activeElements[0].index;
+    }
     
     // Para cada dataset visible
     data.datasets.forEach((dataset, datasetIndex) => {
@@ -316,6 +359,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const [isZoomed, setIsZoomed] = useState(false);
   const [zoomDates, setZoomDates] = useState({ start: null, end: null });
   const [isDragging, setIsDragging] = useState(false);
+  const [isTooltipFrozen, setIsTooltipFrozen] = useState(false);
+  const [isChartStabilizing, setIsChartStabilizing] = useState(false);
   
   const chartRef = useRef(null);
   
@@ -558,19 +603,34 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
 
   // Función para manejar clicks en filtros rápidos
   const handleQuickFilter = (range) => {
+    // Activar bloqueo de hover durante transición
+    setIsChartStabilizing(true);
+    console.log('🔄 Iniciando transición de filtro, bloqueando hover...');
+    
     if (range === 'all') {
       // ALL siempre ejecuta reset completo, independientemente del estado actual
       const { defaultStartDate, defaultEndDate } = getDefaultDates();
       
       if (!defaultStartDate || !defaultEndDate) {
+        // Limpiar bloqueo si hay error
+        setTimeout(() => setIsChartStabilizing(false), 100);
         return;
       }
       
       // Primero resetear zoom y estado
       if (chartRef.current) {
         chartRef.current.resetZoom();
+        chartRef.current._isDragZoom = false; // Limpiar flag de drag zoom
       }
       setIsZoomed(false);
+      
+      // Descongelar tooltip si está congelado
+      unfreezeTooltip();
+      
+      // Activar flag interno del chart para estabilización
+      if (chartRef.current) {
+        chartRef.current._stabilizing = true;
+      }
       
       // Marcar como cambio de filtro rápido y establecer fechas
       isQuickFilterChange.current = true;
@@ -599,6 +659,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         setShowApplyPopup(true);
       }
     }
+    
+    // Desbloquear hover después de la transición (700ms)
+    setTimeout(() => {
+      setIsChartStabilizing(false);
+      console.log('🔄 Hover desbloqueado después de transición de filtro');
+    }, 700);
   };
 
   // Ref para trackear si el cambio de fecha es por filtro rápido
@@ -692,46 +758,17 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Funciones para manejar el popup
   const showApplyToAllPopup = () => setShowApplyPopup(true);
   const hideApplyPopup = () => setShowApplyPopup(false);
+  
+  // Funciones simples para manejar el popup
+  const forceHidePopup = () => setShowApplyPopup(false);
+  const showCleanPopup = () => setShowApplyPopup(true);
 
-  // Agregar estilos para la animación del popup y calendario
+  // Definir animación base una sola vez
   React.useEffect(() => {
     if (!document.getElementById('popup-slide-animation')) {
       const style = document.createElement('style');
       style.id = 'popup-slide-animation';
-      style.textContent = `
-        @keyframes slideInFromBottom {
-          0% {
-            opacity: 0;
-            transform: translateY(100%) scale(0.9);
-          }
-          60% {
-            transform: translateY(-5%) scale(1.02);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-        
-        @keyframes calendarSlideIn {
-          0% {
-            opacity: 0;
-            transform: translateY(-10px) scale(0.95);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-        
-        .calendar-title-transition {
-          transition: all 0.2s ease-out;
-        }
-        
-        .calendar-content-transition {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-      `;
+      style.textContent = '@keyframes slideInFromBottom { 0% { opacity: 0; transform: translateY(20px) scale(0.97); } 100% { opacity: 1; transform: translateY(0) scale(1); } } @keyframes calendarSlideIn { 0% { opacity: 0; transform: translateY(-10px) scale(0.95); } 100% { opacity: 1; transform: translateY(0) scale(1); } } .calendar-title-transition { transition: all 0.2s ease-out; } .calendar-content-transition { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }';
       document.head.appendChild(style);
     }
   }, []);
@@ -834,6 +871,17 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       // Delay optimizado para permitir transición visual suave
       const timer = setTimeout(() => {
         setIsChartLoading(false);
+        
+        // Período de estabilización después de cambio de datos
+        if (chartRef.current) {
+          chartRef.current._stabilizing = true;
+          setTimeout(() => {
+            if (chartRef.current) {
+              chartRef.current._stabilizing = false;
+              console.log('🔄 Chart estabilizado después de cambio de datos');
+            }
+          }, 700);
+        }
       }, 500); // 500ms para transición más suave
       
       return () => clearTimeout(timer);
@@ -1414,16 +1462,16 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     if (viewMode === 'balance') {
       // En P&L View, mostrar fecha + P&L acumulados y porcentaje
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
-      content = `<span style="color: #ffffff; font-size: 20px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     } else {
       // Full View - mostrar portfolio value primero
-      content = `<span style="color: #ffffff; font-size: 20px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     }
     
     if (showTotalInvested && viewMode === 'both') {
       // Determinar el tipo de profit mostrado basado en datos disponibles
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 22px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 18px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     }
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
@@ -1471,8 +1519,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     const canvas = chart.canvas;
     
     const handleMouseMove = (event) => {
-      // No hacer nada si se está haciendo drag
-      if (isDragging) return;
+      // No hacer nada si se está haciendo drag, drag zoom, o en período de estabilización
+      if (isDragging || chart._isDragZoom || chart._stabilizing || isChartStabilizing) {
+        if (chart._stabilizing || isChartStabilizing) {
+          console.log('🚫 Hover bloqueado - chart en estabilización');
+        }
+        return;
+      }
+      
+      // Si está congelado, no procesar hover
+      if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
+        console.log('MouseMove bloqueado - tooltip congelado');
+        return;
+      }
       
       // Throttle dinámico basado en complejidad
       if (chart._mouseThrottle) return;
@@ -1550,23 +1609,29 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         }
         // Solo actualizar si el índice cambió
         if (chart.hoveredDataIndex !== closestIndex) {
+          const previousIndex = chart.hoveredDataIndex;
           chart.hoveredDataIndex = closestIndex;
           
           // Actualizar solo la línea principal, mantener áreas completas
           const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
           const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
           
-          // Solo cortar las líneas principales, no las áreas
+          // Siempre mantener los datos completos para permitir movimiento bidireccional
           if (portfolioDataset && portfolioDataset.originalData) {
-            portfolioDataset.data = portfolioDataset.originalData.slice(0, closestIndex + 1).concat(
-              new Array(portfolioDataset.originalData.length - closestIndex - 1).fill(null)
-            );
+            // Crear array con datos hasta el punto actual + nulls después
+            const newData = [...portfolioDataset.originalData];
+            for (let i = closestIndex + 1; i < newData.length; i++) {
+              newData[i] = null;
+            }
+            portfolioDataset.data = newData;
           }
           
           if (costBasisDataset && costBasisDataset.originalData && !costBasisDataset.hidden) {
-            costBasisDataset.data = costBasisDataset.originalData.slice(0, closestIndex + 1).concat(
-              new Array(costBasisDataset.originalData.length - closestIndex - 1).fill(null)
-            );
+            const newData = [...costBasisDataset.originalData];
+            for (let i = closestIndex + 1; i < newData.length; i++) {
+              newData[i] = null;
+            }
+            costBasisDataset.data = newData;
           }
           
           // Las áreas se mantienen completas siempre
@@ -1577,6 +1642,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     };
 
     const handleMouseLeave = () => {
+      // Si está congelado, no resetear el tooltip al salir
+      if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
+        console.log('MouseLeave bloqueado - tooltip congelado');
+        return;
+      }
+      
       const tooltipArea = document.querySelector('#tooltip-area');
       if (tooltipArea) {
         tooltipArea.innerHTML = renderTooltipContent(null, getDataForTooltip());
@@ -1584,6 +1655,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
       // Usar timeout para asegurar que la animación funcione tanto para movimiento gradual como rápido
       setTimeout(() => {
+        // Si está congelado, no restaurar las líneas
+        if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
+          return;
+        }
+        
         if (chart.hoveredDataIndex !== undefined) {
           chart.hoveredDataIndex = undefined;
           
@@ -1611,7 +1687,42 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [portfolioData, processedTimelineData, viewMode, showTotalInvested, periodMode, isDragging]);
+  }, [portfolioData, processedTimelineData, viewMode, showTotalInvested, periodMode, isDragging, isChartStabilizing]);
+  
+  // Función helper para descongelar el tooltip
+  const unfreezeTooltip = () => {
+    const chart = chartRef.current;
+    if (!chart || !chart.frozenTooltip || !chart.frozenTooltip.isFrozen) return;
+    
+    console.log('Descongelando tooltip por reset');
+    
+    // Limpiar estados
+    chart.hoveredDataIndex = undefined;
+    chart.frozenTooltip.isFrozen = false;
+    chart.frozenTooltip.frozenIndex = -1;
+    
+    // Restaurar líneas
+    chart.data.datasets.forEach((dataset, idx) => {
+      if (dataset.originalData && !dataset.skipDuringMouseMove) {
+        dataset.data = [...dataset.originalData];
+      }
+    });
+    
+    setIsTooltipFrozen(false);
+    forceHidePopup();
+    chart.update('none');
+  };
+
+  // Configurar referencias de funciones en el chart para el onClick
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    
+    // Agregar referencias de las funciones para usar en onClick
+    chart._renderTooltipContent = renderTooltipContent;
+    chart._processedTimelineData = processedTimelineData;
+    
+  }, [renderTooltipContent, processedTimelineData]);
 
   // Manejar estado de dragging para tooltip
   useEffect(() => {
@@ -1621,43 +1732,80 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     const canvas = chart.canvas;
     if (!canvas) return;
 
-    const handleMouseDown = () => {
-      setIsDragging(true);
-      chart.isDragging = true;
+    const handleMouseDown = (event) => {
+      // IMPORTANTE: No marcar como dragging si el tooltip está congelado O si estamos en proceso de congelar
+      // Esto evita que el hoverPlugin deje de dibujar durante mousedown
+      const isFrozenOrFreezing = (chart.frozenTooltip && chart.frozenTooltip.isFrozen) || isTooltipFrozen;
       
-      // No resetear el tooltip - mantenerlo tal como está
-      // Solo restaurar las líneas sin delay para evitar efectos visuales bruscos
-      if (chart.hoveredDataIndex !== undefined) {
-        chart.hoveredDataIndex = undefined;
+      if (!isFrozenOrFreezing) {
+        // Guardar posición inicial para detectar drag
+        chart._mouseDownPos = {
+          x: event.clientX,
+          y: event.clientY,
+          time: Date.now()
+        };
         
-        // Restaurar solo las líneas principales, las áreas ya están completas
-        const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
-        const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
+        setIsDragging(true);
+        chart.isDragging = true;
         
-        if (portfolioDataset && portfolioDataset.originalData) {
-          portfolioDataset.data = [...portfolioDataset.originalData];
+        // No resetear el tooltip - mantenerlo tal como está
+        // Solo restaurar las líneas sin delay para evitar efectos visuales bruscos
+        if (chart.hoveredDataIndex !== undefined) {
+          chart.hoveredDataIndex = undefined;
+        
+        // NO restaurar las líneas durante mousedown para evitar parpadeo en congelado
+        // Las líneas se restaurarán en mouseup o hover normal
         }
+      }
+    };
+
+    const handleMouseUp = () => {
+      // Solo resetear dragging si no estaba congelado (para evitar inconsistencias)
+      const isFrozenOrFreezing = (chart.frozenTooltip && chart.frozenTooltip.isFrozen) || isTooltipFrozen;
+      
+      if (!isFrozenOrFreezing) {
+        setIsDragging(false);
+        chart.isDragging = false;
+        chart.update('none');
+      }
+      
+      // Limpiar posición de mousedown
+      chart._mouseDownPos = null;
+      chart._dragDetected = false;
+    };
+
+    const handleDocumentMouseMove = (event) => {
+      // Solo procesar si estamos en mousedown y no hemos detectado drag aún
+      if (!chart._mouseDownPos || chart._dragDetected) return;
+      
+      const deltaX = Math.abs(event.clientX - chart._mouseDownPos.x);
+      const deltaY = Math.abs(event.clientY - chart._mouseDownPos.y);
+      const deltaTime = Date.now() - chart._mouseDownPos.time;
+      
+      // Detectar drag: movimiento mínimo de 5px en cualquier dirección
+      if ((deltaX > 5 || deltaY > 5) && deltaTime > 50) {
+        chart._dragDetected = true;
+        console.log('🎯 Drag zoom detectado - completando línea');
         
-        if (costBasisDataset && costBasisDataset.originalData) {
-          costBasisDataset.data = [...costBasisDataset.originalData];
-        }
+        // Restaurar todas las líneas completas inmediatamente
+        chart.data.datasets.forEach(dataset => {
+          if (dataset.originalData && !dataset.skipDuringMouseMove) {
+            dataset.data = [...dataset.originalData];
+          }
+        });
         
         chart.update('none');
       }
     };
 
-    const handleMouseUp = () => {
-      setIsDragging(false);
-      chart.isDragging = false;
-      chart.update('none');
-    };
-
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mousemove', handleDocumentMouseMove);
 
     return () => {
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handleDocumentMouseMove);
     };
   }, [chartRef.current]);
   
@@ -1831,10 +1979,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           const {ctx, chartArea} = chart;
           
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.4)');
-          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.25)');
-          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.1)');
-          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.05)');
+          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.20)');
+          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.15)');
+          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.05)');
+          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.01)');
           
           return gradient;
         },
@@ -1864,10 +2012,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           const {ctx, chartArea} = chart;
           
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(255, 68, 68, 0.4)');
-          gradient.addColorStop(0.4, 'rgba(255, 68, 68, 0.25)');
-          gradient.addColorStop(0.8, 'rgba(255, 68, 68, 0.1)');
-          gradient.addColorStop(1, 'rgba(255, 68, 68, 0.05)');
+          gradient.addColorStop(0, 'rgba(255, 68, 68, 0.20)');
+          gradient.addColorStop(0.4, 'rgba(255, 68, 68, 0.15)');
+          gradient.addColorStop(0.8, 'rgba(255, 68, 68, 0.05)');
+          gradient.addColorStop(1, 'rgba(255, 68, 68, 0.01)');
           
           return gradient;
         },
@@ -1957,10 +2105,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             if (!chartArea) return 'transparent';
             
             const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.35)'); // Más intenso arriba
-            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.22)'); // Transición más visible
-            gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.12)'); // Más color en el medio
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.05)'); // Más visible abajo
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.12)'); // Menos intenso arriba
+            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)'); // Transición
+            gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.04)'); // Más visible en el medio
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.01)'); // Más visible abajo
             return gradient;
           },
           fill: 'origin',
@@ -2031,10 +2179,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           if (!chartArea) return 'transparent';
           
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.4)');
-          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.25)');
-          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.1)');
-          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.05)');
+          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.20)');
+          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.15)');
+          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.05)');
+          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.01)');
           return gradient;
         },
         fill: 'origin',
@@ -2080,14 +2228,21 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     };
   };
 
-  const timelineData = createTimelineData();
+  // No regenerar timelineData si el tooltip está congelado (preservar datos cortados)
+  const timelineData = useMemo(() => {
+    if (isTooltipFrozen && chartRef.current) {
+      // Devolver los datos actuales del chart para preservar el estado congelado
+      return chartRef.current.data;
+    }
+    return createTimelineData();
+  }, [portfolioData, startDate, endDate, processedTimelineData, viewMode, showTotalInvested, isTooltipFrozen]);
   
   const getDynamicTimelineOptions = () => {
     return {
       responsive: true,
       maintainAspectRatio: false,
       animation: {
-        duration: 500,
+        duration: 600,
         easing: 'easeOutCirc',
         animateRotate: false,
         animateScale: false
@@ -2100,6 +2255,79 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       interaction: {
         mode: 'index',
         intersect: false,
+      },
+      onClick: function(event, elements, chart) {
+        console.log('Click detectado!', elements);
+        
+        // Asegurar que el estado existe
+        if (!chart.frozenTooltip) {
+          chart.frozenTooltip = {
+            isFrozen: false,
+            frozenIndex: -1,
+            lastDrawnIndex: -1
+          };
+        }
+        
+        if (elements && elements.length > 0) {
+          const clickedIndex = elements[0].index;
+          console.log('Índice clickeado:', clickedIndex);
+          
+          // Si ya está congelado, descongelar (sin importar el punto)
+          if (chart.frozenTooltip.isFrozen) {
+            console.log('Descongelando tooltip');
+            
+            // Limpiar estados
+            chart.hoveredDataIndex = undefined;
+            chart.frozenTooltip.isFrozen = false;
+            chart.frozenTooltip.frozenIndex = -1;
+            
+            // Restaurar líneas
+            chart.data.datasets.forEach((dataset, idx) => {
+              if (dataset.originalData && !dataset.skipDuringMouseMove) {
+                dataset.data = [...dataset.originalData];
+              }
+            });
+            
+            setIsTooltipFrozen(false);
+            forceHidePopup();
+            chart.update('none');
+          } else {
+            // Congelar en este punto
+            console.log('Congelando tooltip en índice:', clickedIndex);
+            
+            const indexToFreeze = chart.hoveredDataIndex !== undefined ? chart.hoveredDataIndex : clickedIndex;
+            
+            // Configurar el estado congelado
+            chart.frozenTooltip.isFrozen = true;
+            chart.frozenTooltip.frozenIndex = indexToFreeze;
+            chart.hoveredDataIndex = indexToFreeze;
+            
+            setIsTooltipFrozen(true);
+            setShowApplyPopup(true);
+            
+            // Cortar líneas principales
+            chart.data.datasets.forEach((dataset, idx) => {
+              const isMainLine = dataset.label === 'Portfolio Value' || 
+                                dataset.label === 'Total P&L' || 
+                                dataset.label === 'Cost Basis';
+              
+              if (dataset.originalData && isMainLine && !dataset.skipDuringMouseMove) {
+                dataset.data = dataset.originalData.slice(0, indexToFreeze + 1);
+              }
+            });
+          }
+          
+          chart.update('none');
+        }
+      },
+      onHover: function(event, elements, chart) {
+        // Si está congelado, no procesar hover
+        if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
+          return;
+        }
+        
+        // Comportamiento normal de hover si no está congelado
+        // Chart.js manejará esto automáticamente
       },
       plugins: {
         legend: {
@@ -2118,9 +2346,39 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               backgroundColor: 'rgba(34, 197, 94, 0.3)',
               borderColor: 'rgba(34, 197, 94, 0.8)',
               borderWidth: 2,
+              onDragStart: function({chart}) {
+                console.log('🎯 Drag iniciado - restaurando línea completa');
+                
+                // Restaurar todas las líneas completas para el drag/zoom
+                chart.data.datasets.forEach(dataset => {
+                  if (dataset.originalData && !dataset.skipDuringMouseMove) {
+                    dataset.data = [...dataset.originalData];
+                  }
+                });
+                
+                // Marcar que estamos en modo drag
+                chart._isDragZoom = true;
+                chart.update('none');
+              },
+              onDragEnd: function({chart}) {
+                console.log('🎯 Drag terminado');
+                // El onZoomComplete se encargará de limpiar el flag
+              }
             },
             mode: 'x',
             onZoomComplete: function({chart}) {
+              console.log('onZoomComplete ejecutado');
+              
+              // Limpiar flag de drag zoom
+              chart._isDragZoom = false;
+              
+              // Período de estabilización después del zoom
+              chart._stabilizing = true;
+              setTimeout(() => {
+                chart._stabilizing = false;
+                console.log('🔄 Chart estabilizado después del zoom');
+              }, 700); // 0.6 segundos
+              
               if (chart && chart.scales && chart.scales.x) {
                 const xScale = chart.scales.x;
                 const startDate = new Date(xScale.min);
@@ -2136,12 +2394,14 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 const newStartDate = formatDate(startDate);
                 const newEndDate = formatDate(endDate);
                 
+                console.log('Configurando zoom - nuevas fechas:', newStartDate, newEndDate);
                 setStartDate(newStartDate);
                 setEndDate(newEndDate);
                 setIsZoomed(true);
                 
                 // Mostrar popup cuando se haga zoom
                 setShowApplyPopup(true);
+                console.log('Zoom completo - isZoomed set to true');
               }
             }
           },
@@ -2211,7 +2471,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   if (!timelineData) {
     return (
       <div style={{
-        height: "500px",
+        height: "650px",
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -2731,7 +2991,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 background: 'rgba(255, 255, 255, 0.08)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '10px',
-                padding: '12px 14px',
+                padding: (() => {
+                  const { defaultStartDate } = getDefaultDates();
+                  return startDate && startDate !== defaultStartDate ? '12px 36px 12px 16px' : '12px 16px';
+                })(),
                 color: '#ffffff',
                 fontSize: '15px',
                 fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
@@ -2742,6 +3005,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'flex-start',
                 gap: '6px',
                 whiteSpace: 'nowrap',
                 userSelect: 'none',
@@ -2780,21 +3044,22 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span id="timeline-start-date-display">{startDate}</span>
+                <span id="timeline-start-date-display" style={{ textAlign: 'left', flex: '1' }}>{startDate}</span>
                 {(() => {
                   const { defaultStartDate } = getDefaultDates();
                   const currentStartDate = startDate;
                   return currentStartDate && currentStartDate !== defaultStartDate && (
                     <div style={{
                       position: 'absolute',
-                      top: '-3px',
-                      right: '-3px',
+                      top: '50%',
+                      right: '12px',
+                      transform: 'translateY(-50%)',
                       width: '10px',
                       height: '10px',
                       background: '#00ff88',
                       borderRadius: '50%',
                       border: '1px solid rgba(15, 15, 15, 0.8)',
-                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)',
+                      boxShadow: '0 0 8px rgba(0, 255, 136, 0.6)',
                       pointerEvents: 'none'
                     }}></div>
                   );
@@ -3187,7 +3452,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 background: 'rgba(255, 255, 255, 0.08)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
                 borderRadius: '10px',
-                padding: '12px 14px',
+                padding: (() => {
+                  const { defaultEndDate } = getDefaultDates();
+                  return endDate && endDate !== defaultEndDate ? '12px 36px 12px 16px' : '12px 16px';
+                })(),
                 color: '#ffffff',
                 fontSize: '15px',
                 fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
@@ -3198,6 +3466,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
                 display: 'inline-flex',
                 alignItems: 'center',
+                justifyContent: 'flex-start',
                 gap: '6px',
                 whiteSpace: 'nowrap',
                 userSelect: 'none',
@@ -3236,21 +3505,22 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span id="timeline-end-date-display">{endDate}</span>
+                <span id="timeline-end-date-display" style={{ textAlign: 'left', flex: '1' }}>{endDate}</span>
                 {(() => {
                   const { defaultEndDate } = getDefaultDates();
                   const currentEndDate = endDate;
                   return currentEndDate && currentEndDate !== defaultEndDate && (
                     <div style={{
                       position: 'absolute',
-                      top: '-3px',
-                      right: '-3px',
+                      top: '50%',
+                      right: '12px',
+                      transform: 'translateY(-50%)',
                       width: '10px',
                       height: '10px',
                       background: '#00ff88',
                       borderRadius: '50%',
                       border: '1px solid rgba(15, 15, 15, 0.8)',
-                      boxShadow: '0 0 6px rgba(0, 255, 136, 0.5)',
+                      boxShadow: '0 0 8px rgba(0, 255, 136, 0.6)',
                       pointerEvents: 'none'
                     }}></div>
                   );
@@ -3274,12 +3544,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         alignItems: 'center'
       }}>
         <div id="tooltip-area" style={{ 
-          minHeight: '40px', 
           flex: 1,
           position: 'relative',
-          padding: '0',
+          padding: '15px 10px',
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           justifyContent: 'flex-start'
         }}>
           {/* El tooltip se inicializará con el último día */}
@@ -3289,8 +3558,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
 
       <div style={{
-        height: '800px',
-        width: '100%',
+        height: '750px',
+        width: 'calc(100% + 30px)',
         marginLeft: '0',
         position: 'relative',
       }}>
@@ -3312,12 +3581,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           zIndex: 10
         }}>
           {[
-            { key: 'all', label: 'ALL' },
-            { key: '1y', label: '1Y' },
-            { key: '6m', label: '6M' },
-            { key: '3m', label: '3M' },
-            { key: '1m', label: '1M' },
-            { key: '1w', label: '1W' }
+            { key: 'all', label: 'All Time' },
+            { key: '1y', label: '1 Year' },
+            { key: '6m', label: '6 Months' },
+            { key: '3m', label: '3 Months' },
+            { key: '1m', label: '1 Month' },
+            { key: '1w', label: '1 Week' }
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -3326,42 +3595,24 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               style={{
                 background: activeQuickFilter === key 
                   ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                  : (key !== 'all' && !isFilterCompatible(key, periodMode))
-                    ? 'rgba(255, 255, 255, 0.02)'
-                    : 'rgba(255, 255, 255, 0.06)',
+                  : 'transparent',
                 border: activeQuickFilter === key 
                   ? '1px solid rgba(34, 197, 94, 0.8)' 
-                  : (key !== 'all' && !isFilterCompatible(key, periodMode))
-                    ? '1px solid rgba(255, 255, 255, 0.04)'
-                    : '1px solid rgba(255, 255, 255, 0.12)',
+                  : '1px solid transparent',
                 borderRadius: '8px',
-                padding: '8px 16px',
-                color: activeQuickFilter === key 
-                  ? '#ffffff' 
-                  : (key !== 'all' && !isFilterCompatible(key, periodMode))
-                    ? 'rgba(245, 245, 245, 0.3)'
-                    : 'rgba(245, 245, 245, 0.8)',
-                fontSize: '13px',
+                padding: '12px 20px',
+                color: (key !== 'all' && !isFilterCompatible(key, periodMode))
+                  ? 'rgba(255, 255, 255, 0.3)'
+                  : '#ffffff',
+                fontSize: '15px',
                 fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                fontWeight: '700',
+                fontWeight: '600',
                 cursor: (key !== 'all' && !isFilterCompatible(key, periodMode)) ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s ease',
+                transition: 'all 0.3s ease',
                 backdropFilter: 'blur(8px)',
-                minWidth: '50px',
+                minWidth: '100px',
                 textAlign: 'center',
                 opacity: (key !== 'all' && !isFilterCompatible(key, periodMode)) ? 0.4 : 1
-              }}
-              onMouseEnter={(e) => {
-                if (activeQuickFilter !== key && (key === 'all' || isFilterCompatible(key, periodMode))) {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.12)';
-                  e.target.style.color = '#ffffff';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (activeQuickFilter !== key && (key === 'all' || isFilterCompatible(key, periodMode))) {
-                  e.target.style.background = 'rgba(255, 255, 255, 0.06)';
-                  e.target.style.color = 'rgba(245, 245, 245, 0.8)';
-                }
               }}
             >
               {label}
@@ -3370,7 +3621,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         </div>
         
         {/* Botón de reset de fechas - posicionado en margen derecho del gráfico */}
-        {(!isUsingDefaultRange || isZoomed) && activeQuickFilter !== 'all' && !(activeQuickFilter === '1y' && isUsingDefaultRange) && (
+        {(((!isUsingDefaultRange || isZoomed) && activeQuickFilter !== 'all' && !(activeQuickFilter === '1y' && isUsingDefaultRange)) || isTooltipFrozen) && (
           <div
             onClick={(e) => {
               // Añadir efecto visual de click
@@ -3387,7 +3638,25 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               // Resetear zoom si existe
               if (chartRef.current) {
                 chartRef.current.resetZoom();
+                chartRef.current._isDragZoom = false; // Limpiar flag de drag zoom
               }
+              
+              // Descongelar tooltip si está congelado
+              unfreezeTooltip();
+              
+              // Período de estabilización después del reset (DESPUÉS de unfreezeTooltip)
+              setIsChartStabilizing(true);
+              if (chartRef.current) {
+                chartRef.current._stabilizing = true;
+                console.log('🔒 Iniciando estabilización después del reset filtros (700ms)');
+              }
+              setTimeout(() => {
+                setIsChartStabilizing(false);
+                if (chartRef.current) {
+                  chartRef.current._stabilizing = false;
+                }
+                console.log('🔄 Chart estabilizado después del reset filtros');
+              }, 700);
               
               // Resetear fechas y estado
               isQuickFilterChange.current = true;
@@ -3396,46 +3665,50 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               setIsZoomed(false);
               setActiveQuickFilter('all');
               
-              // Mostrar popup cuando se resetee
-              setShowApplyPopup(true);
+              // Cerrar popup y resetear animación
+              forceHidePopup();
             }}
             style={{
               position: 'absolute',
-              top: '-50px',
-              right: '0px',
-              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(200, 200, 200, 0.08))',
-              border: '1px solid rgba(255, 255, 255, 0.25)',
-              borderRadius: '10px',
-              padding: '10px 14px',
+              top: '-90px',
+              right: '30px',
+              background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(16, 185, 129, 0.1))',
+              border: '2px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: '14px',
+              padding: '10px 16px',
               color: '#00ff88',
-              fontSize: '14px',
+              fontSize: '16px',
               fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
               fontWeight: '700',
               cursor: 'pointer',
-              transition: 'all 0.25s ease-out',
-              backdropFilter: 'blur(10px)',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+              backdropFilter: 'blur(16px)',
+              boxShadow: '0 8px 32px rgba(34, 197, 94, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '12px',
               whiteSpace: 'nowrap',
               userSelect: 'none',
-              zIndex: 10
+              zIndex: 10,
+              minWidth: '90px',
+              justifyContent: 'center'
             }}
             onMouseEnter={(e) => {
-              e.target.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.2), rgba(220, 220, 220, 0.15))';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-              e.target.style.transform = 'translateY(-1px)';
-              e.target.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 3px rgba(255, 255, 255, 0.2)';
+              e.target.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(16, 185, 129, 0.2))';
+              e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+              e.target.style.transform = 'translateY(-2px) scale(1.02)';
+              e.target.style.boxShadow = '0 12px 40px rgba(34, 197, 94, 0.3), inset 0 1px 3px rgba(255, 255, 255, 0.2)';
+              e.target.style.color = '#ffffff';
             }}
             onMouseLeave={(e) => {
-              e.target.style.background = 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(200, 200, 200, 0.08))';
-              e.target.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-              e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15), inset 0 1px 2px rgba(255, 255, 255, 0.1)';
+              e.target.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(16, 185, 129, 0.1))';
+              e.target.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+              e.target.style.transform = 'translateY(0) scale(1)';
+              e.target.style.boxShadow = '0 8px 32px rgba(34, 197, 94, 0.2), inset 0 1px 2px rgba(255, 255, 255, 0.1)';
+              e.target.style.color = '#00ff88';
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
               <path d="M3 3v5h5"/>
             </svg>

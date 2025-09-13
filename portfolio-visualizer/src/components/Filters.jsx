@@ -16,42 +16,50 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   // Estados para animaciones del popup
   const [popupAnimation, setPopupAnimation] = useState('entering');
   const [isApplying, setIsApplying] = useState(false);
+  const [shouldShowPopup, setShouldShowPopup] = useState(false);
   
   
-  // Efecto para animación de entrada del popup (sin timer automático)
+  // Efecto para mostrar el popup
   useEffect(() => {
     if (showApplyPopup) {
+      setShouldShowPopup(true);
       setPopupAnimation('entering');
       
       const timer = setTimeout(() => {
         setPopupAnimation('visible');
-      }, 20);
+      }, 10);
       
-      return () => {
-        clearTimeout(timer);
-      };
+      return () => clearTimeout(timer);
     }
   }, [showApplyPopup]);
+
+  // Efecto para manejar el cierre (manual o automático)
+  useEffect(() => {
+    if (!showApplyPopup && shouldShowPopup) {
+      // Animar hacia la derecha antes de ocultar
+      setPopupAnimation('exitingRight');
+      
+      const timer = setTimeout(() => {
+        setShouldShowPopup(false);
+        setPopupAnimation('entering');
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showApplyPopup, shouldShowPopup]);
   
   // Funciones para manejar las salidas animadas
   const handleClosePopup = () => {
-    setPopupAnimation('exitingRight');
-    setTimeout(() => {
-      setShowApplyPopup(false);
-      setPopupAnimation('entering');
-    }, 400);
+    // Solo cambiar el estado showApplyPopup, el useEffect se encarga del resto
+    setShowApplyPopup(false);
   };
   
   const handleApplyFilter = () => {
     console.log('Aplicando período a toda la página:', { startDate, endDate });
     setPopupAnimation('applying');
     setTimeout(() => {
-      setPopupAnimation('exitingRight');
-      setTimeout(() => {
-        setShowApplyPopup(false);
-        setPopupAnimation('entering');
-      }, 400);
-    }, 250);
+      setShowApplyPopup(false);
+    }, 200);
   };
 
   // Get available assets from portfolio data
@@ -707,7 +715,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
       {createPortal(sidebarContent, getPortalTarget())}
       
       {/* Apply Filter Popup */}
-      {showApplyPopup && (() => {
+      {shouldShowPopup && (() => {
         // Crear un contenedor específico para el popup que no tenga restricciones
         let popupRoot = document.getElementById('popup-portal-root');
         if (!popupRoot) {
@@ -729,15 +737,15 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
         const getTransform = () => {
           switch(popupAnimation) {
             case 'entering':
-              return 'translateY(100px) translateX(0)';
+              return 'translateY(30px) scale(0.95)';
             case 'visible':
-              return 'translateY(0) translateX(0)';
+              return 'translateY(0) scale(1)';
             case 'applying':
-              return 'translateY(-10px) translateX(0) scale(0.9)';
+              return 'translateY(-5px) scale(0.98)';
             case 'exitingRight':
-              return 'translateY(0) translateX(300px)';
+              return 'translateY(0) translateX(200px) scale(0.9)';
             default:
-              return 'translateY(0) translateX(0)';
+              return 'translateY(0) scale(1)';
           }
         };
         
@@ -757,7 +765,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
-              transition: popupAnimation === 'entering' ? 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)' : 'all 0.4s ease-out',
+              transition: popupAnimation === 'entering' ? 'all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'all 0.3s ease-out',
               transform: getTransform(),
               opacity: popupAnimation === 'exitingRight' ? 0 : 1,
             }}
