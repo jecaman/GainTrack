@@ -15,7 +15,15 @@ import asyncio
 from threading import Thread, Lock
 import json
 from config import *
-from cost_calculator import calcular_realized_gains_fifo, calcular_unrealized_gains_fifo
+# from cost_calculator import calcular_realized_gains_fifo, calcular_unrealized_gains_fifo  # No longer needed
+# Importar las nuevas funciones modulares del main2.py
+from main2 import (
+    calcular_portfolio_value,
+    calcular_cost_basis,
+    calcular_unrealized_gains,
+    calcular_realized_gains,
+    FIAT_ASSETS as FIAT_ASSETS_MAIN2
+)
 
 # =============================================================================
 # CONFIGURACIÓN FASTAPI
@@ -447,105 +455,99 @@ def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp, fee=0):
     
     return asset_lots['total_invested']
 
-def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_prices):
-    """Crear datos de portfolio con KPIs mejorados (Realized/Unrealized)"""
-    import io
+def create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices):
+    """Crear datos de portfolio usando las nuevas funciones modulares del main2.py"""
     
-    # Convertir trades_df a CSV string para usar las funciones de cost_calculator
-    csv_buffer = io.StringIO()
-    trades_df.to_csv(csv_buffer, index=False)
-    csv_content = csv_buffer.getvalue()
+    # 1. Calcular Portfolio Value usando nueva función modular
+    portfolio_result = calcular_portfolio_value(
+        trades_df=trades_df,
+        precios_actuales=current_prices,
+        obtener_precios_externos=False
+    )
     
-    # Calcular Realized Gains por activo
-    realized_result = calcular_realized_gains_fifo(csv_content)
-    realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0) if 'error' not in realized_result else 0
-    realized_gains_by_asset = realized_result.get('assets', {}) if 'error' not in realized_result else {}
+    # 2. Calcular Cost Basis usando nueva función modular  
+    cost_basis_result = calcular_cost_basis(trades_df=trades_df)
     
-    # Calcular Unrealized Gains por activo
-    unrealized_result = calcular_unrealized_gains_fifo(csv_content, current_prices)
-    unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0) if 'error' not in unrealized_result else 0
-    portfolio_value = unrealized_result.get('totales', {}).get('total_portfolio_value', 0) if 'error' not in unrealized_result else 0
-    total_invested_fifo = unrealized_result.get('totales', {}).get('total_invested', 0) if 'error' not in unrealized_result else 0
-    unrealized_gains_by_asset = unrealized_result.get('assets', {}) if 'error' not in unrealized_result else {}
+    # 3. Calcular Unrealized Gains usando nueva función modular
+    unrealized_result = calcular_unrealized_gains(portfolio_result, cost_basis_result)
     
-    # Crear datos usando método FIFO original para compatibilidad
-    asset_data = {}
-    trades_df = trades_df.sort_values('time').copy()
+    # 4. Calcular Realized Gains usando nueva función modular
+    realized_result = calcular_realized_gains(trades_df=trades_df)
     
-    for _, row in trades_df.iterrows():
-        pair = str(row['pair'])
-        asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
-        if asset == pair:
-            asset = pair
-        
-        if asset not in asset_data:
-            asset_data[asset] = {
-                'buy_lots': [],
-                'total_invested': 0,
-                'total_invested_historical': 0,  # Nueva: inversión total histórica
-                'fees': 0
-            }
-        
-        cost = float(row['cost'])
-        fee = float(row['fee']) if pd.notna(row['fee']) else 0.0
-        vol = float(row['vol'])
-        timestamp = row['time']
-        
-        process_trade_fifo(asset_data[asset], row['type'], vol, cost, timestamp, fee)
-        asset_data[asset]['fees'] += fee
-        
-        # Rastrear inversión histórica total (solo en compras)
-        if row['type'] == 'buy':
-            asset_data[asset]['total_invested_historical'] += cost + fee
+    # 5. Extraer totales de los resultados
+    portfolio_value = portfolio_result.get('totales', {}).get('total_portfolio_value', 0)
+    total_invested_fifo = cost_basis_result.get('totales', {}).get('total_cost_basis', 0) 
+    unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0)
+    realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0)
+    total_fees = cost_basis_result.get('totales', {}).get('total_fees', 0)
     
-    # Crear portfolio array con realized/unrealized gains por activo
+    # 6. Extraer datos por asset
+    portfolio_assets = portfolio_result.get('assets', {})
+    cost_basis_assets = cost_basis_result.get('assets', {})
+    unrealized_assets = unrealized_result.get('assets', {}) 
+    realized_assets = realized_result.get('assets', {})
+    
+    # 7. Crear portfolio array usando los resultados de las funciones modulares
     portfolio_array = []
-    for asset, balance in balances.items():
-        current_price = current_prices.get(asset, 1.0 if asset in FIAT_ASSETS else 0)
-        current_value = balance * current_price
-        
-        invested = asset_data.get(asset, {}).get('total_invested', 0)
-        invested_historical = asset_data.get(asset, {}).get('total_invested_historical', 0)
-        fees = asset_data.get(asset, {}).get('fees', 0)
-        
-        # Obtener realized_gains y unrealized_gains por activo individual
-        realized_gains_asset = realized_gains_by_asset.get(asset, {}).get('realized_gains', 0)
-        unrealized_gains_asset = unrealized_gains_by_asset.get(asset, {}).get('unrealized_gains', 0)
-        
-        # Net profit por activo = realized + unrealized
-        net_profit_asset = realized_gains_asset + unrealized_gains_asset
-        # Calcular porcentaje sobre inversión histórica total, no sobre inversión restante
-        if invested_historical > 0:
-            net_profit_percent_asset = (net_profit_asset / invested_historical * 100)
-            # Limitar porcentaje a un rango razonable
-            net_profit_percent_asset = max(-999.99, min(999.99, net_profit_percent_asset))
-        else:
-            net_profit_percent_asset = 0
-        
-        portfolio_array.append({
-            'asset': asset,
-            'asset_type': 'fiat' if asset in FIAT_ASSETS else 'crypto',
-            'amount': balance,
-            'current_price': current_price,
-            'total_invested': invested,
-            'fees_paid': fees,
-            'current_value': current_value,
-            'pnl_eur': current_value - invested,  # Ya incluye fees en invested
-            'pnl_percent': (net_profit_asset / invested * 100) if invested > 0 else 0,
-            # Nuevos campos por activo
-            'realized_gains': realized_gains_asset,
-            'unrealized_gains': unrealized_gains_asset,
-            'net_profit': net_profit_asset,
-            'net_profit_percent': net_profit_percent_asset
-        })
     
-    # Calcular KPIs tradicionales
-    total_fees = sum(item['fees_paid'] for item in portfolio_array)
+    # Combinar datos de todas las fuentes (portfolio, cost basis, unrealized, realized)
+    all_assets = set()
+    all_assets.update(portfolio_assets.keys())
+    all_assets.update(cost_basis_assets.keys()) 
+    all_assets.update(unrealized_assets.keys())
+    all_assets.update(realized_assets.keys())
+    all_assets.update(balances.keys())
+    
+    for asset in all_assets:
+        # Datos del portfolio value
+        portfolio_data = portfolio_assets.get(asset, {})
+        current_value = portfolio_data.get('portfolio_value', 0)
+        current_price = portfolio_data.get('precio_actual', current_prices.get(asset, 1.0 if asset in FIAT_ASSETS_MAIN2 else 0))
+        amount = portfolio_data.get('cantidad_actual', balances.get(asset, 0))
+        
+        # Datos del cost basis
+        cost_data = cost_basis_assets.get(asset, {})
+        total_invested = cost_data.get('cost_basis', 0)
+        fees_paid = cost_data.get('fees_incluidos', 0)
+        
+        # Datos de unrealized gains
+        unrealized_data = unrealized_assets.get(asset, {})
+        unrealized_gains_asset = unrealized_data.get('unrealized_gains', 0)
+        
+        # Datos de realized gains  
+        realized_data = realized_assets.get(asset, {})
+        realized_gains_asset = realized_data.get('realized_gains', 0)
+        
+        # Calcular net profit y porcentajes
+        net_profit_asset = realized_gains_asset + unrealized_gains_asset
+        pnl_eur = current_value - total_invested  # PnL tradicional
+        
+        # Porcentajes
+        pnl_percent = (pnl_eur / total_invested * 100) if total_invested > 0 else 0
+        net_profit_percent = (net_profit_asset / total_invested * 100) if total_invested > 0 else 0
+        
+        # Solo incluir assets con balance o historial de trading
+        if amount > 0 or total_invested > 0 or realized_gains_asset != 0:
+            portfolio_array.append({
+                'asset': asset,
+                'asset_type': 'fiat' if asset in FIAT_ASSETS_MAIN2 else 'crypto',
+                'amount': amount,
+                'current_price': current_price,
+                'total_invested': total_invested,
+                'fees_paid': fees_paid,
+                'current_value': current_value,
+                'pnl_eur': pnl_eur,
+                'pnl_percent': max(-999.99, min(999.99, pnl_percent)),
+                # Nuevos campos usando funciones modulares
+                'realized_gains': realized_gains_asset,
+                'unrealized_gains': unrealized_gains_asset,
+                'net_profit': net_profit_asset,
+                'net_profit_percent': max(-999.99, min(999.99, net_profit_percent))
+            })
+    
+    # 8. Calcular KPIs consolidados
     crypto_value = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'crypto')
     liquidity = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'fiat')
-    current_value = crypto_value + liquidity
-    
-    # Net Profit = Realized + Unrealized
     net_profit = realized_gains_total + unrealized_gains_total
     net_profit_percentage = (net_profit / total_invested_fifo * 100) if total_invested_fifo > 0 else 0
     
@@ -568,8 +570,8 @@ def create_portfolio_data_from_trades_enhanced(trades_df, balances, current_pric
     }
 
 def create_portfolio_data_from_trades(trades_df, balances, current_prices):
-    """Wrapper para mantener compatibilidad - usa versión mejorada"""
-    return create_portfolio_data_from_trades_enhanced(trades_df, balances, current_prices)
+    """Wrapper para mantener compatibilidad - usa versión mejorada con funciones modulares"""
+    return create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices)
 
 def calcular_holdings_diarios_csv(trades_df, current_prices=None):
     """Calcula los holdings diarios desde el primer trade hasta HOY

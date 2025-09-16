@@ -58,7 +58,7 @@ python3 test_kpis.py
 
 ### **API Endpoint Test:**
 ```bash
-curl -X POST -F "csv_file=@trades_2.csv" http://localhost:8000/api/portfolio/csv
+curl -X POST -F "csv_file=@trades_2.csv" http://localhost:8001/api/portfolio/csv
 # ✅ RESULTADO: Nuevos KPIs presentes en respuesta JSON
 ```
 
@@ -121,7 +121,7 @@ Abrir: `file:///home/jesus/KRAKEN/portfolio-visualizer/test_new_kpis.html`
 
 ### **Opción 3: Backend directo**
 ```bash
-curl -X POST -F "csv_file=@trades_2.csv" http://localhost:8000/api/portfolio/csv
+curl -X POST -F "csv_file=@trades_2.csv" http://localhost:8001/api/portfolio/csv
 ```
 
 ---

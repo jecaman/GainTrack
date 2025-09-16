@@ -36,7 +36,7 @@ Aplicación web completa para análisis y visualización de portfolios de cripto
 ```bash
 cd backend/
 pip install -r requirements.txt
-python3 main.py
+python3 main2.py
 ```
 
 ### Frontend
@@ -65,7 +65,7 @@ portfolio-visualizer/
 ├── vite.config.js          # Configuración Vite
 ├── eslint.config.js        # Configuración ESLint
 ├── backend/
-│   ├── main.py             # Servidor FastAPI principal
+│   ├── main2.py            # Servidor FastAPI principal (v2 modular)
 │   ├── kraken_pairs.py     # Lista de pares de trading
 │   └── requirements.txt    # Dependencias Python
 ├── src/

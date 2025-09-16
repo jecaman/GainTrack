@@ -176,7 +176,7 @@
             
             try {
                 // Test del endpoint de salud
-                const healthResponse = await fetch('http://localhost:8000/api/health');
+                const healthResponse = await fetch('http://localhost:8001/api/health');
                 const healthData = await healthResponse.json();
                 
                 if (healthData.status === 'ok') {

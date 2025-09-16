@@ -28,7 +28,7 @@ function App() {
         data = apiData.csvData;
       } else {
         // Llamada a la API normal
-        response = await fetch('http://localhost:8000/api/portfolio', {
+        response = await fetch('http://localhost:8001/api/portfolio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ api_key: apiData.apiKey, api_secret: apiData.secretKey })

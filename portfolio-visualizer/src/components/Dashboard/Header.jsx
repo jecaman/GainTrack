@@ -28,7 +28,7 @@ const Header = ({
   useEffect(() => {
     const fetchTradesDateRange = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/trades/date-range');
+        const response = await fetch('http://localhost:8001/api/trades/date-range');
         const data = await response.json();
         if (data.start_date && data.end_date) {
           setDateRange(data);

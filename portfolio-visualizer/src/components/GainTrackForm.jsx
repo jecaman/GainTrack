@@ -197,7 +197,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
       const formData = new FormData();
       formData.append('csv_file', file);
       
-      const response = await fetch('http://localhost:8000/api/portfolio/csv', {
+      const response = await fetch('http://localhost:8001/api/portfolio/csv', {
         method: 'POST',
         body: formData
       });

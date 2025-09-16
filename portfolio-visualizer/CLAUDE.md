@@ -20,7 +20,7 @@
 ```
 portfolio-visualizer/
 ├── backend/
-│   ├── main.py              # Servidor FastAPI principal (170 líneas)
+│   ├── main2.py             # Servidor FastAPI principal v2 (funciones modulares)
 │   ├── kraken_pairs.py      # Lista de pares de trading (1099 líneas)
 │   ├── requirements.txt     # 12 dependencias Python
 │   └── trades_historico.csv # Datos históricos de trades
@@ -47,13 +47,13 @@ portfolio-visualizer/
 ```bash
 # Iniciar servidor backend
 cd backend/
-python3 main.py
+python3 main2.py
 
 # Instalar dependencias
 pip install -r requirements.txt
 
 # Verificar imports
-python3 -c "import main; print('✅ Backend imports correctamente')"
+python3 -c "import main2; print('✅ Backend imports correctamente')"
 ```
 
 ### Frontend
@@ -72,9 +72,9 @@ npm run lint
 ```
 
 ### URLs del Proyecto
-- Backend: http://localhost:8000
+- Backend: http://localhost:8001
 - Frontend: http://localhost:5173
-- API Docs: http://localhost:8000/docs
+- API Docs: http://localhost:8001/docs
 
 ## Prioridades de Desarrollo
 
