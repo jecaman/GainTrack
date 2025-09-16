@@ -87,22 +87,34 @@ const hoverPlugin = {
     
     ctx.save();
     
-    // Si está congelado, dibujar línea vertical blanca para indicarlo
-    if (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex) {
+    // Determinar si está congelado para los efectos visuales
+    const isFrozen = (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex);
+    
+    // Si está congelado, dibujar línea vertical estilizada
+    if (isFrozen) {
       const { chartArea } = chart;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      
+      // Gradiente vertical para la línea
+      const lineGradient = ctx.createLinearGradient(x, chartArea.top, x, chartArea.bottom);
+      lineGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      lineGradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.6)');
+      lineGradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.9)');
+      lineGradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.6)');
+      lineGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      
+      ctx.strokeStyle = lineGradient;
       ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]); // Línea punteada para mejor distinción
+      ctx.setLineDash([8, 4]); // Patrón más elegante
       ctx.beginPath();
       ctx.moveTo(x, chartArea.top);
       ctx.lineTo(x, chartArea.bottom);
       ctx.stroke();
-      ctx.setLineDash([]); // Resetear dash
+      ctx.setLineDash([]); // Resetear
     }
     
     // Punto luminoso moderado (más grande si está congelado)
-    const pointRadius = (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex) ? 9 : 7;
-    const borderWidth = (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex) ? 3 : 2;
+    const pointRadius = isFrozen ? 9 : 7;
+    const borderWidth = isFrozen ? 3 : 2;
     
     ctx.beginPath();
     ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
@@ -117,7 +129,6 @@ const hoverPlugin = {
     ctx.stroke();
     
     // Resplandor suave alrededor del punto (más intenso si está congelado)
-    const isFrozen = (chart.frozenTooltip && chart.frozenTooltip.isFrozen && dataIndex === chart.frozenTooltip.frozenIndex);
     const glowRadius = isFrozen ? 20 : 15;
     const glowIntensity = isFrozen ? 0.8 : 0.6;
     
@@ -1402,10 +1413,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     const marketValue = entry.value || 0;
     const investedValue = entry.cost || 0;
     
-    // Usar total_gain del backend (realized + unrealized gains)
-    const profit = entry.total_gain !== undefined ? entry.total_gain :
-                   entry.net_profit !== undefined ? entry.net_profit :
-                   (marketValue - investedValue);
+    // En Full View, usar el mismo cálculo que los gráficos para consistencia visual
+    // En P&L View, usar los cálculos precisos del backend
+    const profit = viewMode === 'balance' 
+      ? (entry.total_gain !== undefined ? entry.total_gain :
+         entry.net_profit !== undefined ? entry.net_profit :
+         (marketValue - investedValue))
+      : (marketValue - investedValue); // Consistente con las líneas visuales
     const profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
     
     const formatCurrency = (value) => {
@@ -1521,17 +1535,14 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     const handleMouseMove = (event) => {
       // No hacer nada si se está haciendo drag, drag zoom, o en período de estabilización
       if (isDragging || chart._isDragZoom || chart._stabilizing || isChartStabilizing) {
-        if (chart._stabilizing || isChartStabilizing) {
-          console.log('🚫 Hover bloqueado - chart en estabilización');
-        }
         return;
       }
       
       // Si está congelado, no procesar hover
       if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
-        console.log('MouseMove bloqueado - tooltip congelado');
         return;
       }
+      
       
       // Throttle dinámico basado en complejidad
       if (chart._mouseThrottle) return;
@@ -1557,8 +1568,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       const canvasX = x * scaleX;
       const canvasY = y * scaleY;
       
-      if (canvasX < chart.chartArea.left || canvasX > chart.chartArea.right || 
-          canvasY < chart.chartArea.top || canvasY > chart.chartArea.bottom) {
+      
+      // Añadir tolerancia extra cuando hay zoom para evitar detección errónea de bordes
+      const tolerance = isZoomed ? 20 : 0;
+      if (canvasX < (chart.chartArea.left - tolerance) || canvasX > (chart.chartArea.right + tolerance) || 
+          canvasY < (chart.chartArea.top - tolerance) || canvasY > (chart.chartArea.bottom + tolerance)) {
         // Fuera del área del gráfico
         const tooltipArea = document.querySelector('#tooltip-area');
         if (tooltipArea) {
@@ -1595,28 +1609,63 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       let minDistance = Infinity;
       
       meta.data.forEach((point, index) => {
-        const distance = Math.abs(point.x - canvasX);
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestIndex = index;
+        if (point && point.x) {  // Verificar que el punto existe
+          // En P&L View, solo considerar puntos reales usando el mapeo de índices
+          if (viewMode === 'balance' && portfolioDataset.indexMap) {
+            const value = portfolioDataset.data[index];
+            // Filtrar puntos interpolados (0 y ±0.001)
+            if (value === 0 || Math.abs(value) === 0.001) {
+              return; // Saltar puntos interpolados
+            }
+          }
+          
+          const distance = Math.abs(point.x - canvasX);
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = index;
+          }
         }
       });
       
       if (closestIndex >= 0) {
         const tooltipArea = document.querySelector('#tooltip-area');
         if (tooltipArea) {
-          tooltipArea.innerHTML = renderTooltipContent(closestIndex, getDataForTooltip());
+          // En P&L View, sincronizar por fecha en lugar de índice para evitar offsets
+          let tooltipIndex = closestIndex;
+          if (viewMode === 'balance' && chart.data.labels) {
+            // Obtener la fecha del punto hover actual (interpolado)
+            const hoverDate = chart.data.labels[closestIndex];
+            
+            // Buscar la misma fecha en los datos del tooltip (originales)
+            const tooltipData = getDataForTooltip();
+            if (tooltipData && hoverDate) {
+              // Buscar índice por fecha exacta
+              const matchingIndex = tooltipData.findIndex(entry => {
+                const entryDate = new Date(entry.date).toISOString().split('T')[0];
+                const hoverDateString = new Date(hoverDate).toISOString().split('T')[0];
+                return entryDate === hoverDateString;
+              });
+              
+              if (matchingIndex >= 0) {
+                tooltipIndex = matchingIndex;
+              } else {
+                // Si no hay coincidencia exacta, usar mapeo como fallback
+                tooltipIndex = portfolioDataset.indexMap ? (portfolioDataset.indexMap[closestIndex] || closestIndex) : closestIndex;
+              }
+            }
+          }
+          tooltipArea.innerHTML = renderTooltipContent(tooltipIndex, getDataForTooltip());
         }
+        
         // Solo actualizar si el índice cambió
         if (chart.hoveredDataIndex !== closestIndex) {
-          const previousIndex = chart.hoveredDataIndex;
           chart.hoveredDataIndex = closestIndex;
           
           // Actualizar solo la línea principal, mantener áreas completas
           const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
           const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
           
-          // Siempre mantener los datos completos para permitir movimiento bidireccional
+          // Aplicar efecto de línea progresiva (ahora funciona correctamente con zoom)
           if (portfolioDataset && portfolioDataset.originalData) {
             // Crear array con datos hasta el punto actual + nulls después
             const newData = [...portfolioDataset.originalData];
@@ -1634,9 +1683,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             costBasisDataset.data = newData;
           }
           
-          // Las áreas se mantienen completas siempre
-          
           chart.update('none');
+          
+          // Las áreas se mantienen completas siempre
         }
       }
     };
@@ -1913,10 +1962,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       const interpolateZeroCrossings = (values, inputLabels) => {
         const newValues = [];
         const newLabels = [];
+        const indexMap = []; // Mapeo de índice interpolado -> índice original
         
         for (let i = 0; i < values.length; i++) {
           newValues.push(values[i]);
           newLabels.push(inputLabels[i]);
+          indexMap.push(i); // Mapear este índice interpolado al índice original i
           
           // Si hay un siguiente punto y cruzan el 0
           if (i < values.length - 1) {
@@ -1936,24 +1987,28 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               // Punto antes del cruce
               newValues.push(current > 0 ? 0.001 : -0.001);
               newLabels.push(zeroCrossingDate);
+              indexMap.push(i); // Mapear al índice original actual
               
               // Punto exacto del cruce  
               newValues.push(0);
               newLabels.push(zeroCrossingDate);
+              indexMap.push(i); // Mapear al índice original actual
               
               // Punto después del cruce
               newValues.push(next > 0 ? 0.001 : -0.001);
               newLabels.push(zeroCrossingDate);
+              indexMap.push(i + 1); // Mapear al siguiente índice original
             }
           }
         }
         
-        return { values: newValues, labels: newLabels };
+        return { values: newValues, labels: newLabels, indexMap: indexMap };
       };
       
       // Aplicar interpolación mejorada - agregar más puntos de corte
       const interpolated = interpolateZeroCrossings(balanceValues, baseLabels);
       const interpolatedBalanceValues = interpolated.values;
+      const indexMap = interpolated.indexMap;
       
       // Actualizar las labels para este modo
       labels = interpolated.labels;
@@ -2038,6 +2093,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         label: 'Total P&L',
         data: interpolatedBalanceValues,
         originalData: [...interpolatedBalanceValues], // Para el efecto de línea progresiva
+        indexMap: indexMap, // Mapeo de índices interpolados a originales
         pointRadius: function(context) {
           // Ocultar puntos imaginarios pero permitir hover en puntos reales
           const value = interpolatedBalanceValues[context.dataIndex];
@@ -2054,11 +2110,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         backgroundColor: 'transparent', // Sin área de relleno
         fill: false, // No fill para este dataset
         tension: 0.15, // Igual que Full View pero un poco menos suave
-        pointHoverRadius: function(context) {
-          const value = interpolatedBalanceValues[context.dataIndex];
-          const isZeroCrossing = value === 0;
-          return isZeroCrossing ? 0 : 5; // Hover más grande para puntos reales
-        },
+        pointHoverRadius: 0, // Desactivar hover de puntos en P&L View
         pointBackgroundColor: function(context) {
           const value = interpolatedBalanceValues[context.dataIndex];
           const isZeroCrossing = value === 0;

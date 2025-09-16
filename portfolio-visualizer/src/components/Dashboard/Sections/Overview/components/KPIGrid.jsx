@@ -33,7 +33,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
       style={{
         background: theme.bg,
         borderRadius: '0.75rem',
-        padding: '1rem',
+        padding: '0.8rem',
         border: `2px solid ${theme.borderColor}`,
         boxShadow: 'inset 0 0 10px rgba(0, 255, 136, 0.05)',
         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -46,7 +46,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         alignItems: 'center',
         textAlign: 'center',
         width: '280px',
-        height: '120px'
+        height: '100px'
       }}
       onMouseEnter={(e) => {
         setIsCardHovered(true);
@@ -178,7 +178,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           justifyContent: 'center',
           gap: '0.75rem',
           flexWrap: 'nowrap',
-          height: '45px'
+          height: '38px'
         }}>
           <div 
             style={{
