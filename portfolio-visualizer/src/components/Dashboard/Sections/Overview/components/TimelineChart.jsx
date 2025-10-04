@@ -20,7 +20,7 @@ const hoverPlugin = {
       lastHoverIndex: -1,
       animationFrame: null,
       startTime: 0,
-      duration: 1200 // 1.2 segundos - más lento
+      duration: 300 // 0.3 segundos - más rápido para evitar flash de línea gris
     };
     
     // Estado para tooltip congelado
@@ -238,6 +238,9 @@ const hoverPlugin = {
     
     const animate = () => {
       if (chart.exitHoverAnimation.isAnimating) {
+        // Marcar que estamos en animación para que los datasets futuros no se muestren
+        chart._isInTransition = true;
+        
         chart.update('none');
         chart.exitHoverAnimation.animationFrame = requestAnimationFrame(animate);
       }
@@ -283,21 +286,47 @@ const hoverPlugin = {
       ctx.restore();
     }
     
-    // Terminar animación si se completó
-    if (progress >= 1) {
+    // Terminar animación si se completó (terminar un poco antes para evitar flash)
+    if (progress >= 0.95) {
       animation.isAnimating = false;
       if (animation.animationFrame) {
         cancelAnimationFrame(animation.animationFrame);
         animation.animationFrame = null;
       }
+      
+      // Limpiar bandera de transición cuando termine la animación
+      chart._isInTransition = false;
     }
   }
 };
+// Plugin para ocultar líneas futuras durante animaciones globales
+const hideGrayLinesPlugin = {
+  id: 'hideGrayLines',
+  beforeDraw(chart) {
+    // Marcar transición durante animaciones globales del chart
+    if (chart._animator && chart._animator.running) {
+      chart._isInTransition = true;
+    } else {
+      chart._isInTransition = false;
+    }
+  },
+  afterDraw(chart) {
+    // Los datasets futuros se recrearán automáticamente en el próximo render
+    // No hacer nada aquí para evitar conflictos
+  }
+};
+
 // Plugin para dividir línea en activa/futura
 const splitLinePlugin = {
   id: 'splitLine',
   afterDraw(chart) {
     const { ctx, data, scales } = chart;
+    
+    // No dibujar durante cualquier animación (hover exit o chart animations)
+    if ((chart.exitHoverAnimation && chart.exitHoverAnimation.isAnimating) || 
+        (chart._animator && chart._animator.running)) {
+      return;
+    }
     
     let activeIndex;
     
@@ -339,7 +368,7 @@ const splitLinePlugin = {
 };
 
 // Registrar los plugins
-Chart.register(hoverPlugin, splitLinePlugin);
+Chart.register(hoverPlugin, hideGrayLinesPlugin, splitLinePlugin);
 
 const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate }) => {
   // Constantes de estilo reutilizables
@@ -1581,16 +1610,33 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         if (chart.hoveredDataIndex !== undefined) {
           chart.hoveredDataIndex = undefined;
           
-          // Restaurar solo las líneas principales, las áreas ya están completas
+          // Restaurar todas las líneas principales
           const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
+          const futureDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value Future' || d.label === 'Total P&L Future');
+          const glowDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value Glow' || d.label === 'Total P&L Glow');
           const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
+          const costBasisFutureDataset = chart.data.datasets.find(d => d.label === 'Cost Basis Future');
           
           if (portfolioDataset && portfolioDataset.originalData) {
             portfolioDataset.data = [...portfolioDataset.originalData];
           }
           
+          if (futureDataset && futureDataset.originalData) {
+            // Ocultar completamente el dataset futuro cuando no hay hover
+            futureDataset.data = futureDataset.originalData.map(() => null);
+          }
+          
+          if (glowDataset && glowDataset.originalData) {
+            glowDataset.data = [...glowDataset.originalData];
+          }
+          
           if (costBasisDataset && costBasisDataset.originalData) {
             costBasisDataset.data = [...costBasisDataset.originalData];
+          }
+          
+          if (costBasisFutureDataset && costBasisFutureDataset.originalData) {
+            // Ocultar completamente el dataset futuro cuando no hay hover
+            costBasisFutureDataset.data = costBasisFutureDataset.originalData.map(() => null);
           }
           
           chart.update('none');
@@ -1665,14 +1711,39 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
           const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
           
-          // Aplicar efecto de línea progresiva (ahora funciona correctamente con zoom)
+          // Aplicar efecto de línea progresiva con dos datasets
           if (portfolioDataset && portfolioDataset.originalData) {
-            // Crear array con datos hasta el punto actual + nulls después
+            // Dataset principal: mostrar solo hasta el punto actual
             const newData = [...portfolioDataset.originalData];
             for (let i = closestIndex + 1; i < newData.length; i++) {
               newData[i] = null;
             }
             portfolioDataset.data = newData;
+          }
+          
+          // Dataset futuro: mostrar desde el punto actual en adelante (solo si no estamos en transición)
+          const futureDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value Future' || d.label === 'Total P&L Future');
+          if (futureDataset && futureDataset.originalData && !chart._isInTransition) {
+            const futureData = [...futureDataset.originalData];
+            for (let i = 0; i < closestIndex; i++) { // Cambiar <= por < para incluir el punto actual
+              futureData[i] = null;
+            }
+            futureDataset.data = futureData;
+            futureDataset.borderColor = 'rgba(80, 80, 80, 0.4)'; // Mostrar la línea gris
+          } else if (futureDataset) {
+            // Durante transiciones, ocultar completamente
+            futureDataset.data = futureDataset.originalData.map(() => null);
+            futureDataset.borderColor = 'transparent';
+          }
+          
+          // Dataset glow: sincronizar con la línea principal
+          const glowDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value Glow' || d.label === 'Total P&L Glow');
+          if (glowDataset && glowDataset.originalData) {
+            const glowData = [...glowDataset.originalData];
+            for (let i = closestIndex + 1; i < glowData.length; i++) {
+              glowData[i] = null;
+            }
+            glowDataset.data = glowData;
           }
           
           if (costBasisDataset && costBasisDataset.originalData && !costBasisDataset.hidden) {
@@ -1681,6 +1752,21 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               newData[i] = null;
             }
             costBasisDataset.data = newData;
+          }
+          
+          // Cost Basis Future: mostrar desde el punto actual en adelante (solo si no estamos en transición)
+          const costBasisFutureDataset = chart.data.datasets.find(d => d.label === 'Cost Basis Future');
+          if (costBasisFutureDataset && costBasisFutureDataset.originalData && !chart._isInTransition) {
+            const futureData = [...costBasisFutureDataset.originalData];
+            for (let i = 0; i < closestIndex; i++) { // Cambiar <= por < para incluir el punto actual
+              futureData[i] = null;
+            }
+            costBasisFutureDataset.data = futureData;
+            costBasisFutureDataset.borderColor = 'rgba(80, 80, 80, 0.4)'; // Mostrar la línea gris
+          } else if (costBasisFutureDataset) {
+            // Durante transiciones, ocultar completamente
+            costBasisFutureDataset.data = costBasisFutureDataset.originalData.map(() => null);
+            costBasisFutureDataset.borderColor = 'transparent';
           }
           
           chart.update('none');
@@ -1712,16 +1798,33 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         if (chart.hoveredDataIndex !== undefined) {
           chart.hoveredDataIndex = undefined;
           
-          // Restaurar solo las líneas principales, las áreas ya están completas
+          // Restaurar todas las líneas principales
           const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
+          const futureDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value Future' || d.label === 'Total P&L Future');
+          const glowDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value Glow' || d.label === 'Total P&L Glow');
           const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
+          const costBasisFutureDataset = chart.data.datasets.find(d => d.label === 'Cost Basis Future');
           
           if (portfolioDataset && portfolioDataset.originalData) {
             portfolioDataset.data = [...portfolioDataset.originalData];
           }
           
+          if (futureDataset && futureDataset.originalData) {
+            // Ocultar completamente el dataset futuro cuando no hay hover
+            futureDataset.data = futureDataset.originalData.map(() => null);
+          }
+          
+          if (glowDataset && glowDataset.originalData) {
+            glowDataset.data = [...glowDataset.originalData];
+          }
+          
           if (costBasisDataset && costBasisDataset.originalData) {
             costBasisDataset.data = [...costBasisDataset.originalData];
+          }
+          
+          if (costBasisFutureDataset && costBasisFutureDataset.originalData) {
+            // Ocultar completamente el dataset futuro cuando no hay hover
+            costBasisFutureDataset.data = costBasisFutureDataset.originalData.map(() => null);
           }
           
           chart.update('none');
@@ -2029,18 +2132,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointRadius: 0,
         borderColor: 'transparent',
         borderWidth: 0,
-        backgroundColor: function(context) {
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.20)');
-          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.15)');
-          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.05)');
-          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.01)');
-          
-          return gradient;
-        },
+        backgroundColor: 'transparent',
         fill: 'origin',
         tension: 0.15,
         pointRadius: 0,
@@ -2062,18 +2154,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointRadius: 0,
         borderColor: 'transparent', 
         borderWidth: 0,
-        backgroundColor: function(context) {
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(255, 68, 68, 0.20)');
-          gradient.addColorStop(0.4, 'rgba(255, 68, 68, 0.15)');
-          gradient.addColorStop(0.8, 'rgba(255, 68, 68, 0.05)');
-          gradient.addColorStop(1, 'rgba(255, 68, 68, 0.01)');
-          
-          return gradient;
-        },
+        backgroundColor: 'transparent',
         fill: 'origin',
         tension: 0.15,
         pointRadius: 0,
@@ -2106,7 +2187,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           const isZeroCrossing = value === 0;
           return isZeroCrossing ? 0 : 5; // Sin hit radius para puntos imaginarios
         },
-        borderColor: '#10d56e', // Color base - los segmentos manejarán el color real
+        borderColor: '#10d56e', // Verde brillante para la línea principal
         backgroundColor: 'transparent', // Sin área de relleno
         fill: false, // No fill para este dataset
         tension: 0.15, // Igual que Full View pero un poco menos suave
@@ -2125,7 +2206,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         },
         pointBorderWidth: 2,
         pointHoverBorderWidth: 3,
-        borderWidth: 4, // Más grueso como Full View
+        borderWidth: 3, // Más grueso como Full View
         order: 1, // Render encima del área
         pointStyle: 'circle',
         segment: {
@@ -2140,6 +2221,62 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           }
         }
       });
+      
+      // Dataset para la línea futura (parte no activa) - gris apagado
+      datasets.push({
+        label: 'Total P&L Future',
+        data: [...interpolatedBalanceValues],
+        originalData: [...interpolatedBalanceValues],
+        indexMap: indexMap,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderColor: 'transparent', // Inicialmente transparente
+        backgroundColor: 'transparent',
+        fill: false,
+        tension: 0.15,
+        borderWidth: 3,
+        order: 1,
+        pointStyle: 'circle',
+        animation: {
+          duration: 0 // Sin animación para este dataset específico
+        }
+      });
+      
+      // Dataset para el brillo de Total P&L
+      datasets.push({
+        label: 'Total P&L Glow',
+        data: interpolatedBalanceValues,
+        originalData: [...interpolatedBalanceValues],
+        indexMap: indexMap,
+        borderColor: 'rgba(16, 213, 110, 0.3)', // Verde con transparencia para el brillo
+        backgroundColor: 'transparent',
+        fill: false,
+        tension: 0.15,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderWidth: 6, // Más grueso para el efecto de brillo
+        order: 0, // Render detrás de la línea principal
+        pointStyle: 'circle',
+        segment: {
+          borderColor: function(ctx) {
+            const startIndex = ctx.p0DataIndex;
+            const endIndex = ctx.p1DataIndex;
+            const startValue = interpolatedBalanceValues[startIndex];
+            const endValue = interpolatedBalanceValues[endIndex];
+            
+            // Color de brillo según el valor
+            return endValue >= 0 ? 'rgba(16, 213, 110, 0.3)' : 'rgba(255, 71, 87, 0.3)';
+          }
+        }
+      });
     } else {
       // Modo normal: líneas con sombreado simple pero visible
       
@@ -2150,19 +2287,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           data: investedValues, // Siempre datos completos
           borderColor: 'transparent', // Sin línea
           borderWidth: 0,
-          backgroundColor: function(context) {
-            // Área blanca con degradado más visible para Total Invested
-            const chart = context.chart;
-            const {ctx, chartArea} = chart;
-            if (!chartArea) return 'transparent';
-            
-            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.12)'); // Menos intenso arriba
-            gradient.addColorStop(0.3, 'rgba(255, 255, 255, 0.08)'); // Transición
-            gradient.addColorStop(0.7, 'rgba(255, 255, 255, 0.04)'); // Más visible en el medio
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.01)'); // Más visible abajo
-            return gradient;
-          },
+          backgroundColor: 'transparent',
           fill: 'origin',
           tension: 0.05,
           pointRadius: 0,
@@ -2200,6 +2325,30 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           pointStyle: 'line',
           order: 1,
         });
+        
+        // Cost Basis Future Line - parte no activa en gris
+        datasets.push({
+          label: 'Cost Basis Future',
+          data: [...investedValues],
+          originalData: [...investedValues],
+          borderColor: 'transparent', // Inicialmente transparente
+          backgroundColor: 'transparent',
+          fill: false,
+          tension: 0.05,
+          pointRadius: 0,
+          pointHoverRadius: 0,
+          pointBackgroundColor: 'transparent',
+          pointBorderColor: 'transparent',
+          pointBorderWidth: 0,
+          pointHoverBorderWidth: 0,
+          borderDash: [8, 3],
+          borderWidth: 3,
+          pointStyle: 'line',
+          order: 1,
+          animation: {
+            duration: 0 // Sin animación para este dataset específico
+          }
+        });
       }
       
       // Dataset para el área entre las líneas - completamente deshabilitado para evitar interferencias
@@ -2225,18 +2374,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         data: [...portfolioValues], // Copia fija de los datos completos
         borderColor: 'transparent', // Sin línea visible
         borderWidth: 0,
-        backgroundColor: function(context) {
-          const chart = context.chart;
-          const {ctx, chartArea} = chart;
-          if (!chartArea) return 'transparent';
-          
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(0, 255, 136, 0.20)');
-          gradient.addColorStop(0.4, 'rgba(0, 255, 136, 0.15)');
-          gradient.addColorStop(0.8, 'rgba(0, 255, 136, 0.05)');
-          gradient.addColorStop(1, 'rgba(0, 255, 136, 0.01)');
-          return gradient;
-        },
+        backgroundColor: 'transparent',
         fill: 'origin',
         tension: 0.1,
         pointRadius: 0,
@@ -2252,12 +2390,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         }
       });
 
-      // Dataset para la línea - se corta dinámicamente
+      // Dataset para la línea principal - se corta dinámicamente
       datasets.push({
         label: 'Portfolio Value',
         data: portfolioValues, // Los datos se actualizarán dinámicamente
         originalData: [...portfolioValues], // Copia de los datos originales
-        borderColor: '#00ff88',
+        borderColor: '#00ff88', // Verde brillante para la parte activa
         backgroundColor: 'transparent', // Sin área de relleno
         fill: false, // No fill para este dataset
         tension: 0.1,
@@ -2267,9 +2405,52 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointBorderColor: 'transparent',
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
-        borderWidth: 4,
+        borderWidth: 3,
         order: 1, // Render encima de la sombra
         pointStyle: 'circle'
+      });
+      
+      // Dataset para el brillo de la línea principal
+      datasets.push({
+        label: 'Portfolio Value Glow',
+        data: portfolioValues,
+        originalData: [...portfolioValues],
+        borderColor: 'rgba(0, 255, 136, 0.3)', // Verde con transparencia para el brillo
+        backgroundColor: 'transparent',
+        fill: false,
+        tension: 0.1,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderWidth: 6, // Más grueso para el efecto de brillo
+        order: 0, // Render detrás de la línea principal
+        pointStyle: 'circle'
+      });
+      
+      // Dataset para la línea futura (parte no activa) - verde apagado
+      datasets.push({
+        label: 'Portfolio Value Future',
+        data: [...portfolioValues], // Datos completos inicialmente
+        originalData: [...portfolioValues],
+        borderColor: 'transparent', // Inicialmente transparente
+        backgroundColor: 'transparent',
+        fill: false,
+        tension: 0.1,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderWidth: 3,
+        order: 1,
+        pointStyle: 'circle',
+        animation: {
+          duration: 0 // Sin animación para este dataset específico
+        }
       });
     }
 
