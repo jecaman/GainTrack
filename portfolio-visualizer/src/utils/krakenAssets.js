@@ -23,6 +23,7 @@ export const ASSET_LOGO_COLORS = {
   DOGE: '#C2A633', // Dogecoin Yellow
   SHIB: '#FFA409', // Shiba Orange
   TRUMP: '#C41E3A', // Trump Red
+  HBAR: '#000000', // Hedera Black
   EUR: '#003399', // Euro Blue
   USD: '#228B22', // Dollar Green
   GBP: '#012169', // Pound Blue
@@ -184,6 +185,13 @@ export const KRAKEN_ASSETS = {
     category: 'meme',
     logo: 'trump.png'
   },
+  'HBAR': {
+    name: 'Hedera',
+    symbol: 'HBAR',
+    color: ASSET_LOGO_COLORS.HBAR,
+    category: 'cryptocurrency',
+    logo: 'hbar.png'
+  },
   
   // Fiat currencies
   'EUR': {
@@ -287,6 +295,8 @@ export const getAssetLogo = (symbol, size = 'small') => {
     'DAI': 'https://coin-images.coingecko.com/coins/images/9956/small/dai-multi-collateral-mcd.png',
     'DOGE': 'https://coin-images.coingecko.com/coins/images/5/small/dogecoin.png',
     'SHIB': 'https://coin-images.coingecko.com/coins/images/11939/small/shiba.png',
+    'TRUMP': 'https://coin-images.coingecko.com/coins/images/53746/small/trump.png',
+    'HBAR': 'https://coin-images.coingecko.com/coins/images/3688/small/hbar.png',
     'XMR': 'https://coin-images.coingecko.com/coins/images/69/small/monero_logo.png',
     'ZEC': 'https://coin-images.coingecko.com/coins/images/486/small/circle-zcash-color.png',
     'ETC': 'https://coin-images.coingecko.com/coins/images/453/small/ethereum-classic-logo.png',
