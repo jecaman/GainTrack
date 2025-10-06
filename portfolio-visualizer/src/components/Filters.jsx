@@ -17,6 +17,16 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   const [activeFilters, setActiveFilters] = useState(0);
   const tabButtonRef = useRef(null);
   
+  // Set default dates on component mount
+  useEffect(() => {
+    if (!dateRange.from && !dateRange.to) {
+      const now = new Date();
+      const endDate = now.toISOString().split('T')[0];
+      const startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+      setDateRange({ from: startDate, to: endDate });
+    }
+  }, []);
+  
   // Estados para animaciones del popup
   const [popupAnimation, setPopupAnimation] = useState('entering');
   const [isApplying, setIsApplying] = useState(false);
@@ -410,68 +420,324 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                   border: `1px solid ${theme.borderColor}`,
                   boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
                 }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '10px',
-                    color: theme.textSecondary,
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                    letterSpacing: '0.5px',
-                    textTransform: 'uppercase'
-                  }}>Time Controls</label>
                   
                   {/* Date Range */}
-                  <div style={{ marginBottom: '10px' }}>
+                  <div style={{ marginBottom: '16px' }}>
                     <label style={{
                       display: 'block',
-                      marginBottom: '8px',
+                      marginBottom: '12px',
                       color: theme.textSecondary,
-                      fontSize: '12px',
+                      fontSize: '13px',
                       fontWeight: '600',
-                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      fontFamily: "'Inter', sans-serif",
                       letterSpacing: '0.5px',
                       textTransform: 'uppercase'
                     }}>Date Range</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input
-                        type="date"
-                        value={dateRange.from}
-                        onChange={(e) => {
-                          const newRange = {...dateRange, from: e.target.value};
-                          setDateRange(newRange);
-                          updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-                        }}
-                        style={{
-                          width: '48%',
-                          padding: '8px',
-                          border: `1px solid ${theme.borderColor}`,
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {/* Start Date */}
+                      <div style={{ position: 'relative' }}>
+                        <label style={{
+                          display: 'block',
+                          marginBottom: '6px',
+                          color: theme.textSecondary,
+                          fontSize: '11px',
+                          fontWeight: '500',
+                          fontFamily: "'Inter', sans-serif",
+                          letterSpacing: '0.025em',
+                          textTransform: 'uppercase'
+                        }}>Start Date</label>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+                          <input
+                            type="text"
+                            value={dateRange.from}
+                            placeholder="YYYY-MM-DD"
+                            onChange={(e) => {
+                              const newRange = {...dateRange, from: e.target.value};
+                              setDateRange(newRange);
+                              updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                            }}
+                            style={{
+                              flex: '1',
+                              padding: '8px 12px',
+                              border: `1px solid ${dateRange.from ? '#00ff99' : theme.borderColor}`,
+                              borderRadius: '4px',
+                              background: theme.bgElevated,
+                              color: theme.textPrimary,
+                              fontSize: '13px',
+                              fontFamily: "'Inter', sans-serif",
+                              fontWeight: '400',
+                              outline: 'none',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onFocus={(e) => {
+                              e.target.style.borderColor = '#00ff99';
+                              e.target.style.boxShadow = '0 0 0 2px rgba(0, 255, 153, 0.1)';
+                            }}
+                            onBlur={(e) => {
+                              e.target.style.borderColor = dateRange.from ? '#00ff99' : theme.borderColor;
+                              e.target.style.boxShadow = 'none';
+                            }}
+                          />
+                          <div style={{ position: 'relative', width: '36px', height: '36px' }}>
+                            <div 
+                              style={{
+                                width: '36px',
+                                height: '36px',
+                                border: `1px solid ${theme.borderColor}`,
+                                borderRadius: '4px',
+                                background: theme.bgElevated,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onClick={() => {
+                                const input = document.getElementById('start-date-picker');
+                                input.showPicker();
+                              }}
+                              onMouseEnter={(e) => {
+                                e.target.style.borderColor = '#00ff99';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.borderColor = theme.borderColor;
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={theme.textSecondary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="16" y1="2" x2="16" y2="6"/>
+                                <line x1="8" y1="2" x2="8" y2="6"/>
+                                <line x1="3" y1="10" x2="21" y2="10"/>
+                              </svg>
+                            </div>
+                            <input
+                              id="start-date-picker"
+                              type="date"
+                              value={dateRange.from}
+                              min="2020-01-01"
+                              max={new Date().toISOString().split('T')[0]}
+                              onChange={(e) => {
+                                const newRange = {...dateRange, from: e.target.value};
+                                setDateRange(newRange);
+                                updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                right: '0px',
+                                top: '40px',
+                                opacity: 0,
+                                pointerEvents: 'none',
+                                width: '1px',
+                                height: '1px'
+                              }}
+                            />
+                          </div>
+                        </div>
+                        {dateRange.from && (
+                          <div style={{
+                            position: 'absolute',
+                            right: '50px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            marginTop: '10px',
+                            width: '6px',
+                            height: '6px',
+                            background: '#00ff99',
+                            borderRadius: '50%',
+                            boxShadow: '0 0 4px rgba(0, 255, 153, 0.6)'
+                          }}></div>
+                        )}
+                      </div>
+                      
+                      {/* End Date */}
+                      <div style={{ position: 'relative' }}>
+                        <label style={{
+                          display: 'block',
+                          marginBottom: '6px',
+                          color: theme.textSecondary,
+                          fontSize: '11px',
+                          fontWeight: '500',
+                          fontFamily: "'Inter', sans-serif",
+                          letterSpacing: '0.025em',
+                          textTransform: 'uppercase'
+                        }}>End Date</label>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+                          <input
+                            type="text"
+                            value={dateRange.to}
+                            placeholder="YYYY-MM-DD"
+                            onChange={(e) => {
+                              const newRange = {...dateRange, to: e.target.value};
+                              setDateRange(newRange);
+                              updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                            }}
+                            style={{
+                              flex: '1',
+                              padding: '8px 12px',
+                              border: `1px solid ${dateRange.to ? '#00ff99' : theme.borderColor}`,
+                              borderRadius: '4px',
+                              background: theme.bgElevated,
+                              color: theme.textPrimary,
+                              fontSize: '13px',
+                              fontFamily: "'Inter', sans-serif",
+                              fontWeight: '400',
+                              outline: 'none',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onFocus={(e) => {
+                              e.target.style.borderColor = '#00ff99';
+                              e.target.style.boxShadow = '0 0 0 2px rgba(0, 255, 153, 0.1)';
+                            }}
+                            onBlur={(e) => {
+                              e.target.style.borderColor = dateRange.to ? '#00ff99' : theme.borderColor;
+                              e.target.style.boxShadow = 'none';
+                            }}
+                          />
+                          <div style={{ position: 'relative', width: '36px', height: '36px' }}>
+                            <div 
+                              style={{
+                                width: '36px',
+                                height: '36px',
+                                border: `1px solid ${theme.borderColor}`,
+                                borderRadius: '4px',
+                                background: theme.bgElevated,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onClick={() => {
+                                const input = document.getElementById('end-date-picker');
+                                input.showPicker();
+                              }}
+                              onMouseEnter={(e) => {
+                                e.target.style.borderColor = '#00ff99';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.borderColor = theme.borderColor;
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={theme.textSecondary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="16" y1="2" x2="16" y2="6"/>
+                                <line x1="8" y1="2" x2="8" y2="6"/>
+                                <line x1="3" y1="10" x2="21" y2="10"/>
+                              </svg>
+                            </div>
+                            <input
+                              id="end-date-picker"
+                              type="date"
+                              value={dateRange.to}
+                              min={dateRange.from || "2020-01-01"}
+                              max={new Date().toISOString().split('T')[0]}
+                              onChange={(e) => {
+                                const newRange = {...dateRange, to: e.target.value};
+                                setDateRange(newRange);
+                                updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                              }}
+                              style={{
+                                position: 'absolute',
+                                right: '0px',
+                                top: '40px',
+                                opacity: 0,
+                                pointerEvents: 'none',
+                                width: '1px',
+                                height: '1px'
+                              }}
+                            />
+                          </div>
+                        </div>
+                        {dateRange.to && (
+                          <div style={{
+                            position: 'absolute',
+                            right: '50px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            marginTop: '10px',
+                            width: '6px',
+                            height: '6px',
+                            background: '#00ff99',
+                            borderRadius: '50%',
+                            boxShadow: '0 0 4px rgba(0, 255, 153, 0.6)'
+                          }}></div>
+                        )}
+                      </div>
+                      
+                      {/* Clear Button */}
+                      <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-start' }}>
+                        <button
+                          onClick={() => {
+                            const newRange = { from: '', to: '' };
+                            setDateRange(newRange);
+                            updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            border: `1px solid ${theme.borderColor}`,
+                            borderRadius: '6px',
+                            background: theme.bgElevated,
+                            color: '#ff6b6b',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            fontFamily: "'Inter', sans-serif",
+                            cursor: 'pointer',
+                            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                            textTransform: 'none',
+                            letterSpacing: '0.025em',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            boxShadow: `0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
+                            backdropFilter: 'blur(10px)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = '#ff6b6b';
+                            e.target.style.color = 'white';
+                            e.target.style.transform = 'translateY(-2px)';
+                            e.target.style.boxShadow = '0 4px 12px rgba(255, 107, 107, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = theme.bgElevated;
+                            e.target.style.color = '#ff6b6b';
+                            e.target.style.transform = 'translateY(0)';
+                            e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                          }}
+                          onMouseDown={(e) => {
+                            e.target.style.transform = 'translateY(0) scale(0.98)';
+                          }}
+                          onMouseUp={(e) => {
+                            e.target.style.transform = 'translateY(-2px) scale(1)';
+                          }}
+                        >
+                          ✕ Clear
+                        </button>
+                      </div>
+                      
+                      {/* Date Range Status */}
+                      {dateRange.from && dateRange.to && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 12px',
+                          background: 'rgba(0, 255, 153, 0.1)',
+                          border: '1px solid rgba(0, 255, 153, 0.3)',
                           borderRadius: '4px',
-                          background: theme.bgElevated,
-                          color: theme.textPrimary,
-                          fontSize: '12px',
-                          fontFamily: "'Inter', sans-serif"
-                        }}
-                      />
-                      <input
-                        type="date"
-                        value={dateRange.to}
-                        onChange={(e) => {
-                          const newRange = {...dateRange, to: e.target.value};
-                          setDateRange(newRange);
-                          updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-                        }}
-                        style={{
-                          width: '48%',
-                          padding: '8px',
-                          border: `1px solid ${theme.borderColor}`,
-                          borderRadius: '4px',
-                          background: theme.bgElevated,
-                          color: theme.textPrimary,
-                          fontSize: '12px',
-                          fontFamily: "'Inter', sans-serif"
-                        }}
-                      />
+                          fontSize: '11px',
+                          color: '#00ff99',
+                          fontFamily: "'Inter', sans-serif",
+                          fontWeight: '500'
+                        }}>
+                          <div style={{
+                            width: '6px',
+                            height: '6px',
+                            background: '#00ff99',
+                            borderRadius: '50%'
+                          }}></div>
+                          {Math.ceil((new Date(dateRange.to) - new Date(dateRange.from)) / (1000 * 60 * 60 * 24) + 1)} days selected
+                        </div>
+                      )}
                     </div>
                   </div>
                   
