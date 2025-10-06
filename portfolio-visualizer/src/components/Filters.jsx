@@ -7,8 +7,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   const [showTabPulse, setShowTabPulse] = useState(false);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
   const [activeSection, setActiveSection] = useState('filters');
-  const [selectedAssets, setSelectedAssets] = useState(new Set());
+  const [hiddenAssets, setHiddenAssets] = useState(new Set());
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
+  const [selectedTimePreset, setSelectedTimePreset] = useState('');
+  const [minAllocation, setMinAllocation] = useState('0');
+  const [balanceThreshold, setBalanceThreshold] = useState('0');
+  const [excludedOperations, setExcludedOperations] = useState(new Set());
   const [baseCurrency, setBaseCurrency] = useState('EUR');
   const [activeFilters, setActiveFilters] = useState(0);
   const tabButtonRef = useRef(null);
@@ -68,10 +72,58 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
       .filter(asset => (asset.current_value || 0) > 0)
       .map(asset => asset.asset) : [];
 
+  // Helper function to update active filters count
+  const updateActiveFiltersCount = (hiddenAssets, dateRng, timePreset, minAlloc, balThreshold, excludedOps) => {
+    let count = 0;
+    if (hiddenAssets.size > 0) count++;
+    if (dateRng.from || dateRng.to) count++;
+    if (timePreset) count++;
+    if (parseFloat(minAlloc) > 0) count++;
+    if (parseFloat(balThreshold) > 0) count++;
+    if (excludedOps && excludedOps.size > 0) count++;
+    setActiveFilters(count);
+  };
+
+  // Helper function to set time preset dates
+  const setTimePresetDates = (preset) => {
+    const now = new Date();
+    const endDate = now.toISOString().split('T')[0];
+    let startDate;
+    
+    switch(preset) {
+      case '1W':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        break;
+      case '1M':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+        break;
+      case '3M':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString().split('T')[0];
+        break;
+      case '6M':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString().split('T')[0];
+        break;
+      case '1Y':
+        startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+        break;
+      case 'All':
+        startDate = '';
+        endDate = '';
+        break;
+      default:
+        return;
+    }
+    
+    const newRange = preset === 'All' ? { from: '', to: '' } : { from: startDate, to: endDate };
+    setDateRange(newRange);
+    setSelectedTimePreset(preset);
+    updateActiveFiltersCount(hiddenAssets, newRange, preset, minAllocation, balanceThreshold, excludedOperations);
+  };
+
   const sections = [
-    { id: 'filters', label: 'Filters' },
-    { id: 'analysis', label: 'Analysis' },
-    { id: 'settings', label: 'Settings' }
+    { id: 'filters', label: 'FILTERS' },
+    { id: 'analytics', label: 'ANALYTICS' },
+    { id: 'config', label: 'CONFIG' }
   ];
 
   // Hide pulse after 8 seconds
@@ -119,16 +171,25 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   }, []);
 
   const handleAssetToggle = (asset) => {
-    const newSelected = new Set(selectedAssets);
-    if (newSelected.has(asset)) {
-      newSelected.delete(asset);
+    const newHidden = new Set(hiddenAssets);
+    if (newHidden.has(asset)) {
+      newHidden.delete(asset);
     } else {
-      newSelected.add(asset);
+      newHidden.add(asset);
     }
-    setSelectedAssets(newSelected);
-    
-    // Update active filters count
-    setActiveFilters(newSelected.size + (dateRange.from ? 1 : 0) + (dateRange.to ? 1 : 0));
+    setHiddenAssets(newHidden);
+    updateActiveFiltersCount(newHidden, dateRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+  };
+
+  const handleOperationToggle = (operation) => {
+    const newExcluded = new Set(excludedOperations);
+    if (newExcluded.has(operation)) {
+      newExcluded.delete(operation);
+    } else {
+      newExcluded.add(operation);
+    }
+    setExcludedOperations(newExcluded);
+    updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, balanceThreshold, newExcluded);
   };
 
   const handleTabClick = () => {
@@ -215,7 +276,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
           onMouseEnter={(e) => {
             if (!isTabHoverDisabled) {
               e.target.style.background = theme.bgContainer;
-              e.target.style.borderColor = theme.accentPrimary;
+              e.target.style.borderColor = '#00ff99';
               e.target.style.color = theme.textPrimary;
               e.target.style.transform = 'translateX(-6px)';
               // Brillo como los KPIs pero sin el borde derecho (interior)
@@ -255,7 +316,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
               position: 'absolute',
               top: '-6px',
               right: '-6px',
-              background: theme.accentPrimary,
+              background: '#00ff99',
               color: theme.bg,
               borderRadius: '50%',
               width: '18px',
@@ -288,40 +349,6 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
           marginLeft: '-5px',
           zIndex: 2
         }}>
-          {/* Header */}
-          <div style={{
-            padding: '20px',
-            borderBottom: `1px solid ${theme.borderColor}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <h3 style={{
-              margin: 0,
-              color: theme.textPrimary,
-              fontSize: '18px',
-              fontWeight: '600',
-              fontFamily: "'Inter', sans-serif"
-            }}>Portfolio Controls</h3>
-            <button
-              onClick={() => {
-                setIsOpen(false);
-                if (onSidebarToggle) {
-                  onSidebarToggle(false);
-                }
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: theme.textSecondary,
-                fontSize: '20px',
-                cursor: 'pointer',
-                padding: '4px'
-              }}
-            >
-              ×
-            </button>
-          </div>
 
           {/* Navigation */}
           <div style={{
@@ -335,18 +362,18 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                 onClick={() => setActiveSection(section.id)}
                 style={{
                   flex: 1,
-                  padding: '16px 12px',
+                  padding: '20px 16px',
                   background: activeSection === section.id ? theme.bgElevated : 'transparent',
                   border: 'none',
                   color: activeSection === section.id ? theme.textPrimary : theme.textSecondary,
-                  fontSize: '13px',
+                  fontSize: '14px',
                   fontWeight: activeSection === section.id ? '600' : '500',
                   cursor: 'pointer',
-                  borderBottom: activeSection === section.id ? `2px solid ${theme.accentPrimary}` : `2px solid transparent`,
+                  borderBottom: activeSection === section.id ? `3px solid #00ff99` : `3px solid transparent`,
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                   position: 'relative',
                   fontFamily: "'Inter', sans-serif",
-                  letterSpacing: '0.3px',
+                  letterSpacing: '0.5px',
                   textTransform: 'uppercase'
                 }}
                 onMouseEnter={(e) => {
@@ -370,78 +397,156 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
           {/* Content */}
           <div style={{
             flex: 1,
-            padding: '20px',
+            padding: '12px',
             overflowY: 'auto'
           }}>
             {activeSection === 'filters' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {/* Date Range */}
-                <div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+                {/* Time Controls Section */}
+                <div style={{
+                  background: theme.bgContainer,
+                  padding: '12px',
+                  borderRadius: '10px',
+                  border: `1px solid ${theme.borderColor}`,
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}>
                   <label style={{
                     display: 'block',
-                    marginBottom: '8px',
+                    marginBottom: '10px',
                     color: theme.textSecondary,
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    fontFamily: "'Inter', sans-serif"
-                  }}>Date Range</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="date"
-                      value={dateRange.from}
-                      onChange={(e) => {
-                        const newRange = {...dateRange, from: e.target.value};
-                        setDateRange(newRange);
-                        setActiveFilters(selectedAssets.size + (newRange.from ? 1 : 0) + (newRange.to ? 1 : 0));
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '8px',
-                        border: `1px solid ${theme.borderColor}`,
-                        borderRadius: '6px',
-                        background: theme.bgContainer,
-                        color: theme.textPrimary,
-                        fontSize: '12px',
-                        fontFamily: "'Inter', sans-serif"
-                      }}
-                    />
-                    <input
-                      type="date"
-                      value={dateRange.to}
-                      onChange={(e) => {
-                        const newRange = {...dateRange, to: e.target.value};
-                        setDateRange(newRange);
-                        setActiveFilters(selectedAssets.size + (newRange.from ? 1 : 0) + (newRange.to ? 1 : 0));
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '8px',
-                        border: `1px solid ${theme.borderColor}`,
-                        borderRadius: '6px',
-                        background: theme.bgContainer,
-                        color: theme.textPrimary,
-                        fontSize: '12px',
-                        fontFamily: "'Inter', sans-serif"
-                      }}
-                    />
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase'
+                  }}>Time Controls</label>
+                  
+                  {/* Date Range */}
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '8px',
+                      color: theme.textSecondary,
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase'
+                    }}>Date Range</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="date"
+                        value={dateRange.from}
+                        onChange={(e) => {
+                          const newRange = {...dateRange, from: e.target.value};
+                          setDateRange(newRange);
+                          updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                        }}
+                        style={{
+                          width: '48%',
+                          padding: '8px',
+                          border: `1px solid ${theme.borderColor}`,
+                          borderRadius: '4px',
+                          background: theme.bgElevated,
+                          color: theme.textPrimary,
+                          fontSize: '12px',
+                          fontFamily: "'Inter', sans-serif"
+                        }}
+                      />
+                      <input
+                        type="date"
+                        value={dateRange.to}
+                        onChange={(e) => {
+                          const newRange = {...dateRange, to: e.target.value};
+                          setDateRange(newRange);
+                          updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                        }}
+                        style={{
+                          width: '48%',
+                          padding: '8px',
+                          border: `1px solid ${theme.borderColor}`,
+                          borderRadius: '4px',
+                          background: theme.bgElevated,
+                          color: theme.textPrimary,
+                          fontSize: '12px',
+                          fontFamily: "'Inter', sans-serif"
+                        }}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Quick Periods */}
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '8px',
+                      color: theme.textSecondary,
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      letterSpacing: '0.5px',
+                      textTransform: 'uppercase'
+                    }}>Quick Periods</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                      {['1W', '1M', '3M', '6M', '1Y', 'All'].map(preset => (
+                        <button
+                          key={preset}
+                          onClick={() => setTimePresetDates(preset)}
+                          style={{
+                            padding: '8px 6px',
+                            background: selectedTimePreset === preset ? '#00ff99' : theme.bgElevated,
+                            border: `1px solid ${selectedTimePreset === preset ? '#00ff99' : theme.borderColor}`,
+                            borderRadius: '4px',
+                            color: selectedTimePreset === preset ? theme.bg : theme.textPrimary,
+                            fontSize: '11px',
+                            fontWeight: selectedTimePreset === preset ? '700' : '500',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
+                          }}
+                          onMouseEnter={(e) => {
+                            if (selectedTimePreset !== preset) {
+                              e.target.style.borderColor = '#00ff99';
+                              e.target.style.backgroundColor = theme.bgContainer;
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (selectedTimePreset !== preset) {
+                              e.target.style.borderColor = theme.borderColor;
+                              e.target.style.backgroundColor = theme.bgElevated;
+                            }
+                          }}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Asset Selection */}
-                <div>
+                {/* Assets Section */}
+                <div style={{
+                  background: theme.bgContainer,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: `1px solid ${theme.borderColor}`,
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                }}>
                   <label style={{
                     display: 'block',
                     marginBottom: '8px',
                     color: theme.textSecondary,
                     fontSize: '14px',
-                    fontWeight: '500',
-                    fontFamily: "'Inter', sans-serif"
+                    fontWeight: '600',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase'
                   }}>Assets</label>
                   <div style={{ 
                     display: 'flex', 
                     flexDirection: 'column', 
                     gap: '8px', 
-                    maxHeight: '200px', 
+                    maxHeight: '160px', 
                     overflowY: 'auto',
                     border: `1px solid ${theme.borderColor}`,
                     borderRadius: '6px',
@@ -466,15 +571,16 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                       >
                         <input
                           type="checkbox"
-                          checked={selectedAssets.has(asset)}
+                          checked={!hiddenAssets.has(asset)}
                           onChange={() => handleAssetToggle(asset)}
                           style={{
-                            accentColor: theme.accentPrimary
+                            accentColor: '#00ff99'
                           }}
                         />
                         <span style={{
                           color: theme.textPrimary,
-                          fontSize: '14px',
+                          fontSize: '12px',
+                          fontWeight: '600',
                           fontFamily: "'Inter', sans-serif"
                         }}>{asset}</span>
                       </label>
@@ -482,99 +588,212 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                   </div>
                 </div>
 
-                {/* Quick Filters */}
-                <div>
+                {/* Portfolio Filters */}
+                <div style={{
+                  background: theme.bgContainer,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: `1px solid ${theme.borderColor}`,
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                }}>
                   <label style={{
                     display: 'block',
                     marginBottom: '8px',
                     color: theme.textSecondary,
                     fontSize: '14px',
-                    fontWeight: '500',
-                    fontFamily: "'Inter', sans-serif"
-                  }}>Quick Filters</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {['All Assets', 'Crypto Only', 'Fiat Only', 'Profitable Only', 'Losing Only'].map(filter => (
-                      <button
-                        key={filter}
-                        onClick={() => handleQuickFilter(filter)}
+                    fontWeight: '600',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase'
+                  }}>Portfolio Filters</label>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* Min Allocation % */}
+                    <div>
+                      <label style={{
+                        display: 'block',
+                        marginBottom: '6px',
+                        color: theme.textSecondary,
+                        fontSize: '11px',
+                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                        fontWeight: '600',
+                        letterSpacing: '0.5px',
+                        textTransform: 'uppercase'
+                      }}>Min Allocation %</label>
+                      <input
+                        type="number"
+                        value={minAllocation}
+                        onChange={(e) => {
+                          setMinAllocation(e.target.value);
+                          updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, e.target.value, balanceThreshold, excludedOperations);
+                        }}
+                        placeholder="0"
                         style={{
-                          padding: '8px 12px',
-                          background: theme.bgContainer,
+                          width: '100%',
+                          padding: '8px',
                           border: `1px solid ${theme.borderColor}`,
                           borderRadius: '6px',
+                          background: theme.bgElevated,
                           color: theme.textPrimary,
                           fontSize: '12px',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.2s ease',
                           fontFamily: "'Inter', sans-serif"
                         }}
-                        onMouseEnter={(e) => {
-                          e.target.style.borderColor = theme.accentPrimary;
-                          e.target.style.backgroundColor = theme.bgElevated;
+                      />
+                    </div>
+
+                    {/* Balance Threshold */}
+                    <div>
+                      <label style={{
+                        display: 'block',
+                        marginBottom: '6px',
+                        color: theme.textSecondary,
+                        fontSize: '11px',
+                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                        fontWeight: '600',
+                        letterSpacing: '0.5px',
+                        textTransform: 'uppercase'
+                      }}>Balance Threshold</label>
+                      <input
+                        type="number"
+                        value={balanceThreshold}
+                        onChange={(e) => {
+                          setBalanceThreshold(e.target.value);
+                          updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, e.target.value, excludedOperations);
                         }}
-                        onMouseLeave={(e) => {
-                          e.target.style.borderColor = theme.borderColor;
-                          e.target.style.backgroundColor = theme.bgContainer;
+                        placeholder="0"
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: `1px solid ${theme.borderColor}`,
+                          borderRadius: '6px',
+                          background: theme.bgElevated,
+                          color: theme.textPrimary,
+                          fontSize: '12px',
+                          fontFamily: "'Inter', sans-serif"
                         }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Operations */}
+                <div style={{
+                  background: theme.bgContainer,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: `1px solid ${theme.borderColor}`,
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                }}>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '8px',
+                    color: theme.textSecondary,
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                    letterSpacing: '0.5px',
+                    textTransform: 'uppercase'
+                  }}>Operations</label>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    {['Buy', 'Sell', 'Market Orders', 'Limit Orders'].map(operation => (
+                      <label key={operation} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        padding: '6px',
+                        borderRadius: '6px',
+                        transition: 'background 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = theme.bgElevated;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'transparent';
+                      }}
                       >
-                        {filter}
-                      </button>
+                        <input
+                          type="checkbox"
+                          checked={!excludedOperations.has(operation)}
+                          onChange={() => handleOperationToggle(operation)}
+                          style={{
+                            accentColor: '#00ff99'
+                          }}
+                        />
+                        <span style={{
+                          color: excludedOperations.has(operation) ? theme.textSecondary : theme.textPrimary,
+                          fontWeight: excludedOperations.has(operation) ? '400' : '600',
+                          fontSize: '12px',
+                          fontFamily: "'Inter', sans-serif"
+                        }}>{operation}</span>
+                      </label>
                     ))}
                   </div>
                 </div>
 
-                {/* Botón Apply to All */}
-                <div style={{ position: 'relative' }}>
-                  <div 
+                {/* Clear All Button */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  marginTop: 'auto',
+                  paddingTop: '12px',
+                  marginBottom: '8px',
+                  borderTop: `1px solid ${theme.borderColor}`
+                }}>
+                  <button
                     onClick={() => {
-                      // Placeholder - no implementation yet
-                      console.log('Apply to all pages:', { startDate, endDate });
+                      setHiddenAssets(new Set());
+                      setDateRange({ from: '', to: '' });
+                      setSelectedTimePreset('');
+                      setMinAllocation('0');
+                      setBalanceThreshold('0');
+                      setExcludedOperations(new Set());
+                      setActiveFilters(0);
+                      console.log('All filters cleared');
+                      if (onFiltersChange) {
+                        onFiltersChange({
+                          hiddenAssets: [],
+                          dateRange: { from: '', to: '' },
+                          selectedTimePreset: '',
+                          minAllocation: 0,
+                          balanceThreshold: 0,
+                          excludedOperations: []
+                        });
+                      }
                     }}
                     style={{
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      borderRadius: '8px',
-                      padding: '7px 12px',
-                      color: '#f59e0b',
-                      fontSize: '13px',
-                      fontFamily: "'Inter', sans-serif",
+                      padding: '10px 20px',
+                      background: theme.bgContainer,
+                      border: `2px solid ${theme.textSecondary}`,
+                      borderRadius: '6px',
+                      color: theme.textPrimary,
+                      fontSize: '12px',
                       fontWeight: '600',
                       cursor: 'pointer',
-                      transition: 'all 0.25s ease-out',
-                      backdropFilter: 'blur(10px)',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      whiteSpace: 'nowrap',
-                      userSelect: 'none'
+                      transition: 'all 0.2s ease',
+                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.8px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(245, 158, 11, 0.15)';
-                      e.currentTarget.style.borderColor = '#f59e0b';
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.25)';
-                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.target.style.borderColor = '#ff6b6b';
+                      e.target.style.color = '#ff6b6b';
+                      e.target.style.background = theme.bgElevated;
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                      e.currentTarget.style.transform = 'translateY(0px)';
+                      e.target.style.borderColor = theme.textSecondary;
+                      e.target.style.color = theme.textPrimary;
+                      e.target.style.background = theme.bgContainer;
                     }}
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"/>
-                      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
-                      <path d="M2 12h20"/>
-                    </svg>
-                    <span>Apply to All</span>
-                  </div>
+                    CLEAR ALL
+                  </button>
                 </div>
               </div>
             )}
 
-            {activeSection === 'analysis' && (
+            {activeSection === 'analytics' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{
                   padding: '16px',
@@ -599,7 +818,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
               </div>
             )}
 
-            {activeSection === 'settings' && (
+            {activeSection === 'config' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {/* Base Currency */}
                 <div>
@@ -641,7 +860,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                     fontWeight: '500',
                     fontFamily: "'Inter', sans-serif"
                   }}>Export Data</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {['Export as CSV', 'Export as JSON', 'Export Report'].map(option => (
                       <button
                         key={option}
@@ -658,7 +877,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                           fontFamily: "'Inter', sans-serif"
                         }}
                         onMouseEnter={(e) => {
-                          e.target.style.borderColor = theme.accentPrimary;
+                          e.target.style.borderColor = '#00ff99';
                           e.target.style.backgroundColor = theme.bgElevated;
                         }}
                         onMouseLeave={(e) => {
@@ -675,8 +894,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
             )}
           </div>
         </div>
-    </div>
-  );
+      </div>
+    );
 
   // Create a dedicated portal container if it doesn't exist
   useEffect(() => {

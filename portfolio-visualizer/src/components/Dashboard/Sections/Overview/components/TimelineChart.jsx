@@ -78,10 +78,16 @@ const hoverPlugin = {
     
     
     // Programar la siguiente animación
-    if (!chart._animationFrameId) {
+    if (!chart._animationFrameId && !chart._isDestroying) {
       chart._animationFrameId = requestAnimationFrame(() => {
         chart._animationFrameId = null;
-        chart.update('none');
+        if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
       });
     }
     
@@ -241,7 +247,13 @@ const hoverPlugin = {
         // Marcar que estamos en animación para que los datasets futuros no se muestren
         chart._isInTransition = true;
         
-        chart.update('none');
+        if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
         chart.exitHoverAnimation.animationFrame = requestAnimationFrame(animate);
       }
     };
@@ -916,7 +928,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         if (chartRef.current) {
           chartRef.current._stabilizing = true;
           setTimeout(() => {
-            if (chartRef.current) {
+            if (chartRef.current && chartRef.current.canvas && chartRef.current.canvas.ownerDocument && !chartRef.current._isDestroying) {
               chartRef.current._stabilizing = false;
               console.log('🔄 Chart estabilizado después de cambio de datos');
             }
@@ -1557,11 +1569,16 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Configurar eventos de mouse personalizados para el hover
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
+    if (!chart || !chart.canvas) return;
 
     const canvas = chart.canvas;
     
     const handleMouseMove = (event) => {
+      // Verificar que el chart y el canvas existen
+      if (!chart || chart._isDestroying || !chart.canvas || !chart.canvas.ownerDocument) {
+        return;
+      }
+      
       // No hacer nada si se está haciendo drag, drag zoom, o en período de estabilización
       if (isDragging || chart._isDragZoom || chart._stabilizing || isChartStabilizing) {
         return;
@@ -1585,9 +1602,15 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         chart._mouseThrottle = false;
       }, throttleTime);
 
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+      let rect, x, y;
+      try {
+        rect = canvas.getBoundingClientRect();
+        x = event.clientX - rect.left;
+        y = event.clientY - rect.top;
+      } catch (e) {
+        console.warn('Error getting canvas bounds:', e);
+        return;
+      }
       
       // Verificar que estemos dentro del área del gráfico
       if (!chart.chartArea) return;
@@ -1639,7 +1662,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             costBasisFutureDataset.data = costBasisFutureDataset.originalData.map(() => null);
           }
           
-          chart.update('none');
+          if (chart && chart.canvas && chart.canvas.ownerDocument) {
+            try {
+              if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
+            } catch (e) {
+              console.warn('Error updating chart:', e);
+            }
+          }
         }
         return;
       }
@@ -1769,7 +1804,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             costBasisFutureDataset.borderColor = 'transparent';
           }
           
-          chart.update('none');
+          if (chart && chart.canvas && chart.canvas.ownerDocument) {
+            try {
+              if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
+            } catch (e) {
+              console.warn('Error updating chart:', e);
+            }
+          }
           
           // Las áreas se mantienen completas siempre
         }
@@ -1777,6 +1824,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     };
 
     const handleMouseLeave = () => {
+      // Verificar que el chart existe
+      if (!chart || !chart.canvas || !chart.canvas.ownerDocument) {
+        return;
+      }
+      
       // Si está congelado, no resetear el tooltip al salir
       if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
         console.log('MouseLeave bloqueado - tooltip congelado');
@@ -1827,7 +1879,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             costBasisFutureDataset.data = costBasisFutureDataset.originalData.map(() => null);
           }
           
-          chart.update('none');
+          if (chart && chart.canvas && chart.canvas.ownerDocument) {
+            try {
+              if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
+            } catch (e) {
+              console.warn('Error updating chart:', e);
+            }
+          }
         }
       }, 10); // Pequeño delay para asegurar que el estado se procese correctamente
     };
@@ -1836,8 +1900,14 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     canvas.addEventListener('mouseleave', handleMouseLeave);
     
     return () => {
-      canvas.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('mouseleave', handleMouseLeave);
+      if (canvas && canvas.ownerDocument && !chartRef.current?._isDestroying) {
+        try {
+          canvas.removeEventListener('mousemove', handleMouseMove);
+          canvas.removeEventListener('mouseleave', handleMouseLeave);
+        } catch (e) {
+          console.warn('Error removing event listeners:', e);
+        }
+      }
     };
   }, [portfolioData, processedTimelineData, viewMode, showTotalInvested, periodMode, isDragging, isChartStabilizing]);
   
@@ -1879,7 +1949,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Manejar estado de dragging para tooltip
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart) return;
+    if (!chart || !chart.canvas) return;
 
     const canvas = chart.canvas;
     if (!canvas) return;
@@ -1918,7 +1988,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       if (!isFrozenOrFreezing) {
         setIsDragging(false);
         chart.isDragging = false;
-        chart.update('none');
+        if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
       }
       
       // Limpiar posición de mousedown
@@ -1946,7 +2022,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           }
         });
         
-        chart.update('none');
+        if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
       }
     };
 
@@ -1955,9 +2037,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     document.addEventListener('mousemove', handleDocumentMouseMove);
 
     return () => {
-      canvas.removeEventListener('mousedown', handleMouseDown);
-      canvas.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('mousemove', handleDocumentMouseMove);
+      if (canvas && canvas.ownerDocument && !chartRef.current?._isDestroying) {
+        try {
+          canvas.removeEventListener('mousedown', handleMouseDown);
+          canvas.removeEventListener('mouseup', handleMouseUp);
+        } catch (e) {
+          console.warn('Error removing canvas event listeners:', e);
+        }
+      }
+      try {
+        document.removeEventListener('mousemove', handleDocumentMouseMove);
+      } catch (e) {
+        console.warn('Error removing document event listener:', e);
+      }
     };
   }, [chartRef.current]);
   
@@ -2523,7 +2615,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             
             setIsTooltipFrozen(false);
             forceHidePopup();
+            if (chart && chart.canvas && chart.canvas.ownerDocument) {
+            try {
+              if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
             chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
+            } catch (e) {
+              console.warn('Error updating chart:', e);
+            }
+          }
           } else {
             // Congelar en este punto
             console.log('Congelando tooltip en índice:', clickedIndex);
@@ -2550,7 +2654,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             });
           }
           
-          chart.update('none');
+          if (chart && chart.canvas && chart.canvas.ownerDocument) {
+            try {
+              if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
+            } catch (e) {
+              console.warn('Error updating chart:', e);
+            }
+          }
         }
       },
       onHover: function(event, elements, chart) {
@@ -2591,7 +2707,19 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 
                 // Marcar que estamos en modo drag
                 chart._isDragZoom = true;
-                chart.update('none');
+                if (chart && chart.canvas && chart.canvas.ownerDocument) {
+            try {
+              if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
+          try {
+            chart.update('none');
+          } catch (e) {
+            console.warn('Error updating chart:', e);
+          }
+        }
+            } catch (e) {
+              console.warn('Error updating chart:', e);
+            }
+          }
               },
               onDragEnd: function({chart}) {
                 console.log('🎯 Drag terminado');
@@ -3599,19 +3727,23 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   }}>
                     <button
                       onClick={() => {
-                        // Destruir chart existente antes del reset para evitar conflictos
-                        if (chartRef.current && chartRef.current.destroy) {
-                          chartRef.current.destroy();
-                          chartRef.current = null;
-                        }
-                        
+                        // Restablecer solo la fecha específica según el tipo de calendario
                         if (calendarType === 'start') {
                           const { defaultStartDate } = getDefaultDates();
                           setStartDate(defaultStartDate);
+                          if (setExternalStartDate) setExternalStartDate(defaultStartDate);
                         } else {
                           const { defaultEndDate } = getDefaultDates();
                           setEndDate(defaultEndDate);
+                          if (setExternalEndDate) setExternalEndDate(defaultEndDate);
                         }
+                        
+                        // Limpiar tooltip congelado si existe
+                        if (chartRef.current && chartRef.current.frozenTooltip) {
+                          chartRef.current.frozenTooltip.isFrozen = false;
+                          chartRef.current.frozenTooltip.frozenIndex = -1;
+                        }
+                        
                         setShowStartCalendar(false);
                         
                         // Cancelar popup si está abierto
