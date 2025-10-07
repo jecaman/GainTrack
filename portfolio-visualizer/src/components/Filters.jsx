@@ -665,6 +665,32 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                         )}
                       </div>
                       
+                      {/* Date Range Status */}
+                      {dateRange.from && dateRange.to && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 12px',
+                          background: 'rgba(0, 255, 153, 0.1)',
+                          border: '1px solid rgba(0, 255, 153, 0.3)',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          color: '#00ff99',
+                          fontFamily: "'Inter', sans-serif",
+                          fontWeight: '500',
+                          marginTop: '8px'
+                        }}>
+                          <div style={{
+                            width: '6px',
+                            height: '6px',
+                            background: '#00ff99',
+                            borderRadius: '50%'
+                          }}></div>
+                          {Math.ceil((new Date(dateRange.to) - new Date(dateRange.from)) / (1000 * 60 * 60 * 24) + 1)} days selected
+                        </div>
+                      )}
+
                       {/* Clear Button */}
                       <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-start' }}>
                         <button
@@ -713,31 +739,6 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                           ✕ Clear
                         </button>
                       </div>
-                      
-                      {/* Date Range Status */}
-                      {dateRange.from && dateRange.to && (
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '8px 12px',
-                          background: 'rgba(0, 255, 153, 0.1)',
-                          border: '1px solid rgba(0, 255, 153, 0.3)',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          color: '#00ff99',
-                          fontFamily: "'Inter', sans-serif",
-                          fontWeight: '500'
-                        }}>
-                          <div style={{
-                            width: '6px',
-                            height: '6px',
-                            background: '#00ff99',
-                            borderRadius: '50%'
-                          }}></div>
-                          {Math.ceil((new Date(dateRange.to) - new Date(dateRange.from)) / (1000 * 60 * 60 * 24) + 1)} days selected
-                        </div>
-                      )}
                     </div>
                   </div>
                   
