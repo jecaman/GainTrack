@@ -17,12 +17,67 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('overview');
   const [showApplyPopup, setShowApplyPopup] = useState(false);
+  const [popupSource, setPopupSource] = useState('filter'); // 'filter' or 'timeline'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
   const handleFiltersChange = (newFilters) => {
     setFilters(newFilters);
     console.log('Dashboard filters changed:', newFilters);
+    
+    // Filter changes always affect Timeline dates
+    if (newFilters.type === 'dateRange' && newFilters.dateRange) {
+      if (newFilters.dateRange.from) {
+        setStartDate(newFilters.dateRange.from);
+      }
+      if (newFilters.dateRange.to) {
+        setEndDate(newFilters.dateRange.to);
+      }
+    }
+  };
+
+  // Timeline can only update Filter dates when "Apply to All" is used
+  const handleTimelineApplyToAll = (timelineData) => {
+    // Use stored timeline dates if available
+    const datesToUse = window.timelineDates || timelineData.dateRange;
+    
+    if (datesToUse) {
+      console.log('Timeline Apply to All - updating Filter dates:', datesToUse);
+      // Update both Filter state and Dashboard dates
+      setStartDate(datesToUse.from || datesToUse.startDate);
+      setEndDate(datesToUse.to || datesToUse.endDate);
+      
+      // Notify Filter component
+      handleFiltersChange({
+        type: 'dateRange',
+        dateRange: {
+          from: datesToUse.from || datesToUse.startDate,
+          to: datesToUse.to || datesToUse.endDate
+        }
+      });
+      
+      // Clean up temporary storage
+      window.timelineDates = null;
+    }
+  };
+
+  // Function to show popup from Timeline changes
+  const showTimelinePopup = (timelineDates) => {
+    setPopupSource('timeline');
+    // Store timeline dates temporarily for the popup (both use YYYY-MM-DD now)
+    if (timelineDates) {
+      window.timelineDates = {
+        startDate: timelineDates.startDate,
+        endDate: timelineDates.endDate
+      };
+    }
+    setShowApplyPopup(true);
+  };
+
+  // Function to show popup from Filter changes
+  const showFilterPopup = () => {
+    setPopupSource('filter');
+    setShowApplyPopup(true);
   };
 
   const handleSectionChange = (sectionId) => {
@@ -45,6 +100,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             endDate={endDate}
             setStartDate={setStartDate}
             setEndDate={setEndDate}
+            onTimelineApplyToAll={handleTimelineApplyToAll}
+            showTimelinePopup={showTimelinePopup}
           />
         );
       case 'analytics':
@@ -89,6 +146,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
           setShowApplyPopup={setShowApplyPopup}
           startDate={startDate}
           endDate={endDate}
+          onApplyToAll={handleTimelineApplyToAll}
+          popupSource={popupSource}
         />
       )}
       

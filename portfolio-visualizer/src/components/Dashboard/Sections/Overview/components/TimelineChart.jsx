@@ -382,7 +382,7 @@ const splitLinePlugin = {
 // Registrar los plugins
 Chart.register(hoverPlugin, hideGrayLinesPlugin, splitLinePlugin);
 
-const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate }) => {
+const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate, onTimelineApplyToAll, showTimelinePopup }) => {
   // Constantes de estilo reutilizables
   const COLORS = {
     HOVER_LIGHT: 'rgba(255, 255, 255, 0.12)',
@@ -392,11 +392,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   };
 
   // Función centralizada para formatear fechas
+  // Use standard YYYY-MM-DD format (same as Filter)
   const formatDate = (date) => {
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    return date.toISOString().split('T')[0];
   };
 
   const [showTotalInvested, setShowTotalInvested] = useState(false);
@@ -450,10 +448,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     
     if (!startDate || !endDate) return portfolioData.timeline;
     
-    const [startDay, startMonth, startYear] = startDate.split('/');
-    const [endDay, endMonth, endYear] = endDate.split('/');
-    const startDateObj = new Date(startYear, startMonth - 1, startDay);
-    const endDateObj = new Date(endYear, endMonth - 1, endDay);
+    const startDateObj = new Date(startDate);
+    const endDateObj = new Date(endDate);
     
     return portfolioData.timeline.filter(entry => {
       const entryDate = new Date(entry.date);
@@ -601,10 +597,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     // Simular el filtro temporalmente
     const filteredData = portfolioData?.timeline?.filter(entry => {
       const entryDate = new Date(entry.date);
-      const [startDay, startMonth, startYear] = simulatedDateRange.startDate.split('/');
-      const [endDay, endMonth, endYear] = simulatedDateRange.endDate.split('/');
-      const startDateObj = new Date(startYear, startMonth - 1, startDay);
-      const endDateObj = new Date(endYear, endMonth - 1, endDay);
+      const startDateObj = new Date(simulatedDateRange.startDate);
+      const endDateObj = new Date(simulatedDateRange.endDate);
       return entryDate >= startDateObj && entryDate <= endDateObj;
     }) || [];
     
@@ -690,7 +684,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       setEndDate(defaultEndDate);
       
       // Mostrar popup cuando se seleccione filtro rápido
-      setShowApplyPopup(true);
+      showTimelinePopup && showTimelinePopup({ startDate: defaultStartDate, endDate: defaultEndDate });
       
       // Establecer el filtro ALL al final para que el botón de reset desaparezca
       setTimeout(() => {
@@ -708,7 +702,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         setActiveQuickFilter(range);
         
         // Mostrar popup cuando se seleccione filtro rápido
-        setShowApplyPopup(true);
+        showTimelinePopup && showTimelinePopup({ startDate: dateRange.startDate, endDate: dateRange.endDate });
       }
     }
     
@@ -794,26 +788,53 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     }
   }, [externalEndDate]);
   
-  // Sincronizar cambios locales con props externas (no durante drag)
-  useEffect(() => {
-    if (setExternalStartDate && startDate !== externalStartDate && !isDragging) {
-      setExternalStartDate(startDate);
-    }
-  }, [startDate, isDragging]);
-  
-  useEffect(() => {
-    if (setExternalEndDate && endDate !== externalEndDate && !isDragging) {
-      setExternalEndDate(endDate);
-    }
-  }, [endDate, isDragging]);
+  // NOTE: Timeline changes should NOT automatically sync to external dates
+  // Only sync when user explicitly clicks "Apply to All"
   
   // Funciones para manejar el popup
   const showApplyToAllPopup = () => setShowApplyPopup(true);
   const hideApplyPopup = () => setShowApplyPopup(false);
   
+  // Function to apply Timeline changes to Filter (Apply to All)
+  const handleApplyTimelineToFilter = () => {
+    if (onTimelineApplyToAll && startDate && endDate) {
+      // Both Timeline and Filter now use YYYY-MM-DD format, no conversion needed
+      onTimelineApplyToAll({
+        type: 'dateRange',
+        dateRange: {
+          from: startDate,
+          to: endDate
+        }
+      });
+      
+      setShowApplyPopup(false);
+    }
+  };
+  
   // Funciones simples para manejar el popup
   const forceHidePopup = () => setShowApplyPopup(false);
   const showCleanPopup = () => setShowApplyPopup(true);
+
+  // Auto-show popup when Timeline dates differ from Filter dates
+  useEffect(() => {
+    // Compare Timeline internal dates with Filter external dates
+    const timelineDatesMatch = startDate === externalStartDate && endDate === externalEndDate;
+    
+    if (!timelineDatesMatch && startDate && endDate && externalStartDate && externalEndDate) {
+      // Timeline dates are different from Filter dates - show popup if not already shown
+      if (!showApplyPopup) {
+        console.log('Timeline dates differ from Filter dates - auto-showing popup:', {
+          timeline: { startDate, endDate },
+          filter: { externalStartDate, externalEndDate }
+        });
+        showTimelinePopup && showTimelinePopup({ startDate, endDate });
+      }
+    } else if (timelineDatesMatch && showApplyPopup) {
+      // Timeline dates match Filter dates - hide popup
+      console.log('Timeline dates match Filter dates - hiding popup');
+      setShowApplyPopup(false);
+    }
+  }, [startDate, endDate, externalStartDate, externalEndDate, showApplyPopup]);
 
   // Definir animación base una sola vez
   React.useEffect(() => {
@@ -958,16 +979,14 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         let includeEntry = true;
         
         if (startDate) {
-          const [startDay, startMonth, startYear] = startDate.split('/');
-          const startDateObj = new Date(startYear, startMonth - 1, startDay);
+          const startDateObj = new Date(startDate);
           if (entryDate < startDateObj) {
             includeEntry = false;
           }
         }
         
         if (endDate && includeEntry) {
-          const [endDay, endMonth, endYear] = endDate.split('/');
-          const endDateObj = new Date(endYear, endMonth - 1, endDay, 23, 59, 59);
+          const endDateObj = new Date(endDate + 'T23:59:59');
           if (entryDate > endDateObj) {
             includeEntry = false;
           }
@@ -1122,36 +1141,24 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
 
   // Functions to handle calendars
   const handleStartDateChange = (event) => {
-    const selectedDate = new Date(event.target.value);
-    const formattedDate = selectedDate.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit', 
-      year: 'numeric'
-    });
+    const formattedDate = event.target.value; // Already in YYYY-MM-DD format
     setStartDate(formattedDate);
     setShowStartCalendar(false);
     // Mostrar popup cuando se cambie la fecha
-    setShowApplyPopup(true);
+    showTimelinePopup && showTimelinePopup({ startDate: formattedDate, endDate });
   };
 
   const handleEndDateChange = (event) => {
-    const selectedDate = new Date(event.target.value);
-    const formattedDate = selectedDate.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    const formattedDate = event.target.value; // Already in YYYY-MM-DD format
     setEndDate(formattedDate);
     setShowEndCalendar(false);
     // Mostrar popup cuando se cambie la fecha
-    setShowApplyPopup(true);
+    showTimelinePopup && showTimelinePopup({ startDate, endDate: formattedDate });
   };
 
-  // Convertir fecha DD/MM/YYYY a YYYY-MM-DD para input date
+  // No need to convert dates anymore - both use YYYY-MM-DD format
   const formatDateForInput = (dateStr) => {
-    if (!dateStr) return '';
-    const [day, month, year] = dateStr.split('/');
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    return dateStr || '';
   };
 
   // Generar calendario personalizado
@@ -1228,11 +1235,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const isValidRange = (startDateStr, endDateStr) => {
     if (!startDateStr || !endDateStr) return true; // Si alguna está vacía, no validar
     
-    const [startDay, startMonth, startYear] = startDateStr.split('/');
-    const [endDay, endMonth, endYear] = endDateStr.split('/');
-    
-    const startDateObj = new Date(startYear, startMonth - 1, startDay);
-    const endDateObj = new Date(endYear, endMonth - 1, endDay);
+    // Both dates are now in YYYY-MM-DD format
+    const startDateObj = new Date(startDateStr);
+    const endDateObj = new Date(endDateStr);
     
     return startDateObj <= endDateObj;
   };
@@ -1247,11 +1252,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     }
     
     const selectedDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day);
-    const formattedDate = selectedDate.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    const formattedDate = formatDate(selectedDate); // Use YYYY-MM-DD format
     
     if (calendarType === 'start') {
       // Validar que fecha inicio no sea posterior a fecha fin
@@ -1268,8 +1269,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         // Establecer calendario en la fecha fin al abrir
         const dateToUse = endDate;
         if (dateToUse) {
-          const [day, month, year] = dateToUse.split('/');
-          setCalendarDate(new Date(year, month - 1, day));
+          // Now dates are in YYYY-MM-DD format
+          setCalendarDate(new Date(dateToUse));
         }
         // Mantener el calendario abierto para la transición suave
         setShowStartCalendar(true);
@@ -1277,7 +1278,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       }, 150); // Optimized delay para transición suave
       
       // Mostrar popup cuando se seleccione fecha de inicio
-      setShowApplyPopup(true);
+      showTimelinePopup && showTimelinePopup({ startDate: formattedDate, endDate });
       
     } else {
       // Validar que fecha fin no sea anterior a fecha inicio
@@ -1288,7 +1289,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       setEndDate(formattedDate);
       setShowStartCalendar(false); // Cerrar el calendario después de seleccionar fecha fin
       // Mostrar popup cuando se seleccione fecha de fin
-      setShowApplyPopup(true);
+      showTimelinePopup && showTimelinePopup({ startDate, endDate: formattedDate });
       
       // NO abrir automáticamente el calendario de inicio - ROMPER EL BUCLE
       // El usuario tendrá que hacer clic manual si quiere cambiar la fecha inicio
@@ -1379,11 +1380,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     }
     
     // Verificar validaciones de rango según el contexto (solo si no es fecha seleccionada)
-    const formattedCurrentDate = currentDate.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    const formattedCurrentDate = formatDate(currentDate); // Use YYYY-MM-DD format
     
     if (calendarType === 'start' && currentEndDate) {
       // En calendario de inicio, deshabilitar fechas posteriores a fecha fin
@@ -1517,16 +1514,17 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     if (viewMode === 'balance') {
       // En P&L View, mostrar fecha + P&L acumulados y porcentaje
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
-      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content = `<span style="color: #ffffff; font-size: 32px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     } else {
       // Full View - mostrar portfolio value primero
-      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+      content = `<span style="color: #ffffff; font-size: 32px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     }
     
     if (showTotalInvested && viewMode === 'both') {
       // Determinar el tipo de profit mostrado basado en datos disponibles
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 30px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 34px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      // Todo en una línea con tamaño uniforme
+      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     }
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
@@ -2745,15 +2743,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 const startDate = new Date(xScale.min);
                 const endDate = new Date(xScale.max);
                 
-                const formatDate = (date) => {
-                  const day = date.getDate().toString().padStart(2, '0');
-                  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-                  const year = date.getFullYear();
-                  return `${day}/${month}/${year}`;
+                // Use global formatDate function to maintain consistency (YYYY-MM-DD format)
+                const formatZoomDate = (date) => {
+                  return date.toISOString().split('T')[0];
                 };
                 
-                const newStartDate = formatDate(startDate);
-                const newEndDate = formatDate(endDate);
+                const newStartDate = formatZoomDate(startDate);
+                const newEndDate = formatZoomDate(endDate);
                 
                 console.log('Configurando zoom - nuevas fechas:', newStartDate, newEndDate);
                 setStartDate(newStartDate);
@@ -2761,7 +2757,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 setIsZoomed(true);
                 
                 // Mostrar popup cuando se haga zoom
-                setShowApplyPopup(true);
+                showTimelinePopup && showTimelinePopup({ startDate: newStartDate, endDate: newEndDate });
                 console.log('Zoom completo - isZoomed set to true');
               }
             }
@@ -3390,8 +3386,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 setCalendarType('start');
                 const dateToUse = startDate;
                 if (dateToUse) {
-                  const [day, month, year] = dateToUse.split('/');
-                  setCalendarDate(new Date(year, month - 1, day));
+                  // Now dates are in YYYY-MM-DD format
+                  setCalendarDate(new Date(dateToUse));
                 }
                 // Usar estado unificado para el calendario
                 const shouldShow = !showStartCalendar && !showEndCalendar;
@@ -3731,11 +3727,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                         if (calendarType === 'start') {
                           const { defaultStartDate } = getDefaultDates();
                           setStartDate(defaultStartDate);
-                          if (setExternalStartDate) setExternalStartDate(defaultStartDate);
+                          // Show popup to apply changes
+                          showTimelinePopup && showTimelinePopup({ startDate: defaultStartDate, endDate });
                         } else {
                           const { defaultEndDate } = getDefaultDates();
                           setEndDate(defaultEndDate);
-                          if (setExternalEndDate) setExternalEndDate(defaultEndDate);
+                          // Show popup to apply changes
+                          showTimelinePopup && showTimelinePopup({ startDate, endDate: defaultEndDate });
                         }
                         
                         // Limpiar tooltip congelado si existe
@@ -3855,8 +3853,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 setCalendarType('end');
                 const dateToUse = endDate;
                 if (dateToUse) {
-                  const [day, month, year] = dateToUse.split('/');
-                  setCalendarDate(new Date(year, month - 1, day));
+                  // Now dates are in YYYY-MM-DD format
+                  setCalendarDate(new Date(dateToUse));
                 }
                 // Usar estado unificado para el calendario - mostrar en la posición del botón de inicio
                 const shouldShow = !showStartCalendar && !showEndCalendar;

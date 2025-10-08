@@ -167,7 +167,7 @@ const ZigzagLogo = ({
   );
 };
 
-const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, showApplyPopup, setShowApplyPopup, startDate, endDate, setStartDate, setEndDate }) => {
+const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, showApplyPopup, setShowApplyPopup, startDate, endDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup }) => {
   const [sloganGlow, setSloganGlow] = useState(false);
   const lastProfitRef = useRef(null);
 
@@ -278,6 +278,8 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           endDate={endDate}
           setStartDate={setStartDate}
           setEndDate={setEndDate}
+          onTimelineApplyToAll={onTimelineApplyToAll}
+          showTimelinePopup={showTimelinePopup}
         />
       </div>
 

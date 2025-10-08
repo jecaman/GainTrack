@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './Filters.css';
 
-const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showApplyPopup, setShowApplyPopup, startDate, endDate }) => {
+const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showApplyPopup, setShowApplyPopup, startDate, endDate, onApplyToAll, popupSource }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showTabPulse, setShowTabPulse] = useState(false);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
@@ -17,15 +17,316 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   const [activeFilters, setActiveFilters] = useState(0);
   const tabButtonRef = useRef(null);
   
-  // Set default dates on component mount
-  useEffect(() => {
-    if (!dateRange.from && !dateRange.to) {
+  // Estados para calendario personalizado
+  const [showCustomCalendar, setShowCustomCalendar] = useState(false);
+  const [calendarType, setCalendarType] = useState('start'); // 'start' o 'end'
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [showMonthYearSelector, setShowMonthYearSelector] = useState(false);
+  
+  // Helper function to get default date range (min available to max available)
+  const getDefaultDateRange = () => {
+    // Use full available date range from portfolio timeline
+    if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
+      const startDate = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
+      const endDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
+      return { from: startDate, to: endDate };
+    } else {
+      // Fallback to 1 month range if no portfolio data
       const now = new Date();
       const endDate = now.toISOString().split('T')[0];
       const startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+      return { from: startDate, to: endDate };
+    }
+  };
+
+  // Helper function to check if current date range is the full available range
+  const isFullDateRange = (dateRng) => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return false;
+    
+    const minAvailable = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
+    const maxAvailable = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
+    
+    return dateRng.from === minAvailable && dateRng.to === maxAvailable;
+  };
+
+  // Helper function to check if start date has been modified from default
+  const isStartDateModified = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return false;
+    
+    const defaultStartDate = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
+    return dateRange.from !== defaultStartDate;
+  };
+
+  // Helper function to check if end date has been modified from default
+  const isEndDateModified = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return false;
+    
+    const defaultEndDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
+    return dateRange.to !== defaultEndDate;
+  };
+
+  // Funciones para calendario personalizado
+  const getValidDateRange = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
+      return { minDate: null, maxDate: null };
+    }
+    
+    const firstDate = new Date(portfolioData.timeline[0].date);
+    const lastDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date);
+    
+    return {
+      minDate: firstDate,
+      maxDate: lastDate
+    };
+  };
+
+  const isValidDate = (year, month, day) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return false;
+    
+    const dateToCheck = new Date(year, month, day);
+    return dateToCheck >= minDate && dateToCheck <= maxDate;
+  };
+
+  const isValidRange = (startDateStr, endDateStr) => {
+    if (!startDateStr || !endDateStr) return true;
+    const startDateObj = new Date(startDateStr);
+    const endDateObj = new Date(endDateStr);
+    return startDateObj <= endDateObj;
+  };
+
+  const generateCalendar = (year, month) => {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    const days = [];
+    
+    // Días vacíos al inicio
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    
+    // Días del mes
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(day);
+    }
+    
+    // Asegurar que siempre tengamos exactamente 42 celdas (6 filas × 7 días)
+    const totalCells = 42;
+    while (days.length < totalCells) {
+      days.push(null);
+    }
+    
+    return days;
+  };
+
+  const getDayState = (day, currentYear, currentMonth) => {
+    if (!day) return '';
+    
+    const currentStartDate = dateRange.from;
+    const currentEndDate = dateRange.to;
+    
+    // Verificar si es fecha seleccionada - usar formato local YYYY-MM-DD
+    const formatDate = (year, month, day) => {
+      const y = year.toString();
+      const m = (month + 1).toString().padStart(2, '0'); // month es 0-based
+      const d = day.toString().padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+    const currentDateStr = formatDate(currentYear, currentMonth, day);
+    
+    if (currentStartDate && currentDateStr === currentStartDate) {
+      return 'selected-start';
+    }
+    if (currentEndDate && currentDateStr === currentEndDate) {
+      return 'selected-end';
+    }
+    
+    // Verificar si está fuera del rango de datos disponibles
+    if (!isValidDate(currentYear, currentMonth, day)) {
+      return 'disabled';
+    }
+    
+    // Verificar validaciones de rango
+    if (calendarType === 'start' && currentEndDate) {
+      if (!isValidRange(currentDateStr, currentEndDate)) {
+        return 'disabled';
+      }
+    } else if (calendarType === 'end' && currentStartDate) {
+      if (!isValidRange(currentStartDate, currentDateStr)) {
+        return 'disabled';
+      }
+    }
+    
+    // Verificar si está en el rango
+    if (currentStartDate && currentEndDate && currentStartDate !== currentEndDate) {
+      // Usar comparación de strings en formato YYYY-MM-DD
+      const minDateStr = currentStartDate < currentEndDate ? currentStartDate : currentEndDate;
+      const maxDateStr = currentStartDate > currentEndDate ? currentStartDate : currentEndDate;
+      
+      if (currentDateStr > minDateStr && currentDateStr < maxDateStr) {
+        return 'in-range';
+      }
+    }
+    
+    return '';
+  };
+
+  const handleDayClick = (day) => {
+    if (!day) return;
+    
+    if (!isValidDate(calendarDate.getFullYear(), calendarDate.getMonth(), day)) {
+      return;
+    }
+    
+    // Usar formateo local para evitar problemas de timezone
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const formattedDate = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    
+    // No permitir seleccionar la misma fecha para start y end
+    if (calendarType === 'start' && dateRange.to === formattedDate) {
+      return;
+    }
+    if (calendarType === 'end' && dateRange.from === formattedDate) {
+      return;
+    }
+    
+    if (calendarType === 'start') {
+      if (dateRange.to && !isValidRange(formattedDate, dateRange.to)) {
+        return;
+      }
+      
+      const newRange = { ...dateRange, from: formattedDate };
+      setDateRange(newRange);
+      updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+      
+      if (onFiltersChange) {
+        onFiltersChange({
+          type: 'dateRange',
+          dateRange: { ...newRange }
+        });
+      }
+      
+      // Transición al calendario de fin
+      setTimeout(() => {
+        setCalendarType('end');
+        if (dateRange.to) {
+          setCalendarDate(new Date(dateRange.to));
+        }
+      }, 150);
+      
+    } else {
+      if (dateRange.from && !isValidRange(dateRange.from, formattedDate)) {
+        return;
+      }
+      
+      const newRange = { ...dateRange, to: formattedDate };
+      setDateRange(newRange);
+      updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+      
+      if (onFiltersChange) {
+        onFiltersChange({
+          type: 'dateRange',
+          dateRange: { ...newRange }
+        });
+      }
+      
+      setShowCustomCalendar(false);
+    }
+  };
+
+  const changeMonth = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return;
+    
+    setCalendarDate(prev => {
+      const newDate = new Date(prev);
+      const targetMonth = prev.getMonth() + direction;
+      newDate.setMonth(targetMonth);
+      
+      const firstDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth(), 1);
+      const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0);
+      
+      if (lastDayOfMonth < minDate || firstDayOfMonth > maxDate) {
+        return prev;
+      }
+      
+      return newDate;
+    });
+  };
+
+  const changeYear = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return;
+    
+    setCalendarDate(prev => {
+      const newDate = new Date(prev);
+      const targetYear = prev.getFullYear() + direction;
+      newDate.setFullYear(targetYear);
+      
+      const firstDayOfYear = new Date(newDate.getFullYear(), 0, 1);
+      const lastDayOfYear = new Date(newDate.getFullYear(), 11, 31);
+      
+      if (lastDayOfYear < minDate || firstDayOfYear > maxDate) {
+        return prev;
+      }
+      
+      return newDate;
+    });
+  };
+
+  const isMonthNavigationDisabled = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return true;
+    
+    const testDate = new Date(calendarDate);
+    testDate.setMonth(testDate.getMonth() + direction);
+    
+    const firstDayOfMonth = new Date(testDate.getFullYear(), testDate.getMonth(), 1);
+    const lastDayOfMonth = new Date(testDate.getFullYear(), testDate.getMonth() + 1, 0);
+    
+    return lastDayOfMonth < minDate || firstDayOfMonth > maxDate;
+  };
+
+  const isYearNavigationDisabled = (direction) => {
+    const { minDate, maxDate } = getValidDateRange();
+    if (!minDate || !maxDate) return true;
+    
+    const testDate = new Date(calendarDate);
+    testDate.setFullYear(testDate.getFullYear() + direction);
+    
+    const firstDayOfYear = new Date(testDate.getFullYear(), 0, 1);
+    const lastDayOfYear = new Date(testDate.getFullYear(), 11, 31);
+    
+    return lastDayOfYear < minDate || firstDayOfYear > maxDate;
+  };
+
+
+  // Set default dates on component mount and when portfolio data changes
+  useEffect(() => {
+    if (portfolioData && (!dateRange.from || !dateRange.to)) {
+      const defaultRange = getDefaultDateRange();
+      // Set and communicate default dates when portfolio data is available and dates are missing
+      setDateRange(defaultRange);
+      // Communicate initial date range to parent/timeline
+      if (onFiltersChange) {
+        onFiltersChange({ 
+          type: 'dateRange', 
+          dateRange: { ...defaultRange }
+        });
+      }
+    }
+  }, [portfolioData]);
+
+  // Sync local date range with props from Dashboard
+  useEffect(() => {
+    if (startDate && endDate) {
       setDateRange({ from: startDate, to: endDate });
     }
-  }, []);
+  }, [startDate, endDate]);
   
   // Estados para animaciones del popup
   const [popupAnimation, setPopupAnimation] = useState('entering');
@@ -69,7 +370,20 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   };
   
   const handleApplyFilter = () => {
-    console.log('Aplicando período a toda la página:', { startDate, endDate });
+    console.log('Aplicando período a toda la página:', { startDate, endDate, popupSource });
+    
+    // If popup source is 'timeline', use the callback to update Filter
+    if (popupSource === 'timeline' && onApplyToAll) {
+      onApplyToAll({
+        type: 'dateRange',
+        dateRange: {
+          from: startDate,
+          to: endDate
+        }
+      });
+    }
+    // If popup source is 'filter', dates are already updated in Filter
+    
     setPopupAnimation('applying');
     setTimeout(() => {
       setShowApplyPopup(false);
@@ -86,7 +400,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   const updateActiveFiltersCount = (hiddenAssets, dateRng, timePreset, minAlloc, balThreshold, excludedOps) => {
     let count = 0;
     if (hiddenAssets.size > 0) count++;
-    if (dateRng.from || dateRng.to) count++;
+    // Count date filter as active if either start or end date is modified from default
+    if (isStartDateModified() || isEndDateModified()) count++;
     if (timePreset) count++;
     if (parseFloat(minAlloc) > 0) count++;
     if (parseFloat(balThreshold) > 0) count++;
@@ -97,7 +412,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   // Helper function to set time preset dates
   const setTimePresetDates = (preset) => {
     const now = new Date();
-    const endDate = now.toISOString().split('T')[0];
+    let endDate = now.toISOString().split('T')[0];
     let startDate;
     
     switch(preset) {
@@ -167,13 +482,20 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isOpen, onSidebarToggle]);
 
-  // Add CSS animations
+  // Add CSS animations and hide scrollbar styles
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
       @keyframes tabPulse {
         0%, 100% { box-shadow: 0.25rem 0 1rem rgba(0, 255, 136, 0.2); }
         50% { box-shadow: 0.5rem 0 1.5rem rgba(0, 255, 136, 0.4); }
+      }
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
       }
     `;
     document.head.appendChild(style);
@@ -452,15 +774,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                             type="text"
                             value={dateRange.from}
                             placeholder="YYYY-MM-DD"
-                            onChange={(e) => {
-                              const newRange = {...dateRange, from: e.target.value};
-                              setDateRange(newRange);
-                              updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-                            }}
+                            readOnly
+                            tabIndex="-1"
                             style={{
                               flex: '1',
                               padding: '8px 12px',
-                              border: `1px solid ${dateRange.from ? '#00ff99' : theme.borderColor}`,
+                              border: `1px solid ${isStartDateModified() ? '#00ff99' : theme.borderColor}`,
                               borderRadius: '4px',
                               background: theme.bgElevated,
                               color: theme.textPrimary,
@@ -468,18 +787,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                               fontFamily: "'Inter', sans-serif",
                               fontWeight: '400',
                               outline: 'none',
-                              transition: 'all 0.2s ease'
-                            }}
-                            onFocus={(e) => {
-                              e.target.style.borderColor = '#00ff99';
-                              e.target.style.boxShadow = '0 0 0 2px rgba(0, 255, 153, 0.1)';
-                            }}
-                            onBlur={(e) => {
-                              e.target.style.borderColor = dateRange.from ? '#00ff99' : theme.borderColor;
-                              e.target.style.boxShadow = 'none';
+                              transition: 'all 0.2s ease',
+                              cursor: 'default',
+                              pointerEvents: 'none'
                             }}
                           />
-                          <div style={{ position: 'relative', width: '36px', height: '36px' }}>
+                          <div style={{ position: 'relative', width: '36px', height: '36px' }} >
                             <div 
                               style={{
                                 width: '36px',
@@ -494,8 +807,11 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                                 transition: 'all 0.2s ease'
                               }}
                               onClick={() => {
-                                const input = document.getElementById('start-date-picker');
-                                input.showPicker();
+                                setCalendarType('start');
+                                if (dateRange.from) {
+                                  setCalendarDate(new Date(dateRange.from));
+                                }
+                                setShowCustomCalendar(true);
                               }}
                               onMouseEnter={(e) => {
                                 e.target.style.borderColor = '#00ff99';
@@ -511,30 +827,9 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                                 <line x1="3" y1="10" x2="21" y2="10"/>
                               </svg>
                             </div>
-                            <input
-                              id="start-date-picker"
-                              type="date"
-                              value={dateRange.from}
-                              min="2020-01-01"
-                              max={new Date().toISOString().split('T')[0]}
-                              onChange={(e) => {
-                                const newRange = {...dateRange, from: e.target.value};
-                                setDateRange(newRange);
-                                updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-                              }}
-                              style={{
-                                position: 'absolute',
-                                right: '0px',
-                                top: '40px',
-                                opacity: 0,
-                                pointerEvents: 'none',
-                                width: '1px',
-                                height: '1px'
-                              }}
-                            />
                           </div>
                         </div>
-                        {dateRange.from && (
+                        {isStartDateModified() && (
                           <div style={{
                             position: 'absolute',
                             right: '50px',
@@ -567,15 +862,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                             type="text"
                             value={dateRange.to}
                             placeholder="YYYY-MM-DD"
-                            onChange={(e) => {
-                              const newRange = {...dateRange, to: e.target.value};
-                              setDateRange(newRange);
-                              updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-                            }}
+                            readOnly
+                            tabIndex="-1"
                             style={{
                               flex: '1',
                               padding: '8px 12px',
-                              border: `1px solid ${dateRange.to ? '#00ff99' : theme.borderColor}`,
+                              border: `1px solid ${isEndDateModified() ? '#00ff99' : theme.borderColor}`,
                               borderRadius: '4px',
                               background: theme.bgElevated,
                               color: theme.textPrimary,
@@ -583,18 +875,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                               fontFamily: "'Inter', sans-serif",
                               fontWeight: '400',
                               outline: 'none',
-                              transition: 'all 0.2s ease'
-                            }}
-                            onFocus={(e) => {
-                              e.target.style.borderColor = '#00ff99';
-                              e.target.style.boxShadow = '0 0 0 2px rgba(0, 255, 153, 0.1)';
-                            }}
-                            onBlur={(e) => {
-                              e.target.style.borderColor = dateRange.to ? '#00ff99' : theme.borderColor;
-                              e.target.style.boxShadow = 'none';
+                              transition: 'all 0.2s ease',
+                              cursor: 'default',
+                              pointerEvents: 'none'
                             }}
                           />
-                          <div style={{ position: 'relative', width: '36px', height: '36px' }}>
+                          <div style={{ position: 'relative', width: '36px', height: '36px' }} >
                             <div 
                               style={{
                                 width: '36px',
@@ -609,8 +895,11 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                                 transition: 'all 0.2s ease'
                               }}
                               onClick={() => {
-                                const input = document.getElementById('end-date-picker');
-                                input.showPicker();
+                                setCalendarType('end');
+                                if (dateRange.to) {
+                                  setCalendarDate(new Date(dateRange.to));
+                                }
+                                setShowCustomCalendar(true);
                               }}
                               onMouseEnter={(e) => {
                                 e.target.style.borderColor = '#00ff99';
@@ -626,30 +915,9 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                                 <line x1="3" y1="10" x2="21" y2="10"/>
                               </svg>
                             </div>
-                            <input
-                              id="end-date-picker"
-                              type="date"
-                              value={dateRange.to}
-                              min={dateRange.from || "2020-01-01"}
-                              max={new Date().toISOString().split('T')[0]}
-                              onChange={(e) => {
-                                const newRange = {...dateRange, to: e.target.value};
-                                setDateRange(newRange);
-                                updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-                              }}
-                              style={{
-                                position: 'absolute',
-                                right: '0px',
-                                top: '40px',
-                                opacity: 0,
-                                pointerEvents: 'none',
-                                width: '1px',
-                                height: '1px'
-                              }}
-                            />
                           </div>
                         </div>
-                        {dateRange.to && (
+                        {isEndDateModified() && (
                           <div style={{
                             position: 'absolute',
                             right: '50px',
@@ -695,9 +963,17 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                       <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-start' }}>
                         <button
                           onClick={() => {
-                            const newRange = { from: '', to: '' };
+                            const newRange = getDefaultDateRange();
                             setDateRange(newRange);
-                            updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                            setSelectedTimePreset(''); // Clear any preset selection
+                            updateActiveFiltersCount(hiddenAssets, newRange, '', minAllocation, balanceThreshold, excludedOperations);
+                            // Communicate date change to parent/timeline
+                            if (onFiltersChange) {
+                              onFiltersChange({ 
+                                type: 'dateRange', 
+                                dateRange: { ...newRange }
+                              });
+                            }
                           }}
                           style={{
                             padding: '6px 12px',
@@ -739,6 +1015,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                           ✕ Clear
                         </button>
                       </div>
+
                     </div>
                   </div>
                   
@@ -1010,8 +1287,9 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                 }}>
                   <button
                     onClick={() => {
+                      const defaultRange = getDefaultDateRange();
                       setHiddenAssets(new Set());
-                      setDateRange({ from: '', to: '' });
+                      setDateRange(defaultRange);
                       setSelectedTimePreset('');
                       setMinAllocation('0');
                       setBalanceThreshold('0');
@@ -1020,12 +1298,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                       console.log('All filters cleared');
                       if (onFiltersChange) {
                         onFiltersChange({
-                          hiddenAssets: [],
-                          dateRange: { from: '', to: '' },
-                          selectedTimePreset: '',
-                          minAllocation: 0,
-                          balanceThreshold: 0,
-                          excludedOperations: []
+                          type: 'dateRange',
+                          dateRange: defaultRange
                         });
                       }
                     }}
@@ -1325,6 +1599,521 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
             </div>
           </div>,
           popupRoot
+        );
+      })()}
+
+      {/* Custom Calendar */}
+      {showCustomCalendar && (() => {
+        let calendarRoot = document.getElementById('calendar-portal-root');
+        if (!calendarRoot) {
+          calendarRoot = document.createElement('div');
+          calendarRoot.id = 'calendar-portal-root';
+          calendarRoot.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 999999;
+          `;
+          document.body.appendChild(calendarRoot);
+        }
+
+        return createPortal(
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#0a0a0a',
+              border: '1px solid #333333',
+              borderRadius: '4px',
+              padding: '12px',
+              fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+              pointerEvents: 'auto',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.8)',
+              width: '260px',
+              fontSize: '12px',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header with date type and close */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: '8px',
+              position: 'relative',
+              height: '24px'
+            }}>
+              <div style={{
+                color: '#ffffff',
+                fontSize: '15px',
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px'
+              }}>
+                {calendarType === 'start' ? 'START DATE' : 'END DATE'}
+              </div>
+              <button
+                onClick={() => setShowCustomCalendar(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ff6666',
+                  fontSize: '22px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  lineHeight: '1',
+                  width: '28px',
+                  height: '28px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'absolute',
+                  top: '-2px',
+                  right: '0',
+                  borderRadius: '4px',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = 'rgba(255, 102, 102, 0.2)';
+                  e.target.style.color = '#ff6666';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'transparent';
+                  e.target.style.color = '#ff6666';
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Separator line */}
+            <div style={{
+              width: '100%',
+              height: '1px',
+              background: '#333333',
+              marginBottom: '12px'
+            }}></div>
+
+            {/* Month/Year Navigation */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: '12px',
+              gap: '8px'
+            }}>
+              <button 
+                onClick={() => !isMonthNavigationDisabled(-1) && changeMonth(-1)}
+                disabled={isMonthNavigationDisabled(-1)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: isMonthNavigationDisabled(-1) ? '#444444' : '#ffffff',
+                  fontSize: '24px',
+                  cursor: isMonthNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
+                  padding: '4px',
+                  transition: 'all 0.2s ease',
+                  minWidth: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseEnter={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.color = '#ffffff')}
+                onMouseLeave={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.color = '#ffffff')}
+              >
+                ‹
+              </button>
+              
+              <div 
+                onClick={() => setShowMonthYearSelector(!showMonthYearSelector)}
+                style={{ 
+                  fontWeight: '600',
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  textAlign: 'center',
+                  background: '#1a1a1a',
+                  border: '1px solid #333333',
+                  borderRadius: '4px',
+                  padding: '4px 8px',
+                  minWidth: '120px',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = '#2a2a2a';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = '#1a1a1a';
+                }}
+              >
+                {calendarDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()} - {calendarDate.getFullYear()}
+              </div>
+              
+              <button 
+                onClick={() => !isMonthNavigationDisabled(1) && changeMonth(1)}
+                disabled={isMonthNavigationDisabled(1)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: isMonthNavigationDisabled(1) ? '#444444' : '#ffffff',
+                  fontSize: '24px',
+                  cursor: isMonthNavigationDisabled(1) ? 'not-allowed' : 'pointer',
+                  padding: '4px',
+                  transition: 'all 0.2s ease',
+                  minWidth: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseEnter={(e) => !isMonthNavigationDisabled(1) && (e.target.style.color = '#ffffff')}
+                onMouseLeave={(e) => !isMonthNavigationDisabled(1) && (e.target.style.color = '#ffffff')}
+              >
+                ›
+              </button>
+            </div>
+
+            {/* Month/Year Selector */}
+            {showMonthYearSelector && (() => {
+              const { minDate, maxDate } = getValidDateRange();
+              const availableMonths = [];
+              const availableYears = [];
+              
+              if (minDate && maxDate) {
+                // Generar meses disponibles
+                for (let month = 0; month < 12; month++) {
+                  const testDate = new Date(calendarDate.getFullYear(), month, 1);
+                  const lastDayOfMonth = new Date(calendarDate.getFullYear(), month + 1, 0);
+                  if (testDate <= maxDate && lastDayOfMonth >= minDate) {
+                    availableMonths.push(month);
+                  }
+                }
+                
+                // Generar años disponibles (solo los que tienen datos)
+                for (let year = minDate.getFullYear(); year <= maxDate.getFullYear(); year++) {
+                  availableYears.push(year);
+                }
+              }
+              
+              return (
+                <div style={{
+                  position: 'absolute',
+                  top: '60px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: '#0a0a0a',
+                  border: '1px solid #333333',
+                  borderRadius: '4px',
+                  padding: '12px',
+                  zIndex: 1000,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '16px',
+                  minWidth: '240px'
+                }}>
+                  {/* Month Column */}
+                  <div>
+                    <div style={{
+                      color: '#ffffff',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      marginBottom: '8px',
+                      textAlign: 'center'
+                    }}>MONTH</div>
+                    <div style={{
+                      maxHeight: '80px',
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1px',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                    }}>
+                      {['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((month, index) => {
+                        const isAvailable = availableMonths.includes(index);
+                        return (
+                          <div
+                            key={month}
+                            onClick={() => {
+                              if (isAvailable) {
+                                const newDate = new Date(calendarDate);
+                                newDate.setMonth(index);
+                                setCalendarDate(newDate);
+                                setShowMonthYearSelector(false);
+                              }
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              fontSize: '12px',
+                              cursor: isAvailable ? 'pointer' : 'not-allowed',
+                              borderRadius: '3px',
+                              background: calendarDate.getMonth() === index ? '#333333' : 'transparent',
+                              color: isAvailable ? (calendarDate.getMonth() === index ? '#ffffff' : '#cccccc') : '#555555',
+                              transition: 'all 0.2s ease',
+                              textAlign: 'center',
+                              opacity: isAvailable ? 1 : 0.5,
+                              fontWeight: '600',
+                              minHeight: '28px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (isAvailable && calendarDate.getMonth() !== index) {
+                                e.target.style.background = '#2a2a2a';
+                                e.target.style.color = '#ffffff';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (isAvailable && calendarDate.getMonth() !== index) {
+                                e.target.style.background = 'transparent';
+                                e.target.style.color = '#cccccc';
+                              }
+                            }}
+                          >
+                            {month}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  {/* Year Column */}
+                  <div>
+                    <div style={{
+                      color: '#ffffff',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      marginBottom: '8px',
+                      textAlign: 'center'
+                    }}>YEAR</div>
+                    <div style={{
+                      maxHeight: '80px',
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1px',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
+                    }}>
+                      {availableYears.map((year) => (
+                        <div
+                          key={year}
+                          onClick={() => {
+                            const newDate = new Date(calendarDate);
+                            newDate.setFullYear(year);
+                            setCalendarDate(newDate);
+                            setShowMonthYearSelector(false);
+                          }}
+                          style={{
+                            padding: '8px 12px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            borderRadius: '3px',
+                            background: calendarDate.getFullYear() === year ? '#333333' : 'transparent',
+                            color: calendarDate.getFullYear() === year ? '#ffffff' : '#cccccc',
+                            transition: 'all 0.2s ease',
+                            textAlign: 'center',
+                            fontWeight: '600',
+                            minHeight: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (calendarDate.getFullYear() !== year) {
+                              e.target.style.background = '#2a2a2a';
+                              e.target.style.color = '#ffffff';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (calendarDate.getFullYear() !== year) {
+                              e.target.style.background = 'transparent';
+                              e.target.style.color = '#cccccc';
+                            }
+                          }}
+                        >
+                          {year}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Days of week header */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '1px',
+              marginBottom: '6px'
+            }}>
+              {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map((day, index) => {
+                const isWeekend = index === 0 || index === 6; // Sunday = 0, Saturday = 6
+                return (
+                  <div key={index} style={{
+                    textAlign: 'center',
+                    padding: '6px 0',
+                    color: isWeekend ? '#ff6666' : '#aaaaaa',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    userSelect: 'none'
+                  }}>
+                    {day}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Calendar Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '1px'
+            }}>
+              {generateCalendar(calendarDate.getFullYear(), calendarDate.getMonth()).map((day, index) => {
+                const dayState = getDayState(day, calendarDate.getFullYear(), calendarDate.getMonth());
+                const isWeekend = index % 7 === 0 || index % 7 === 6; // Sunday = 0, Saturday = 6
+                
+                let backgroundColor = 'transparent';
+                let color = '#cccccc';
+                let cursor = 'pointer';
+                let border = 'none';
+                let boxShadow = 'none';
+                
+                if (day) {
+                  if (dayState === 'selected-start') {
+                    backgroundColor = '#52c481';
+                    color = '#000000';
+                  } else if (dayState === 'selected-end') {
+                    backgroundColor = '#52c481';
+                    color = '#000000';
+                  } else if (dayState === 'in-range') {
+                    backgroundColor = '#1a2d1f';
+                    color = '#ffffff';
+                    border = '1px solid #334d39';
+                  } else if (dayState === 'disabled') {
+                    backgroundColor = 'transparent';
+                    color = '#444444';
+                    cursor = 'not-allowed';
+                  } else if (isWeekend) {
+                    // Weekend days in red if not selected
+                    color = '#ff6666';
+                  }
+                }
+
+                const isSelected = dayState === 'selected-start' || dayState === 'selected-end';
+
+                return (
+                  <div
+                    key={index}
+                    onClick={() => day && dayState !== 'disabled' && handleDayClick(day)}
+                    style={{
+                      height: '28px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: day ? cursor : 'default',
+                      backgroundColor,
+                      color,
+                      fontSize: '14px',
+                      fontWeight: isSelected ? '700' : dayState === 'in-range' ? '500' : '400',
+                      userSelect: 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (day && dayState !== 'disabled' && !isSelected) {
+                        if (dayState === 'in-range') {
+                          e.target.style.backgroundColor = '#263d2a';
+                          e.target.style.color = '#ffffff';
+                        } else {
+                          e.target.style.backgroundColor = '#2a2a2a';
+                          e.target.style.color = '#ffffff';
+                        }
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (day && dayState !== 'disabled' && !isSelected) {
+                        if (dayState === 'in-range') {
+                          e.target.style.backgroundColor = '#1a2d1f';
+                          e.target.style.color = '#ffffff';
+                        } else {
+                          e.target.style.backgroundColor = 'transparent';
+                          e.target.style.color = '#cccccc';
+                        }
+                      }
+                    }}
+                  >
+                    {day}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Clear Button */}
+            <div style={{
+              marginTop: '12px',
+              display: 'flex',
+              justifyContent: 'flex-start'
+            }}>
+              <button
+                onClick={() => {
+                  let newRange;
+                  if (calendarType === 'start') {
+                    // Solo limpiar start date, mantener end date
+                    const defaultRange = getDefaultDateRange();
+                    newRange = { from: defaultRange.from, to: dateRange.to || defaultRange.to };
+                  } else {
+                    // Solo limpiar end date, mantener start date
+                    const defaultRange = getDefaultDateRange();
+                    newRange = { from: dateRange.from || defaultRange.from, to: defaultRange.to };
+                  }
+                  setDateRange(newRange);
+                  setSelectedTimePreset('');
+                  updateActiveFiltersCount(hiddenAssets, newRange, '', minAllocation, balanceThreshold, excludedOperations);
+                  if (onFiltersChange) {
+                    onFiltersChange({ 
+                      type: 'dateRange', 
+                      dateRange: { ...newRange }
+                    });
+                  }
+                  setShowCustomCalendar(false);
+                }}
+                style={{
+                  padding: '6px 14px',
+                  border: '1px solid #444444',
+                  borderRadius: '4px',
+                  background: 'transparent',
+                  color: '#ffffff',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  textTransform: 'uppercase'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = '#2a2a2a';
+                  e.target.style.borderColor = '#666666';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'transparent';
+                  e.target.style.borderColor = '#444444';
+                }}
+              >
+                CLEAR
+              </button>
+            </div>
+          </div>,
+          calendarRoot
         );
       })()}
     </>
