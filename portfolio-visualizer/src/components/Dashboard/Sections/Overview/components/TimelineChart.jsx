@@ -382,7 +382,7 @@ const splitLinePlugin = {
 // Registrar los plugins
 Chart.register(hoverPlugin, hideGrayLinesPlugin, splitLinePlugin);
 
-const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate, onTimelineApplyToAll, showTimelinePopup }) => {
+const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, buttonStartDate, buttonEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, isInPointClickMode, setIsInPointClickMode }) => {
   // Constantes de estilo reutilizables
   const COLORS = {
     HOVER_LIGHT: 'rgba(255, 255, 255, 0.12)',
@@ -404,6 +404,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const [endDate, setEndDate] = useState(externalEndDate || '');
   const [showStartCalendar, setShowStartCalendar] = useState(false);
   const [showEndCalendar, setShowEndCalendar] = useState(false);
+  const [showMonthYearSelector, setShowMonthYearSelector] = useState(false);
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [processedTimelineData, setProcessedTimelineData] = useState([]);
   const [isZoomed, setIsZoomed] = useState(false);
@@ -413,6 +414,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const [isChartStabilizing, setIsChartStabilizing] = useState(false);
   
   const chartRef = useRef(null);
+  const hasUserInteractedWithTimeline = useRef(false);
+  const isPopupFromDirectClick = useRef(false);
+  const lastAutoShowDates = useRef({ startDate: null, endDate: null });
+  const ignoreNextExternalSync = useRef(false);
   
   // Cleanup del chart al desmontar el componente o cuando cambien las dependencias críticas
   useEffect(() => {
@@ -678,13 +683,22 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         chartRef.current._stabilizing = true;
       }
       
+      // Limpiar completamente el estado de click para volver al modo normal
+      if (typeof window !== 'undefined') {
+        window.timelineDates = null;
+      }
+      isPopupFromDirectClick.current = false;
+      
+      // Marcar que el usuario ha interactuado
+      hasUserInteractedWithTimeline.current = true;
+      
+      
       // Marcar como cambio de filtro rápido y establecer fechas
       isQuickFilterChange.current = true;
       setStartDate(defaultStartDate);
       setEndDate(defaultEndDate);
       
-      // Mostrar popup cuando se seleccione filtro rápido
-      showTimelinePopup && showTimelinePopup({ startDate: defaultStartDate, endDate: defaultEndDate });
+      // Como salimos del modo click, el useEffect debe activarse normalmente
       
       // Establecer el filtro ALL al final para que el botón de reset desaparezca
       setTimeout(() => {
@@ -701,8 +715,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         setEndDate(dateRange.endDate);
         setActiveQuickFilter(range);
         
-        // Mostrar popup cuando se seleccione filtro rápido
-        showTimelinePopup && showTimelinePopup({ startDate: dateRange.startDate, endDate: dateRange.endDate });
+        // El popup se controlará automáticamente por el useEffect que compara fechas
       }
     }
     
@@ -753,6 +766,27 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     }
   }, [startDate, endDate, portfolioData]);
   
+  // Sync with filter's selected preset
+  useEffect(() => {
+    if (filterSelectedPreset) {
+      // Map filter preset to timeline quick filter format
+      const timelineFilterMap = {
+        '1W': '1w',
+        '1M': '1m',
+        '3M': '3m', 
+        '6M': '6m',
+        '1Y': '1y',
+        'All': 'all'
+      };
+      
+      const mappedFilter = timelineFilterMap[filterSelectedPreset];
+      if (mappedFilter && mappedFilter !== activeQuickFilter) {
+        setActiveQuickFilter(mappedFilter);
+        console.log(`Synced filter preset '${filterSelectedPreset}' to timeline quick filter '${mappedFilter}'`);
+      }
+    }
+  }, [filterSelectedPreset]);
+  
   // Helper para detectar cambios que requieren animaciones especiales
   const getAnimationType = (timelineData) => {
     const currentDataLength = timelineData?.labels?.length || 0;
@@ -777,23 +811,66 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   
   // Sincronizar fechas externas con estados locales
   useEffect(() => {
+    // Check if we should ignore this sync due to point click
+    if (typeof window !== 'undefined' && window.ignoreTimelineSync) {
+      window.ignoreTimelineSync = false;
+      return;
+    }
+    
+    // Don't update timeline button dates when tab dates are equal (point click scenario)
+    if (externalStartDate === externalEndDate) {
+      // Tab dates are equal, this is a point click - don't update timeline dates
+      return;
+    }
+    
     if (externalStartDate && externalStartDate !== startDate) {
       setStartDate(externalStartDate);
+      // Reset interaction flag when dates are updated from external source (Filter)
+      hasUserInteractedWithTimeline.current = false;
+      
+      // Check if external dates are back to default range - reset zoom state
+      const { defaultStartDate, defaultEndDate } = getDefaultDates();
+      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate) {
+        setIsZoomed(false);
+      }
     }
-  }, [externalStartDate]);
+  }, [externalStartDate, externalEndDate]);
   
   useEffect(() => {
+    // Check if we should ignore this sync due to point click
+    if (typeof window !== 'undefined' && window.ignoreTimelineSync) {
+      window.ignoreTimelineSync = false;
+      return;
+    }
+    
+    // Don't update timeline button dates when tab dates are equal (point click scenario)
+    if (externalStartDate === externalEndDate) {
+      // Tab dates are equal, this is a point click - don't update timeline dates
+      return;
+    }
+    
     if (externalEndDate && externalEndDate !== endDate) {
       setEndDate(externalEndDate);
+      // Reset interaction flag when dates are updated from external source (Filter)
+      hasUserInteractedWithTimeline.current = false;
+      
+      // Check if external dates are back to default range - reset zoom state
+      const { defaultStartDate, defaultEndDate } = getDefaultDates();
+      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate) {
+        setIsZoomed(false);
+      }
     }
-  }, [externalEndDate]);
+  }, [externalEndDate, externalStartDate]);
   
   // NOTE: Timeline changes should NOT automatically sync to external dates
   // Only sync when user explicitly clicks "Apply to All"
   
   // Funciones para manejar el popup
   const showApplyToAllPopup = () => setShowApplyPopup(true);
-  const hideApplyPopup = () => setShowApplyPopup(false);
+  const hideApplyPopup = () => {
+    console.log('Timeline: hideApplyPopup called');
+    setShowApplyPopup(false);
+  };
   
   // Function to apply Timeline changes to Filter (Apply to All)
   const handleApplyTimelineToFilter = () => {
@@ -807,34 +884,68 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         }
       });
       
+      console.log('Timeline: handleApplyTimelineToFilter - closing popup');
       setShowApplyPopup(false);
     }
   };
   
   // Funciones simples para manejar el popup
-  const forceHidePopup = () => setShowApplyPopup(false);
+  const forceHidePopup = () => {
+    console.log('Timeline: forceHidePopup called');
+    setShowApplyPopup(false);
+  };
   const showCleanPopup = () => setShowApplyPopup(true);
 
-  // Auto-show popup when Timeline dates differ from Filter dates
+  // Auto-show popup only for specific timeline interactions (zoom, date changes)
+  // NOT for direct clicks - those are handled separately
+
+  // Reset direct click flag when popup is closed
   useEffect(() => {
-    // Compare Timeline internal dates with Filter external dates
-    const timelineDatesMatch = startDate === externalStartDate && endDate === externalEndDate;
-    
-    if (!timelineDatesMatch && startDate && endDate && externalStartDate && externalEndDate) {
-      // Timeline dates are different from Filter dates - show popup if not already shown
-      if (!showApplyPopup) {
-        console.log('Timeline dates differ from Filter dates - auto-showing popup:', {
-          timeline: { startDate, endDate },
-          filter: { externalStartDate, externalEndDate }
-        });
-        showTimelinePopup && showTimelinePopup({ startDate, endDate });
-      }
-    } else if (timelineDatesMatch && showApplyPopup) {
-      // Timeline dates match Filter dates - hide popup
-      console.log('Timeline dates match Filter dates - hiding popup');
-      setShowApplyPopup(false);
+    if (!showApplyPopup) {
+      isPopupFromDirectClick.current = false;
     }
-  }, [startDate, endDate, externalStartDate, externalEndDate, showApplyPopup]);
+  }, [showApplyPopup]);
+
+  // Auto-control popup based on date differences between timeline and filter
+  useEffect(() => {
+    // Skip if we're in point click mode
+    if (isInPointClickMode) {
+      return;
+    }
+    
+    // Skip if we're still in click mode (legacy check)
+    const isInClickMode = typeof window !== 'undefined' && 
+                          window.timelineDates && 
+                          window.timelineDates.isPointClick;
+    
+    if (isInClickMode) {
+      return;
+    }
+    
+    // Compare timeline dates with filter dates
+    const timelineDatesMatch = (startDate === externalStartDate && endDate === externalEndDate);
+    
+    
+    if (timelineDatesMatch && showApplyPopup) {
+      // Don't hide popup if we just showed it from point click exit
+      if (typeof window !== 'undefined' && window.justShowedPopupFromPointClickExit) {
+        console.log('Timeline useEffect: NOT hiding popup - just showed from point click exit');
+        return;
+      }
+      
+      // Dates are the same, hide popup
+      console.log('Timeline useEffect: Hiding popup because dates match');
+      setShowApplyPopup(false);
+    } else if (!timelineDatesMatch && !showApplyPopup) {
+      // Dates are different, show popup (only if not recently exited from point click mode)
+      console.log('Timeline useEffect: Showing popup because dates differ');
+      showTimelinePopup && showTimelinePopup({ 
+        startDate, 
+        endDate, 
+        quickFilter: activeQuickFilter 
+      });
+    }
+  }, [startDate, endDate, externalStartDate, externalEndDate, showApplyPopup, isInPointClickMode]);
 
   // Definir animación base una sola vez
   React.useEffect(() => {
@@ -1144,16 +1255,14 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     const formattedDate = event.target.value; // Already in YYYY-MM-DD format
     setStartDate(formattedDate);
     setShowStartCalendar(false);
-    // Mostrar popup cuando se cambie la fecha
-    showTimelinePopup && showTimelinePopup({ startDate: formattedDate, endDate });
+    // El popup se controlará automáticamente por el useEffect que compara fechas
   };
 
   const handleEndDateChange = (event) => {
     const formattedDate = event.target.value; // Already in YYYY-MM-DD format
     setEndDate(formattedDate);
     setShowEndCalendar(false);
-    // Mostrar popup cuando se cambie la fecha
-    showTimelinePopup && showTimelinePopup({ startDate, endDate: formattedDate });
+    // El popup se controlará automáticamente por el useEffect que compara fechas
   };
 
   // No need to convert dates anymore - both use YYYY-MM-DD format
@@ -1277,8 +1386,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         setIsTransitioning(false);
       }, 150); // Optimized delay para transición suave
       
-      // Mostrar popup cuando se seleccione fecha de inicio
-      showTimelinePopup && showTimelinePopup({ startDate: formattedDate, endDate });
+      // El popup se controlará automáticamente por el useEffect que compara fechas
       
     } else {
       // Validar que fecha fin no sea anterior a fecha inicio
@@ -1288,8 +1396,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
       setEndDate(formattedDate);
       setShowStartCalendar(false); // Cerrar el calendario después de seleccionar fecha fin
-      // Mostrar popup cuando se seleccione fecha de fin
-      showTimelinePopup && showTimelinePopup({ startDate, endDate: formattedDate });
+      // El popup se controlará automáticamente por el useEffect que compara fechas
       
       // NO abrir automáticamente el calendario de inicio - ROMPER EL BUCLE
       // El usuario tendrá que hacer clic manual si quiere cambiar la fecha inicio
@@ -1356,22 +1463,24 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     let endDateObj = null;
     
     if (currentStartDate) {
-      const [sDay, sMonth, sYear] = currentStartDate.split('/');
+      // Handle YYYY-MM-DD format
+      const [sYear, sMonth, sDay] = currentStartDate.split('-');
       startDateObj = new Date(sYear, sMonth - 1, sDay);
     }
     
     if (currentEndDate) {
-      const [eDay, eMonth, eYear] = currentEndDate.split('/');
+      // Handle YYYY-MM-DD format
+      const [eYear, eMonth, eDay] = currentEndDate.split('-');
       endDateObj = new Date(eYear, eMonth - 1, eDay);
     }
     
     // PRIMERO verificar si es una fecha seleccionada (prioridad máxima)
     if (startDateObj && currentDate.getTime() === startDateObj.getTime()) {
-      return 'selected';
+      return 'selected-start';
     }
     
     if (endDateObj && currentDate.getTime() === endDateObj.getTime()) {
-      return 'selected';
+      return 'selected-end';
     }
     
     // Verificar si la fecha está fuera del rango de datos disponibles
@@ -1400,7 +1509,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       const maxDate = startDateObj > endDateObj ? startDateObj : endDateObj;
       
       if (currentDate > minDate && currentDate < maxDate) {
-        return 'inRange';
+        return 'in-range';
       }
     }
     
@@ -1514,17 +1623,17 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     if (viewMode === 'balance') {
       // En P&L View, mostrar fecha + P&L acumulados y porcentaje
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
-      content = `<span style="color: #ffffff; font-size: 32px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     } else {
       // Full View - mostrar portfolio value primero
-      content = `<span style="color: #ffffff; font-size: 32px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     }
     
     if (showTotalInvested && viewMode === 'both') {
       // Determinar el tipo de profit mostrado basado en datos disponibles
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
       // Todo en una línea con tamaño uniforme
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 26px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     }
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
@@ -1933,6 +2042,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     chart.update('none');
   };
 
+  // Assign unfreezeTooltip function to ref for external access
+  useEffect(() => {
+    if (timelineUnfreezeTooltipRef) {
+      timelineUnfreezeTooltipRef.current = unfreezeTooltip;
+    }
+  }, [timelineUnfreezeTooltipRef]);
+
   // Configurar referencias de funciones en el chart para el onClick
   useEffect(() => {
     const chart = chartRef.current;
@@ -2054,6 +2170,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Check if using default date range
   const { defaultStartDate, defaultEndDate } = getDefaultDates();
   const isUsingDefaultRange = (startDate === defaultStartDate && endDate === defaultEndDate);
+  
   
   // Forzar re-evaluación del botón de reset después de cambios de zoom
   useEffect(() => {
@@ -2595,9 +2712,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           const clickedIndex = elements[0].index;
           console.log('Índice clickeado:', clickedIndex);
           
-          // Si ya está congelado, descongelar (sin importar el punto)
+          // Si ya está congelado, descongelar (sin importar el punto) - actuar como RESET
           if (chart.frozenTooltip.isFrozen) {
-            console.log('Descongelando tooltip');
+            console.log('Segundo click detectado - actuando como reset');
             
             // Limpiar estados
             chart.hoveredDataIndex = undefined;
@@ -2612,7 +2729,18 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             });
             
             setIsTooltipFrozen(false);
-            forceHidePopup();
+            
+            // Exit point click mode and trigger popup for timeline dates
+            if (setIsInPointClickMode) {
+              setIsInPointClickMode(false);
+              console.log('Exiting point click mode due to second click - returning to timeline range');
+            }
+            
+            // Don't reset to default dates - keep current timeline start/end dates
+            // The timeline dates (startDate, endDate) should remain as they are
+            // This will trigger the Dashboard to show popup since timeline dates != filter dates
+            
+            // No llamar forceHidePopup() aquí para permitir que el popup funcione correctamente
             if (chart && chart.canvas && chart.canvas.ownerDocument) {
             try {
               if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
@@ -2638,7 +2766,29 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             chart.hoveredDataIndex = indexToFreeze;
             
             setIsTooltipFrozen(true);
-            setShowApplyPopup(true);
+            
+            // Marcar que el usuario ha interactuado con el timeline
+            hasUserInteractedWithTimeline.current = true;
+            
+            // Get the specific date from the clicked point
+            const clickedDate = chart.data.labels && chart.data.labels[indexToFreeze] 
+              ? chart.data.labels[indexToFreeze] 
+              : startDate;
+            
+            // For clicked points, set both dates to the clicked date for filter update
+            // Mark this as a special point-click case
+            if (typeof window !== 'undefined') {
+              window.timelineDates = {
+                startDate: clickedDate,
+                endDate: clickedDate,
+                isPointClick: true  // Special flag for point clicks
+              };
+            }
+            
+            // Mark this popup as coming from direct click
+            isPopupFromDirectClick.current = true;
+            
+            showTimelineClickPopup && showTimelineClickPopup();
             
             // Cortar líneas principales
             chart.data.datasets.forEach((dataset, idx) => {
@@ -2756,8 +2906,16 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 setEndDate(newEndDate);
                 setIsZoomed(true);
                 
-                // Mostrar popup cuando se haga zoom
-                showTimelinePopup && showTimelinePopup({ startDate: newStartDate, endDate: newEndDate });
+                // Exit point click mode on zoom
+                if (setIsInPointClickMode) {
+                  setIsInPointClickMode(false);
+                  console.log('Exiting point click mode due to zoom');
+                }
+                
+                // Marcar que el usuario ha interactuado con el timeline
+                hasUserInteractedWithTimeline.current = true;
+                
+                // El popup se controlará automáticamente por el useEffect que compara fechas
                 console.log('Zoom completo - isZoomed set to true');
               }
             }
@@ -3378,7 +3536,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               }}
               onMouseLeave={(e) => {
                 e.target.style.transform = 'scale(1)';
-                e.target.style.background = COLORS.HOVER_DEFAULT;
+                e.target.style.background = 'rgba(255, 255, 255, 0.08)';
                 e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
               }}
@@ -3401,7 +3559,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span id="timeline-start-date-display" style={{ textAlign: 'left', flex: '1' }}>{startDate}</span>
+                <span id="timeline-start-date-display" style={{ textAlign: 'left', flex: '1' }}>{buttonStartDate || startDate}</span>
                 {(() => {
                   const { defaultStartDate } = getDefaultDates();
                   const currentStartDate = startDate;
@@ -3425,375 +3583,490 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               
               {/* Calendario emergente para fecha inicio */}
               {showStartCalendar && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: '0',
-                  marginTop: '8px',
-                  zIndex: 1000,
-                  background: 'rgba(15, 15, 15, 0.98)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '20px',
-                  padding: '20px',
-                  backdropFilter: 'blur(30px)',
-                  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6), 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
-                  minWidth: '420px',
-                  width: '420px',
-                  minHeight: '380px',
-                  overflow: 'hidden',
-                  transform: 'scale(1)',
-                  opacity: 1,
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s ease-out, opacity 0.25s ease-out',
-                  animation: 'calendarSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}>
-                  {/* Calendar Title */}
-                  <div className="calendar-title-transition" style={{
-                    textAlign: 'center',
-                    marginBottom: '15px',
-                    color: '#ffffff',
-                    fontSize: '20px',
-                    fontWeight: '700',
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: '-50px',
+                    marginTop: '8px',
+                    background: '#1a1a1a',
+                    border: '1px solid #4a4a4a',
+                    borderRadius: '10px',
+                    padding: '16px',
                     fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-                    paddingBottom: '10px',
-                    opacity: isTransitioning ? 0.5 : 1,
-                    transform: isTransitioning ? 'scale(0.95)' : 'scale(1)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '1px'
-                  }}>
-                    {calendarType === 'start' ? 'START DATE' : 'END DATE'}
-                  </div>
-
-                  {/* Calendar Header - Redesign minimalista */}
+                    pointerEvents: 'auto',
+                    boxShadow: '0 12px 40px rgba(0, 0, 0, 0.7), 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+                    width: '280px',
+                    fontSize: '14px',
+                    zIndex: 10000,
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Header with date type and close */}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    marginBottom: '20px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
+                    marginBottom: '6px',
+                    position: 'relative',
+                    height: '22px'
                   }}>
-                    {/* Navigation with arrows */}
                     <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      width: '100%',
                       color: '#ffffff',
-                      fontSize: '18px',
-                      fontWeight: '500',
-                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
                     }}>
-                      {/* Month navigation */}
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '8px',
-                        flex: '1',
-                        position: 'relative'
-                      }}>
-                        <span 
-                          onClick={() => !isMonthNavigationDisabled(-1) && changeMonth(-1)}
-                          style={{
-                            cursor: isMonthNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
-                            userSelect: 'none',
-                            opacity: isMonthNavigationDisabled(-1) ? 0.6 : 1.0,
-                            transition: 'opacity 0.2s ease',
-                            fontSize: '16px',
-                            fontWeight: '500',
-                            color: isMonthNavigationDisabled(-1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
-                            textAlign: 'right',
-                            minWidth: '40px'
-                          }}
-                          onMouseEnter={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.opacity = 1)}
-                          onMouseLeave={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.opacity = 0.7)}
-                        >
-                          {new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1).toLocaleDateString('en-US', { month: 'long' }).substring(0, 3)}
-                        </span>
-                        <span style={{ 
-                          fontWeight: '600',
-                          color: '#ffffff',
-                          textAlign: 'center',
-                          flex: '1',
-                          fontSize: '18px'
-                        }}>
-                          {calendarDate.toLocaleDateString('en-US', { month: 'long' })}
-                        </span>
-                        <span 
-                          onClick={() => !isMonthNavigationDisabled(1) && changeMonth(1)}
-                          style={{
-                            cursor: isMonthNavigationDisabled(1) ? 'not-allowed' : 'pointer',
-                            userSelect: 'none',
-                            opacity: isMonthNavigationDisabled(1) ? 0.6 : 1.0,
-                            transition: 'opacity 0.2s ease',
-                            fontSize: '16px',
-                            fontWeight: '500',
-                            color: isMonthNavigationDisabled(1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
-                            textAlign: 'left',
-                            minWidth: '40px'
-                          }}
-                          onMouseEnter={(e) => !isMonthNavigationDisabled(1) && (e.target.style.opacity = 1)}
-                          onMouseLeave={(e) => !isMonthNavigationDisabled(1) && (e.target.style.opacity = 0.7)}
-                        >
-                          {new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1).toLocaleDateString('en-US', { month: 'long' }).substring(0, 3)}
-                        </span>
-                      </div>
-
-                      {/* Divisor */}
-                      <div style={{
-                        width: '2px',
-                        height: '30px',
-                        background: 'rgba(255, 255, 255, 0.5)',
-                        margin: '0 20px',
-                        borderRadius: '1px'
-                      }}></div>
-
-                      {/* Year navigation */}
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '8px',
-                        minWidth: '140px'
-                      }}>
-                        <span 
-                          onClick={() => !isYearNavigationDisabled(-1) && changeYear(-1)}
-                          style={{
-                            cursor: isYearNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
-                            userSelect: 'none',
-                            opacity: isYearNavigationDisabled(-1) ? 0.6 : 1.0,
-                            transition: 'opacity 0.2s ease',
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            color: isYearNavigationDisabled(-1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
-                            textAlign: 'right',
-                            minWidth: '30px'
-                          }}
-                          onMouseEnter={(e) => !isYearNavigationDisabled(-1) && (e.target.style.opacity = 1)}
-                          onMouseLeave={(e) => !isYearNavigationDisabled(-1) && (e.target.style.opacity = 0.7)}
-                        >
-                          {calendarDate.getFullYear() - 1}
-                        </span>
-                        <span style={{ 
-                          fontWeight: '600',
-                          color: '#ffffff',
-                          minWidth: '50px',
-                          textAlign: 'center',
-                          fontSize: '18px'
-                        }}>
-                          {calendarDate.getFullYear()}
-                        </span>
-                        <span 
-                          onClick={() => !isYearNavigationDisabled(1) && changeYear(1)}
-                          style={{
-                            cursor: isYearNavigationDisabled(1) ? 'not-allowed' : 'pointer',
-                            userSelect: 'none',
-                            opacity: isYearNavigationDisabled(1) ? 0.6 : 1.0,
-                            transition: 'opacity 0.2s ease',
-                            fontSize: '14px',
-                            fontWeight: '500',
-                            color: isYearNavigationDisabled(1) ? 'rgba(160,160,160,0.7)' : 'rgba(255,255,255,1.0)',
-                            textAlign: 'left',
-                            minWidth: '30px'
-                          }}
-                          onMouseEnter={(e) => !isYearNavigationDisabled(1) && (e.target.style.opacity = 1)}
-                          onMouseLeave={(e) => !isYearNavigationDisabled(1) && (e.target.style.opacity = 0.7)}
-                        >
-                          {calendarDate.getFullYear() + 1}
-                        </span>
-                      </div>
+                      {calendarType === 'start' ? 'START DATE' : 'END DATE'}
                     </div>
+                    <button
+                      onClick={() => setShowStartCalendar(false)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ff6666',
+                        fontSize: '18px',
+                        cursor: 'pointer',
+                        padding: '0',
+                        lineHeight: '1',
+                        width: '24px',
+                        height: '24px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        position: 'absolute',
+                        top: '-2px',
+                        right: '0',
+                        borderRadius: '4px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = 'rgba(255, 102, 102, 0.2)';
+                        e.target.style.color = '#ff6666';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'transparent';
+                        e.target.style.color = '#ff6666';
+                      }}
+                    >
+                      ×
+                    </button>
                   </div>
 
-                  {/* Días de la semana */}
+                  {/* Separator line */}
                   <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(7, 1fr)',
-                    gap: '6px', // Espacio optimizado
-                    marginBottom: '16px', // Más espacio
-                    fontSize: '16px', // Más grande
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                    fontWeight: '600',
-                    textAlign: 'center'
-                  }}>
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                      <div key={day} style={{ padding: '8px' }}>{day}</div>
-                    ))}
-                  </div>
+                    width: '100%',
+                    height: '1px',
+                    background: '#333333',
+                    marginBottom: '12px'
+                  }}></div>
 
-                  {/* Grid de días */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(7, 1fr)',
-                    gap: '8px' // Más espacio
-                  }}>
-                    {generateCalendar(calendarDate.getFullYear(), calendarDate.getMonth()).map((day, index) => {
-                      const dayState = getDayState(day, calendarDate.getFullYear(), calendarDate.getMonth());
-                      
-                      // Determinar colores según el estado
-                      let backgroundColor = 'transparent';
-                      
-                      if (day) {
-                        switch (dayState) {
-                          case 'selected':
-                            backgroundColor = 'rgba(34, 197, 94, 0.7)'; // Verde fuerte para días seleccionados
-                            break;
-                          case 'inRange':
-                            backgroundColor = 'rgba(34, 197, 94, 0.3)'; // Verde suave para rango
-                            break;
-                          case 'disabled':
-                            backgroundColor = 'rgba(80, 80, 80, 0.25)'; // Gris más visible para días deshabilitados
-                            break;
-                          case 'normal':
-                          default:
-                            backgroundColor = 'rgba(255, 255, 255, 0.1)'; // Color normal
-                            break;
-                        }
-                      }
-                      
-                      return (
-                        <button
-                          key={index}
-                          onClick={() => handleDayClick(day)}
-                          disabled={!day || dayState === 'disabled'}
-                          style={{
-                            background: backgroundColor === 'rgba(34, 197, 94, 0.7)' ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.8), rgba(0, 200, 100, 0.6))' :
-                                      backgroundColor === 'rgba(34, 197, 94, 0.3)' ? 'linear-gradient(135deg, rgba(0, 255, 136, 0.35), rgba(0, 200, 100, 0.25))' :
-                                      backgroundColor === 'rgba(80, 80, 80, 0.25)' ? 'linear-gradient(135deg, rgba(80, 80, 80, 0.15), rgba(60, 60, 60, 0.1))' :
-                                      backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent',
-                            border: dayState === 'selected' ? '2px solid rgba(0, 255, 136, 0.9)' : 
-                                   dayState === 'inRange' ? '1px solid rgba(0, 255, 136, 0.4)' :
-                                   dayState === 'disabled' ? '1px solid rgba(120, 120, 120, 0.6)' :
-                                   day ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
-                            borderRadius: '14px',
-                            color: day ? (dayState === 'disabled' ? 'rgba(180, 180, 180, 0.8)' : '#ffffff') : 'transparent',
-                            padding: '12px',
-                            cursor: day ? (dayState === 'disabled' ? 'not-allowed' : 'pointer') : 'default',
-                            fontSize: '16px',
-                            fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                            fontWeight: dayState === 'selected' ? '800' : '600',
-                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                            minHeight: '42px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: dayState === 'selected' ? '0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' :
-                                      dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
-                                      dayState === 'disabled' ? 'inset 0 1px 2px rgba(0, 0, 0, 0.3)' :
-                                      day ? '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)' : 'none',
-                            opacity: dayState === 'disabled' ? 0.55 : 1
-                          }}
-                          onMouseEnter={day && dayState !== 'disabled' ? (e) => {
-                            if (dayState !== 'selected' && dayState !== 'inRange') {
-                              e.target.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.4), rgba(16, 185, 129, 0.3))';
-                              e.target.style.borderColor = 'rgba(34, 197, 94, 0.6)';
-                            }
-                            e.target.style.transform = 'scale(1.12)';
-                            e.target.style.boxShadow = '0 8px 24px rgba(34, 197, 94, 0.25), inset 0 2px 4px rgba(255, 255, 255, 0.15)';
-                            e.target.style.zIndex = '10';
-                          } : undefined}
-                          onMouseLeave={day && dayState !== 'disabled' ? (e) => {
-                            const currentBackground = backgroundColor === 'rgba(34, 197, 94, 0.7)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.8), rgba(16, 185, 129, 0.6))' :
-                                                    backgroundColor === 'rgba(34, 197, 94, 0.3)' ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.35), rgba(16, 185, 129, 0.25))' :
-                                                    backgroundColor === 'rgba(255, 255, 255, 0.1)' ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06))' : 'transparent';
-                            e.target.style.background = currentBackground;
-                            e.target.style.borderColor = dayState === 'selected' ? 'rgba(34, 197, 94, 0.9)' : 
-                                                        dayState === 'inRange' ? 'rgba(34, 197, 94, 0.4)' :
-                                                        'rgba(255, 255, 255, 0.08)';
-                            e.target.style.transform = 'scale(1)';
-                            e.target.style.boxShadow = dayState === 'selected' ? '0 6px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' :
-                                                      dayState === 'inRange' ? '0 3px 12px rgba(34, 197, 94, 0.15)' :
-                                                      '0 2px 8px rgba(0, 0, 0, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.05)';
-                            e.target.style.zIndex = 'auto';
-                          } : undefined}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  
-                  {/* Action buttons */}
+                  {/* Month/Year Navigation */}
                   <div style={{
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: '10px',
-                    marginTop: '20px',
-                    paddingTop: '15px',
-                    borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginBottom: '12px',
+                    gap: '8px'
                   }}>
-                    <button
-                      onClick={() => {
-                        // Restablecer solo la fecha específica según el tipo de calendario
-                        if (calendarType === 'start') {
-                          const { defaultStartDate } = getDefaultDates();
-                          setStartDate(defaultStartDate);
-                          // Show popup to apply changes
-                          showTimelinePopup && showTimelinePopup({ startDate: defaultStartDate, endDate });
-                        } else {
-                          const { defaultEndDate } = getDefaultDates();
-                          setEndDate(defaultEndDate);
-                          // Show popup to apply changes
-                          showTimelinePopup && showTimelinePopup({ startDate, endDate: defaultEndDate });
-                        }
-                        
-                        // Limpiar tooltip congelado si existe
-                        if (chartRef.current && chartRef.current.frozenTooltip) {
-                          chartRef.current.frozenTooltip.isFrozen = false;
-                          chartRef.current.frozenTooltip.frozenIndex = -1;
-                        }
-                        
-                        setShowStartCalendar(false);
-                        
-                        // Cancelar popup si está abierto
-                        if (setShowApplyPopup) {
-                          setShowApplyPopup(false);
-                        }
-                      }}
+                    <button 
+                      onClick={() => !isMonthNavigationDisabled(-1) && changeMonth(-1)}
+                      disabled={isMonthNavigationDisabled(-1)}
                       style={{
-                        flex: '1',
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: '10px',
-                        padding: '10px 16px',
-                        color: 'rgba(239, 68, 68, 0.9)',
-                        fontSize: '14px',
-                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                        fontWeight: '500',
+                        background: 'transparent',
+                        border: 'none',
+                        color: isMonthNavigationDisabled(-1) ? '#444444' : '#ffffff',
+                        fontSize: '28px',
+                        cursor: isMonthNavigationDisabled(-1) ? 'not-allowed' : 'pointer',
+                        padding: '6px',
+                        transition: 'all 0.2s ease',
+                        minWidth: '36px',
+                        height: '36px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onMouseEnter={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.color = '#ffffff')}
+                      onMouseLeave={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.color = '#ffffff')}
+                    >
+                      ‹
+                    </button>
+                    
+                    <div 
+                      onClick={() => setShowMonthYearSelector(!showMonthYearSelector)}
+                      style={{ 
+                        fontWeight: '600',
+                        color: '#ffffff',
+                        fontSize: '15px',
+                        textAlign: 'center',
+                        background: '#1a1a1a',
+                        border: '1px solid #333333',
+                        borderRadius: '4px',
+                        padding: '8px 12px',
+                        minWidth: '140px',
+                        whiteSpace: 'nowrap',
                         cursor: 'pointer',
                         transition: 'all 0.2s ease'
                       }}
                       onMouseEnter={(e) => {
-                        e.target.style.background = 'rgba(239, 68, 68, 0.15)';
-                        e.target.style.borderColor = 'rgba(239, 68, 68, 0.5)';
-                        e.target.style.color = '#ef4444';
+                        e.target.style.background = '#2a2a2a';
                       }}
                       onMouseLeave={(e) => {
-                        e.target.style.background = 'rgba(239, 68, 68, 0.1)';
-                        e.target.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                        e.target.style.color = 'rgba(239, 68, 68, 0.9)';
+                        e.target.style.background = '#1a1a1a';
                       }}
                     >
-                      Clear
+                      {calendarDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()} - {calendarDate.getFullYear()}
+                    </div>
+                    
+                    <button 
+                      onClick={() => !isMonthNavigationDisabled(1) && changeMonth(1)}
+                      disabled={isMonthNavigationDisabled(1)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: isMonthNavigationDisabled(1) ? '#444444' : '#ffffff',
+                        fontSize: '28px',
+                        cursor: isMonthNavigationDisabled(1) ? 'not-allowed' : 'pointer',
+                        padding: '6px',
+                        transition: 'all 0.2s ease',
+                        minWidth: '36px',
+                        height: '36px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      onMouseEnter={(e) => !isMonthNavigationDisabled(1) && (e.target.style.color = '#ffffff')}
+                      onMouseLeave={(e) => !isMonthNavigationDisabled(1) && (e.target.style.color = '#ffffff')}
+                    >
+                      ›
                     </button>
+                  </div>
+
+                  {/* Month/Year Selector */}
+                  {showMonthYearSelector && (() => {
+                    const { minDate, maxDate } = getValidDateRange();
+                    const availableMonths = [];
+                    const availableYears = [];
+                    
+                    if (minDate && maxDate) {
+                      // Generar meses disponibles
+                      for (let month = 0; month < 12; month++) {
+                        const testDate = new Date(calendarDate.getFullYear(), month, 1);
+                        const lastDayOfMonth = new Date(calendarDate.getFullYear(), month + 1, 0);
+                        if (testDate <= maxDate && lastDayOfMonth >= minDate) {
+                          availableMonths.push(month);
+                        }
+                      }
+                      
+                      // Generar años disponibles (solo los que tienen datos)
+                      for (let year = minDate.getFullYear(); year <= maxDate.getFullYear(); year++) {
+                        availableYears.push(year);
+                      }
+                    }
+                    
+                    return (
+                      <div style={{
+                        position: 'absolute',
+                        top: '60px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: '#1a1a1a',
+                        border: '1px solid #4a4a4a',
+                        borderRadius: '8px',
+                        padding: '16px',
+                        zIndex: 10001,
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '16px',
+                        minWidth: '280px',
+                        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.6), 0 4px 15px rgba(0, 0, 0, 0.4)',
+                        backdropFilter: 'blur(8px)',
+                        WebkitBackdropFilter: 'blur(8px)'
+                      }}>
+                        {/* Month Column */}
+                        <div>
+                          <div style={{
+                            color: '#ffffff',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            marginBottom: '8px',
+                            textAlign: 'center'
+                          }}>MONTH</div>
+                          <div style={{
+                            maxHeight: '80px',
+                            overflowY: 'auto',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1px',
+                            scrollbarWidth: 'none',
+                            msOverflowStyle: 'none',
+                          }}>
+                            {['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((month, index) => {
+                              const isAvailable = availableMonths.includes(index);
+                              return (
+                                <div
+                                  key={month}
+                                  onClick={() => {
+                                    if (isAvailable) {
+                                      const newDate = new Date(calendarDate);
+                                      newDate.setMonth(index);
+                                      setCalendarDate(newDate);
+                                      setShowMonthYearSelector(false);
+                                    }
+                                  }}
+                                  style={{
+                                    padding: '8px 12px',
+                                    fontSize: '12px',
+                                    cursor: isAvailable ? 'pointer' : 'not-allowed',
+                                    borderRadius: '3px',
+                                    background: calendarDate.getMonth() === index ? '#333333' : 'transparent',
+                                    color: isAvailable ? (calendarDate.getMonth() === index ? '#ffffff' : '#cccccc') : '#555555',
+                                    transition: 'all 0.2s ease',
+                                    textAlign: 'center',
+                                    opacity: isAvailable ? 1 : 0.5,
+                                    fontWeight: '600',
+                                    minHeight: '28px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (isAvailable && calendarDate.getMonth() !== index) {
+                                      e.target.style.background = '#2a2a2a';
+                                      e.target.style.color = '#ffffff';
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (isAvailable && calendarDate.getMonth() !== index) {
+                                      e.target.style.background = 'transparent';
+                                      e.target.style.color = '#cccccc';
+                                    }
+                                  }}
+                                >
+                                  {month}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        
+                        {/* Year Column */}
+                        <div>
+                          <div style={{
+                            color: '#ffffff',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            marginBottom: '8px',
+                            textAlign: 'center'
+                          }}>YEAR</div>
+                          <div style={{
+                            maxHeight: '80px',
+                            overflowY: 'auto',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1px',
+                            scrollbarWidth: 'none',
+                            msOverflowStyle: 'none',
+                          }}>
+                            {availableYears.map((year) => (
+                              <div
+                                key={year}
+                                onClick={() => {
+                                  const newDate = new Date(calendarDate);
+                                  newDate.setFullYear(year);
+                                  setCalendarDate(newDate);
+                                  setShowMonthYearSelector(false);
+                                }}
+                                style={{
+                                  padding: '8px 12px',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  borderRadius: '3px',
+                                  background: calendarDate.getFullYear() === year ? '#333333' : 'transparent',
+                                  color: calendarDate.getFullYear() === year ? '#ffffff' : '#cccccc',
+                                  transition: 'all 0.2s ease',
+                                  textAlign: 'center',
+                                  fontWeight: '600',
+                                  minHeight: '28px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (calendarDate.getFullYear() !== year) {
+                                    e.target.style.background = '#2a2a2a';
+                                    e.target.style.color = '#ffffff';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (calendarDate.getFullYear() !== year) {
+                                    e.target.style.background = 'transparent';
+                                    e.target.style.color = '#cccccc';
+                                  }
+                                }}
+                              >
+                                {year}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Days of week header */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    gap: '0px',
+                    marginBottom: '4px'
+                  }}>
+                    {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map((day, index) => {
+                      const isWeekend = index === 0 || index === 6; // Sunday = 0, Saturday = 6
+                      return (
+                        <div key={index} style={{
+                          textAlign: 'center',
+                          padding: '4px 0',
+                          color: isWeekend ? '#ff6666' : '#aaaaaa',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          userSelect: 'none'
+                        }}>
+                          {day}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Calendar Grid */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    gap: '0px'
+                  }}>
+                    {generateCalendar(calendarDate.getFullYear(), calendarDate.getMonth()).map((day, index) => {
+                      const dayState = getDayState(day, calendarDate.getFullYear(), calendarDate.getMonth());
+                      const isWeekend = index % 7 === 0 || index % 7 === 6; // Sunday = 0, Saturday = 6
+                      
+                      let backgroundColor = 'transparent';
+                      let color = isWeekend ? '#ff6666' : '#cccccc'; // Set weekend color by default
+                      let cursor = 'pointer';
+                      let border = 'none';
+                      let boxShadow = 'none';
+                      
+                      if (day) {
+                        if (dayState === 'selected-start') {
+                          backgroundColor = '#52c481';
+                          color = '#000000';
+                        } else if (dayState === 'selected-end') {
+                          backgroundColor = '#52c481';
+                          color = '#000000';
+                        } else if (dayState === 'in-range') {
+                          backgroundColor = '#1a2d1f';
+                          color = '#ffffff';
+                          border = '1px solid #334d39';
+                        } else if (dayState === 'disabled') {
+                          backgroundColor = 'transparent';
+                          color = '#444444';
+                          cursor = 'not-allowed';
+                        }
+                        // Weekend color is already set by default above
+                      }
+
+                      const isSelected = dayState === 'selected-start' || dayState === 'selected-end';
+
+                      return (
+                        <div
+                          key={index}
+                          onClick={() => day && dayState !== 'disabled' && handleDayClick(day)}
+                          style={{
+                            height: '32px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: day ? cursor : 'default',
+                            backgroundColor,
+                            color,
+                            border,
+                            fontSize: '16px',
+                            fontWeight: isSelected ? '700' : dayState === 'in-range' ? '500' : '400',
+                            userSelect: 'none',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (day && dayState !== 'disabled' && !isSelected) {
+                              if (dayState === 'in-range') {
+                                e.target.style.backgroundColor = '#263d2a';
+                                e.target.style.color = '#ffffff';
+                              } else {
+                                e.target.style.backgroundColor = '#2a2a2a';
+                                e.target.style.color = '#ffffff';
+                              }
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (day && dayState !== 'disabled' && !isSelected) {
+                              if (dayState === 'in-range') {
+                                e.target.style.backgroundColor = '#1a2d1f';
+                                e.target.style.color = '#ffffff';
+                              } else {
+                                e.target.style.backgroundColor = 'transparent';
+                                e.target.style.color = isWeekend ? '#ff6666' : '#cccccc';
+                              }
+                            }
+                          }}
+                        >
+                          {day}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Clear Button */}
+                  <div style={{
+                    marginTop: '3px',
+                    display: 'flex',
+                    justifyContent: 'flex-start'
+                  }}>
                     <button
                       onClick={() => {
+                        // Reset to default date range based on calendar type
+                        if (calendarType === 'start') {
+                          const { defaultStartDate } = getDefaultDates();
+                          setStartDate(defaultStartDate);
+                          // El popup se controlará automáticamente por el useEffect que compara fechas
+                        } else {
+                          const { defaultEndDate } = getDefaultDates();
+                          setEndDate(defaultEndDate);
+                          // El popup se controlará automáticamente por el useEffect que compara fechas
+                        }
                         setShowStartCalendar(false);
                       }}
                       style={{
-                        flex: '1',
-                        background: 'rgba(0, 255, 136, 0.1)',
-                        border: '1px solid rgba(0, 255, 136, 0.3)',
-                        borderRadius: '10px',
-                        padding: '10px 16px',
-                        color: 'rgba(0, 255, 136, 0.9)',
-                        fontSize: '14px',
-                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                        fontWeight: '500',
+                        padding: '6px 12px',
+                        border: '1px solid #444444',
+                        borderRadius: '3px',
+                        background: 'transparent',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: '600',
                         cursor: 'pointer',
-                        transition: 'all 0.2s ease'
+                        transition: 'all 0.2s ease',
+                        textTransform: 'uppercase'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = '#2a2a2a';
+                        e.target.style.borderColor = '#666666';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = 'transparent';
+                        e.target.style.borderColor = '#444444';
                       }}
                     >
-                      Done
+                      CLEAR
                     </button>
                   </div>
                 </div>
@@ -3845,7 +4118,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               }}
               onMouseLeave={(e) => {
                 e.target.style.transform = 'scale(1)';
-                e.target.style.background = COLORS.HOVER_DEFAULT;
+                e.target.style.background = 'rgba(255, 255, 255, 0.08)';
                 e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
                 e.target.style.borderColor = 'rgba(255, 255, 255, 0.15)';
               }}
@@ -3868,7 +4141,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span id="timeline-end-date-display" style={{ textAlign: 'left', flex: '1' }}>{endDate}</span>
+                <span id="timeline-end-date-display" style={{ textAlign: 'left', flex: '1' }}>{buttonEndDate || endDate}</span>
                 {(() => {
                   const { defaultEndDate } = getDefaultDates();
                   const currentEndDate = endDate;
@@ -3984,7 +4257,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         </div>
         
         {/* Botón de reset de fechas - posicionado en margen derecho del gráfico */}
-        {(((!isUsingDefaultRange || isZoomed) && activeQuickFilter !== 'all' && !(activeQuickFilter === '1y' && isUsingDefaultRange)) || isTooltipFrozen) && (
+        {((!isUsingDefaultRange || isZoomed || isTooltipFrozen)) && (
           <div
             onClick={(e) => {
               // Añadir efecto visual de click
@@ -4007,6 +4280,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               // Descongelar tooltip si está congelado
               unfreezeTooltip();
               
+              // Exit point click mode on reset
+              if (setIsInPointClickMode) {
+                setIsInPointClickMode(false);
+                console.log('Exiting point click mode due to reset');
+              }
+              
               // Período de estabilización después del reset (DESPUÉS de unfreezeTooltip)
               setIsChartStabilizing(true);
               if (chartRef.current) {
@@ -4028,12 +4307,22 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               setIsZoomed(false);
               setActiveQuickFilter('all');
               
-              // Cerrar popup y resetear animación
-              forceHidePopup();
+              
+              // Limpiar completamente el estado de click para volver al modo normal
+              if (typeof window !== 'undefined') {
+                window.timelineDates = null;
+              }
+              isPopupFromDirectClick.current = false;
+              
+              // Marcar que el usuario ha interactuado
+              hasUserInteractedWithTimeline.current = true;
+              
+              // Como salimos del modo click, ahora debemos comparar fechas del timeline vs filtro
+              // El useEffect debe activarse normalmente después de esto
             }}
             style={{
               position: 'absolute',
-              top: '-90px',
+              top: (sidebarOpen && showTotalInvested && viewMode !== 'balance') ? '-5px' : '-65px',
               right: '30px',
               background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(16, 185, 129, 0.1))',
               border: '2px solid rgba(34, 197, 94, 0.3)',
@@ -4052,7 +4341,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               gap: '12px',
               whiteSpace: 'nowrap',
               userSelect: 'none',
-              zIndex: 10,
+              zIndex: 1000,
               minWidth: '90px',
               justifyContent: 'center'
             }}
@@ -4061,7 +4350,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)';
               e.target.style.transform = 'translateY(-2px) scale(1.02)';
               e.target.style.boxShadow = '0 12px 40px rgba(34, 197, 94, 0.3), inset 0 1px 3px rgba(255, 255, 255, 0.2)';
-              e.target.style.color = '#ffffff';
+              e.target.style.color = '#00ff88';
             }}
             onMouseLeave={(e) => {
               e.target.style.background = 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(16, 185, 129, 0.1))';

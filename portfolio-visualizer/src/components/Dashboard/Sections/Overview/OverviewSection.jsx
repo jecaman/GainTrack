@@ -167,7 +167,7 @@ const ZigzagLogo = ({
   );
 };
 
-const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, showApplyPopup, setShowApplyPopup, startDate, endDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup }) => {
+const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, showApplyPopup, setShowApplyPopup, startDate, endDate, buttonStartDate, buttonEndDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, isInPointClickMode, setIsInPointClickMode, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset }) => {
   const [sloganGlow, setSloganGlow] = useState(false);
   const lastProfitRef = useRef(null);
 
@@ -276,10 +276,18 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           setShowApplyPopup={setShowApplyPopup}
           startDate={startDate}
           endDate={endDate}
+          buttonStartDate={buttonStartDate}
+          buttonEndDate={buttonEndDate}
           setStartDate={setStartDate}
           setEndDate={setEndDate}
           onTimelineApplyToAll={onTimelineApplyToAll}
           showTimelinePopup={showTimelinePopup}
+          showTimelineClickPopup={showTimelineClickPopup}
+          isInPointClickMode={isInPointClickMode}
+          setIsInPointClickMode={setIsInPointClickMode}
+          sidebarOpen={sidebarOpen}
+          timelineUnfreezeTooltipRef={timelineUnfreezeTooltipRef}
+          filterSelectedPreset={filterSelectedPreset}
         />
       </div>
 

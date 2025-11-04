@@ -27,7 +27,7 @@ export const formatEuropeanNumber = (number, decimals = 2, locale = 'de-DE') => 
  */
 export const formatEuropeanCurrency = (number, currency = '€', decimals = 2) => {
   const formattedNumber = formatEuropeanNumber(number, decimals);
-  return `${formattedNumber}${currency}`;
+  return `${formattedNumber}\u2009${currency}`;
 };
 
 /**

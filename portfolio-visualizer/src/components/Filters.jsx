@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './Filters.css';
 
-const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showApplyPopup, setShowApplyPopup, startDate, endDate, onApplyToAll, popupSource }) => {
+const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSidebarToggle, showApplyPopup, setShowApplyPopup, startDate, endDate, onApplyToAll, popupSource, timelineQuickFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showTabPulse, setShowTabPulse] = useState(false);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
@@ -22,6 +22,11 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   const [calendarType, setCalendarType] = useState('start'); // 'start' o 'end'
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [showMonthYearSelector, setShowMonthYearSelector] = useState(false);
+  const [calendarPosition, setCalendarPosition] = useState({ top: 0, left: 0 });
+  
+  // Refs para botones de calendario
+  const startCalendarButtonRef = useRef(null);
+  const endCalendarButtonRef = useRef(null);
   
   // Helper function to get default date range (min available to max available)
   const getDefaultDateRange = () => {
@@ -47,6 +52,13 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
     const maxAvailable = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
     
     return dateRng.from === minAvailable && dateRng.to === maxAvailable;
+  };
+
+  // Helper function to check if date range matches default (sets preset to 'All')
+  const checkAndSetPresetIfDefault = (newRange) => {
+    if (isFullDateRange(newRange)) {
+      setSelectedTimePreset('All');
+    }
   };
 
   // Helper function to check if start date has been modified from default
@@ -201,13 +213,16 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
       
       const newRange = { ...dateRange, from: formattedDate };
       setDateRange(newRange);
+      checkAndSetPresetIfDefault(newRange);
       updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
       
       if (onFiltersChange) {
+        // Check if dates are equal (point click scenario) - don't update timeline in this case
+        const isPointClick = newRange.from === newRange.to;
         onFiltersChange({
           type: 'dateRange',
           dateRange: { ...newRange }
-        });
+        }, isPointClick); // Pass isPointClick as skipTimelineUpdate
       }
       
       // Transición al calendario de fin
@@ -225,13 +240,16 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
       
       const newRange = { ...dateRange, to: formattedDate };
       setDateRange(newRange);
+      checkAndSetPresetIfDefault(newRange);
       updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
       
       if (onFiltersChange) {
+        // Check if dates are equal (point click scenario) - don't update timeline in this case
+        const isPointClick = newRange.from === newRange.to;
         onFiltersChange({
           type: 'dateRange',
           dateRange: { ...newRange }
-        });
+        }, isPointClick); // Pass isPointClick as skipTimelineUpdate
       }
       
       setShowCustomCalendar(false);
@@ -311,6 +329,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
       const defaultRange = getDefaultDateRange();
       // Set and communicate default dates when portfolio data is available and dates are missing
       setDateRange(defaultRange);
+      // Set 'All' preset for default range
+      setSelectedTimePreset('All');
       // Communicate initial date range to parent/timeline
       if (onFiltersChange) {
         onFiltersChange({ 
@@ -324,9 +344,35 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   // Sync local date range with props from Dashboard
   useEffect(() => {
     if (startDate && endDate) {
-      setDateRange({ from: startDate, to: endDate });
+      const newRange = { from: startDate, to: endDate };
+      setDateRange(newRange);
+      // Check if this range matches default and clear preset if so
+      checkAndSetPresetIfDefault(newRange);
+      // Update the active filters count to reflect the change
+      updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, hiddenAssets, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations]);
+  
+  // Sync with timeline quick filter when Apply to All is used
+  useEffect(() => {
+    if (timelineQuickFilter) {
+      // Map timeline quick filter to tab preset format
+      const presetMap = {
+        '1w': '1W',
+        '1m': '1M', 
+        '3m': '3M',
+        '6m': '6M',
+        '1y': '1Y',
+        'all': 'All'
+      };
+      
+      const mappedPreset = presetMap[timelineQuickFilter];
+      if (mappedPreset && mappedPreset !== selectedTimePreset) {
+        setSelectedTimePreset(mappedPreset);
+        console.log(`Synced timeline quick filter '${timelineQuickFilter}' to tab preset '${mappedPreset}'`);
+      }
+    }
+  }, [timelineQuickFilter]);
   
   // Estados para animaciones del popup
   const [popupAnimation, setPopupAnimation] = useState('entering');
@@ -400,8 +446,19 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
   const updateActiveFiltersCount = (hiddenAssets, dateRng, timePreset, minAlloc, balThreshold, excludedOps) => {
     let count = 0;
     if (hiddenAssets.size > 0) count++;
+    
     // Count date filter as active if either start or end date is modified from default
-    if (isStartDateModified() || isEndDateModified()) count++;
+    // Use the passed dateRng parameter instead of the current state
+    if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
+      const defaultStartDate = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
+      const defaultEndDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
+      
+      const isStartModified = dateRng.from !== defaultStartDate;
+      const isEndModified = dateRng.to !== defaultEndDate;
+      
+      if (isStartModified || isEndModified) count++;
+    }
+    
     if (timePreset) count++;
     if (parseFloat(minAlloc) > 0) count++;
     if (parseFloat(balThreshold) > 0) count++;
@@ -411,38 +468,51 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
 
   // Helper function to set time preset dates
   const setTimePresetDates = (preset) => {
-    const now = new Date();
-    let endDate = now.toISOString().split('T')[0];
-    let startDate;
+    let newRange;
     
-    switch(preset) {
-      case '1W':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        break;
-      case '1M':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
-        break;
-      case '3M':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString().split('T')[0];
-        break;
-      case '6M':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString().split('T')[0];
-        break;
-      case '1Y':
-        startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
-        break;
-      case 'All':
-        startDate = '';
-        endDate = '';
-        break;
-      default:
-        return;
+    if (preset === 'All') {
+      // Para 'All', usar el rango completo disponible
+      newRange = getDefaultDateRange();
+    } else {
+      const now = new Date();
+      let endDate = now.toISOString().split('T')[0];
+      let startDate;
+      
+      switch(preset) {
+        case '1W':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          break;
+        case '1M':
+          startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+          break;
+        case '3M':
+          startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString().split('T')[0];
+          break;
+        case '6M':
+          startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString().split('T')[0];
+          break;
+        case '1Y':
+          startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+          break;
+        default:
+          return;
+      }
+      
+      newRange = { from: startDate, to: endDate };
     }
     
-    const newRange = preset === 'All' ? { from: '', to: '' } : { from: startDate, to: endDate };
     setDateRange(newRange);
     setSelectedTimePreset(preset);
     updateActiveFiltersCount(hiddenAssets, newRange, preset, minAllocation, balanceThreshold, excludedOperations);
+    
+    // Aplicar el filtro automáticamente
+    if (onFiltersChange) {
+      onFiltersChange({
+        type: 'dateRange',
+        dateRange: { ...newRange },
+        selectedPreset: preset
+      });
+    }
   };
 
   const sections = [
@@ -794,6 +864,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                           />
                           <div style={{ position: 'relative', width: '36px', height: '36px' }} >
                             <div 
+                              ref={startCalendarButtonRef}
                               style={{
                                 width: '36px',
                                 height: '36px',
@@ -810,6 +881,14 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                                 setCalendarType('start');
                                 if (dateRange.from) {
                                   setCalendarDate(new Date(dateRange.from));
+                                }
+                                // Calcular posición del botón
+                                if (startCalendarButtonRef.current) {
+                                  const rect = startCalendarButtonRef.current.getBoundingClientRect();
+                                  setCalendarPosition({
+                                    top: rect.bottom + 75,
+                                    left: rect.left - 220
+                                  });
                                 }
                                 setShowCustomCalendar(true);
                               }}
@@ -882,6 +961,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                           />
                           <div style={{ position: 'relative', width: '36px', height: '36px' }} >
                             <div 
+                              ref={endCalendarButtonRef}
                               style={{
                                 width: '36px',
                                 height: '36px',
@@ -898,6 +978,14 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                                 setCalendarType('end');
                                 if (dateRange.to) {
                                   setCalendarDate(new Date(dateRange.to));
+                                }
+                                // Calcular posición del botón  
+                                if (startCalendarButtonRef.current) {
+                                  const rect = startCalendarButtonRef.current.getBoundingClientRect();
+                                  setCalendarPosition({
+                                    top: rect.bottom + 75,
+                                    left: rect.left - 220
+                                  });
                                 }
                                 setShowCustomCalendar(true);
                               }}
@@ -959,62 +1047,64 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                         </div>
                       )}
 
-                      {/* Clear Button */}
-                      <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-start' }}>
-                        <button
-                          onClick={() => {
-                            const newRange = getDefaultDateRange();
-                            setDateRange(newRange);
-                            setSelectedTimePreset(''); // Clear any preset selection
-                            updateActiveFiltersCount(hiddenAssets, newRange, '', minAllocation, balanceThreshold, excludedOperations);
-                            // Communicate date change to parent/timeline
-                            if (onFiltersChange) {
-                              onFiltersChange({ 
-                                type: 'dateRange', 
-                                dateRange: { ...newRange }
-                              });
-                            }
-                          }}
-                          style={{
-                            padding: '6px 12px',
-                            border: `1px solid ${theme.borderColor}`,
-                            borderRadius: '6px',
-                            background: theme.bgElevated,
-                            color: '#ff6b6b',
-                            fontSize: '11px',
-                            fontWeight: '600',
-                            fontFamily: "'Inter', sans-serif",
-                            cursor: 'pointer',
-                            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                            textTransform: 'none',
-                            letterSpacing: '0.025em',
-                            position: 'relative',
-                            overflow: 'hidden',
-                            boxShadow: `0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
-                            backdropFilter: 'blur(10px)'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.target.style.background = '#ff6b6b';
-                            e.target.style.color = 'white';
-                            e.target.style.transform = 'translateY(-2px)';
-                            e.target.style.boxShadow = '0 4px 12px rgba(255, 107, 107, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.background = theme.bgElevated;
-                            e.target.style.color = '#ff6b6b';
-                            e.target.style.transform = 'translateY(0)';
-                            e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-                          }}
-                          onMouseDown={(e) => {
-                            e.target.style.transform = 'translateY(0) scale(0.98)';
-                          }}
-                          onMouseUp={(e) => {
-                            e.target.style.transform = 'translateY(-2px) scale(1)';
-                          }}
-                        >
-                          ✕ Clear
-                        </button>
-                      </div>
+                      {/* Clear Button - Solo visible si las fechas han sido modificadas */}
+                      {(isStartDateModified() || isEndDateModified()) && (
+                        <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-start' }}>
+                          <button
+                            onClick={() => {
+                              const newRange = getDefaultDateRange();
+                              setDateRange(newRange);
+                              setSelectedTimePreset('All'); // Set to 'All' for default range
+                              updateActiveFiltersCount(hiddenAssets, newRange, 'All', minAllocation, balanceThreshold, excludedOperations);
+                              // Use onFilterReset for date resets to ensure timeline dates are also updated
+                              if (onFilterReset) {
+                                onFilterReset({ 
+                                  type: 'dateRange', 
+                                  dateRange: { ...newRange }
+                                });
+                              }
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              border: `1px solid ${theme.borderColor}`,
+                              borderRadius: '6px',
+                              background: theme.bgElevated,
+                              color: '#ff6b6b',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              fontFamily: "'Inter', sans-serif",
+                              cursor: 'pointer',
+                              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                              textTransform: 'none',
+                              letterSpacing: '0.025em',
+                              position: 'relative',
+                              overflow: 'hidden',
+                              boxShadow: `0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)`,
+                              backdropFilter: 'blur(10px)'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = '#ff6b6b';
+                              e.target.style.color = 'white';
+                              e.target.style.transform = 'translateY(-2px)';
+                              e.target.style.boxShadow = '0 4px 12px rgba(255, 107, 107, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = theme.bgElevated;
+                              e.target.style.color = '#ff6b6b';
+                              e.target.style.transform = 'translateY(0)';
+                              e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                            }}
+                            onMouseDown={(e) => {
+                              e.target.style.transform = 'translateY(0) scale(0.98)';
+                            }}
+                            onMouseUp={(e) => {
+                              e.target.style.transform = 'translateY(-2px) scale(1)';
+                            }}
+                          >
+                            ✕ Clear
+                          </button>
+                        </div>
+                      )}
 
                     </div>
                   </div>
@@ -1290,14 +1380,15 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                       const defaultRange = getDefaultDateRange();
                       setHiddenAssets(new Set());
                       setDateRange(defaultRange);
-                      setSelectedTimePreset('');
+                      setSelectedTimePreset('All');
                       setMinAllocation('0');
                       setBalanceThreshold('0');
                       setExcludedOperations(new Set());
                       setActiveFilters(0);
                       console.log('All filters cleared');
-                      if (onFiltersChange) {
-                        onFiltersChange({
+                      // Use onFilterReset for clear all to ensure timeline dates are also updated
+                      if (onFilterReset) {
+                        onFilterReset({
                           type: 'dateRange',
                           dateRange: defaultRange
                         });
@@ -1623,20 +1714,21 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
         return createPortal(
           <div
             style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: '#0a0a0a',
-              border: '1px solid #333333',
-              borderRadius: '4px',
-              padding: '12px',
+              position: 'fixed',
+              top: `${calendarPosition.top}px`,
+              left: `${calendarPosition.left}px`,
+              background: '#1a1a1a',
+              border: '1px solid #4a4a4a',
+              borderRadius: '10px',
+              padding: '16px',
               fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
               pointerEvents: 'auto',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.8)',
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.7), 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
               width: '260px',
               fontSize: '12px',
-              position: 'relative'
+              zIndex: 10000,
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)'
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1645,16 +1737,16 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
               display: 'flex',
               justifyContent: 'center',
               alignItems: 'center',
-              marginBottom: '8px',
+              marginBottom: '6px',
               position: 'relative',
-              height: '24px'
+              height: '18px'
             }}>
               <div style={{
                 color: '#ffffff',
-                fontSize: '15px',
-                fontWeight: '700',
+                fontSize: '12px',
+                fontWeight: '600',
                 textTransform: 'uppercase',
-                letterSpacing: '0.8px'
+                letterSpacing: '0.5px'
               }}>
                 {calendarType === 'start' ? 'START DATE' : 'END DATE'}
               </div>
@@ -1664,12 +1756,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                   background: 'transparent',
                   border: 'none',
                   color: '#ff6666',
-                  fontSize: '22px',
+                  fontSize: '16px',
                   cursor: 'pointer',
                   padding: '0',
                   lineHeight: '1',
-                  width: '28px',
-                  height: '28px',
+                  width: '20px',
+                  height: '20px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1736,12 +1828,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                 style={{ 
                   fontWeight: '600',
                   color: '#ffffff',
-                  fontSize: '12px',
+                  fontSize: '13px',
                   textAlign: 'center',
                   background: '#1a1a1a',
                   border: '1px solid #333333',
                   borderRadius: '4px',
-                  padding: '4px 8px',
+                  padding: '6px 10px',
                   minWidth: '120px',
                   whiteSpace: 'nowrap',
                   cursor: 'pointer',
@@ -1809,15 +1901,18 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                   top: '60px',
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  background: '#0a0a0a',
-                  border: '1px solid #333333',
-                  borderRadius: '4px',
-                  padding: '12px',
-                  zIndex: 1000,
+                  background: '#1a1a1a',
+                  border: '1px solid #4a4a4a',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  zIndex: 10001,
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr',
                   gap: '16px',
-                  minWidth: '240px'
+                  minWidth: '240px',
+                  boxShadow: '0 8px 30px rgba(0, 0, 0, 0.6), 0 4px 15px rgba(0, 0, 0, 0.4)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)'
                 }}>
                   {/* Month Column */}
                   <div>
@@ -1954,17 +2049,17 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '1px',
-              marginBottom: '6px'
+              gap: '0px',
+              marginBottom: '4px'
             }}>
               {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map((day, index) => {
                 const isWeekend = index === 0 || index === 6; // Sunday = 0, Saturday = 6
                 return (
                   <div key={index} style={{
                     textAlign: 'center',
-                    padding: '6px 0',
+                    padding: '4px 0',
                     color: isWeekend ? '#ff6666' : '#aaaaaa',
-                    fontSize: '12px',
+                    fontSize: '10px',
                     fontWeight: '600',
                     userSelect: 'none'
                   }}>
@@ -1978,14 +2073,14 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '1px'
+              gap: '0px'
             }}>
               {generateCalendar(calendarDate.getFullYear(), calendarDate.getMonth()).map((day, index) => {
                 const dayState = getDayState(day, calendarDate.getFullYear(), calendarDate.getMonth());
                 const isWeekend = index % 7 === 0 || index % 7 === 6; // Sunday = 0, Saturday = 6
                 
                 let backgroundColor = 'transparent';
-                let color = '#cccccc';
+                let color = isWeekend ? '#ff6666' : '#cccccc'; // Set weekend color by default
                 let cursor = 'pointer';
                 let border = 'none';
                 let boxShadow = 'none';
@@ -2005,10 +2100,8 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                     backgroundColor = 'transparent';
                     color = '#444444';
                     cursor = 'not-allowed';
-                  } else if (isWeekend) {
-                    // Weekend days in red if not selected
-                    color = '#ff6666';
                   }
+                  // Weekend color is already set by default above
                 }
 
                 const isSelected = dayState === 'selected-start' || dayState === 'selected-end';
@@ -2025,6 +2118,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                       cursor: day ? cursor : 'default',
                       backgroundColor,
                       color,
+                      border,
                       fontSize: '14px',
                       fontWeight: isSelected ? '700' : dayState === 'in-range' ? '500' : '400',
                       userSelect: 'none',
@@ -2048,7 +2142,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                           e.target.style.color = '#ffffff';
                         } else {
                           e.target.style.backgroundColor = 'transparent';
-                          e.target.style.color = '#cccccc';
+                          e.target.style.color = isWeekend ? '#ff6666' : '#cccccc';
                         }
                       }
                     }}
@@ -2061,7 +2155,7 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
 
             {/* Clear Button */}
             <div style={{
-              marginTop: '12px',
+              marginTop: '3px',
               display: 'flex',
               justifyContent: 'flex-start'
             }}>
@@ -2078,8 +2172,10 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                     newRange = { from: dateRange.from || defaultRange.from, to: defaultRange.to };
                   }
                   setDateRange(newRange);
-                  setSelectedTimePreset('');
-                  updateActiveFiltersCount(hiddenAssets, newRange, '', minAllocation, balanceThreshold, excludedOperations);
+                  // Check if this results in the full range
+                  const presetToSet = isFullDateRange(newRange) ? 'All' : '';
+                  setSelectedTimePreset(presetToSet);
+                  updateActiveFiltersCount(hiddenAssets, newRange, presetToSet, minAllocation, balanceThreshold, excludedOperations);
                   if (onFiltersChange) {
                     onFiltersChange({ 
                       type: 'dateRange', 
@@ -2089,12 +2185,12 @@ const Filters = ({ theme, onFiltersChange, portfolioData, onSidebarToggle, showA
                   setShowCustomCalendar(false);
                 }}
                 style={{
-                  padding: '6px 14px',
+                  padding: '4px 10px',
                   border: '1px solid #444444',
-                  borderRadius: '4px',
+                  borderRadius: '3px',
                   background: 'transparent',
                   color: '#ffffff',
-                  fontSize: '11px',
+                  fontSize: '10px',
                   fontWeight: '600',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',

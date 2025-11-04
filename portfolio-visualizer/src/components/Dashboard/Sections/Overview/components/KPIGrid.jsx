@@ -22,10 +22,10 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     const totalContent = showChange ? `${value} ${changePercent}` : value;
     const contentLength = totalContent.length;
     
-    if (contentLength > 30) return '0.8rem';
-    if (contentLength > 25) return '0.9rem';
-    if (contentLength > 20) return '1.0rem';
-    return '1.1rem';
+    if (contentLength > 30) return '1.0rem';
+    if (contentLength > 25) return '1.1rem';
+    if (contentLength > 20) return '1.2rem';
+    return '1.3rem';
   };
   
   return (
@@ -201,7 +201,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
                 fontFamily: "'Inter', sans-serif",
                 display: 'flex',
                 alignItems: 'baseline',
-                gap: '4px'
+                gap: '0px'
               }}
             >
               <span style={{
