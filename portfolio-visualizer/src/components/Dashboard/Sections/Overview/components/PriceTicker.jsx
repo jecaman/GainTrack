@@ -108,13 +108,13 @@ const PriceTicker = ({ portfolioData, theme }) => {
 
   const tickerData = getTickerData();
   
-  // Debug logging for asset ordering
-  console.log('PriceTicker - Portfolio data:', portfolioData?.portfolio_data?.map(asset => ({
-    asset: asset.asset,
-    current_value: asset.current_value,
-    amount: asset.amount
-  })));
-  console.log('PriceTicker - Ticker data:', tickerData);
+  // Debug logging for asset ordering (commented out)
+  // console.log('PriceTicker - Portfolio data:', portfolioData?.portfolio_data?.map(asset => ({
+  //   asset: asset.asset,
+  //   current_value: asset.current_value,
+  //   amount: asset.amount
+  // })));
+  // console.log('PriceTicker - Ticker data:', tickerData);
 
   // Ya no retornamos null - siempre renderizamos el ticker
 

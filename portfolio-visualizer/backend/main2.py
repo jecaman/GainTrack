@@ -12,7 +12,7 @@ from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any, Union
 import io
 import uvicorn
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importar sistema de cache híbrido
@@ -35,16 +35,47 @@ DYNAMIC_PAIR_CACHE = {}
 # Cache global para pares de Kraken (se llena una vez por sesión)
 ALL_KRAKEN_PAIRS_CACHE = {}
 
-# Mapeo especial de assets para Kraken (algunos assets tienen nombres diferentes)
-ASSET_MAPPING_KRAKEN = {
-    'BTC': 'XXBT',  # Bitcoin se llama XXBT en Kraken para consistencia con timeline
-    'ETH': 'XETH',
-    'XRP': 'XRP',
-    'SOL': 'SOL',
-    'LINK': 'LINK',
-    'HBAR': 'HBAR',
-    'TRUMP': 'TRUMP'
+# Mapeo base conocido de assets para Kraken (algunos assets tienen nombres diferentes)
+KNOWN_ASSET_MAPPING_KRAKEN = {
+    'BTC': 'XXBT',  # Bitcoin se llama XXBT en Kraken
+    'ETH': 'XETH',  # Ethereum se llama XETH en Kraken
+    # Otros assets que sabemos que tienen mapeo especial se pueden añadir aquí
 }
+
+# Cache dinámico para mapeos descubiertos automáticamente
+DYNAMIC_ASSET_MAPPING_CACHE = {}
+
+def get_dynamic_asset_mapping(trades_df):
+    """
+    Descubre automáticamente el mapeo de assets basándose en los datos del CSV
+    y la API de Kraken
+    """
+    # Obtener todos los assets únicos del CSV
+    if 'pair' in trades_df.columns:
+        assets_in_csv = set()
+        for pair in trades_df['pair'].unique():
+            if '/' in pair:
+                base_asset = pair.split('/')[0]
+                assets_in_csv.add(base_asset)
+        
+        # Crear mapeo dinámico
+        dynamic_mapping = {}
+        for asset in assets_in_csv:
+            # Usar mapeo conocido si existe
+            if asset in KNOWN_ASSET_MAPPING_KRAKEN:
+                dynamic_mapping[asset] = KNOWN_ASSET_MAPPING_KRAKEN[asset]
+            else:
+                # Para assets desconocidos, asumir que el nombre es igual
+                # En una implementación más avanzada, aquí consultarías la API de Kraken
+                dynamic_mapping[asset] = asset
+                
+        return dynamic_mapping
+    
+    # Fallback al mapeo conocido
+    return KNOWN_ASSET_MAPPING_KRAKEN.copy()
+
+# Se inicializa dinámicamente por cada request
+ASSET_MAPPING_KRAKEN = KNOWN_ASSET_MAPPING_KRAKEN.copy()
 
 # =============================================================================
 # FUNCIONES DE OBTENCIÓN DE PRECIOS (del main.py original)
@@ -349,7 +380,8 @@ def calcular_portfolio_value(
     fecha_inicio: Optional[Union[str, date]] = None,
     fecha_fin: Optional[Union[str, date]] = None,
     precios_actuales: Optional[Dict[str, float]] = None,
-    obtener_precios_externos: bool = True
+    obtener_precios_externos: bool = True,
+    excluded_operations: Optional[set] = None
 ) -> Dict[str, Any]:
     """
     Calcula Portfolio Value modular con parámetros flexibles
@@ -430,7 +462,14 @@ def calcular_portfolio_value(
     for _, trade in df.iterrows():
         asset = trade['asset']
         tipo = trade['type']
+        ordertype = trade.get('ordertype', '')
         volumen = float(trade['vol'])
+        
+        # Filtrar operaciones excluidas
+        if excluded_operations:
+            operation_key = f"{tipo.title()} {ordertype.title()}"
+            if operation_key in excluded_operations:
+                continue
         
         if asset not in assets_quantities:
             assets_quantities[asset] = 0.0
@@ -541,7 +580,8 @@ def calcular_cost_basis(
     cryptos_filter: Optional[List[str]] = None,
     fecha_inicio: Optional[Union[str, date]] = None,
     fecha_fin: Optional[Union[str, date]] = None,
-    incluir_inversion_historica: bool = True
+    incluir_inversion_historica: bool = True,
+    excluded_operations: Optional[set] = None
 ) -> Dict[str, Any]:
     """
     Calcula Cost Basis usando metodología FIFO con parámetros flexibles
@@ -605,9 +645,16 @@ def calcular_cost_basis(
         # Procesar cada trade de este asset en orden cronológico
         for _, trade in asset_trades.iterrows():
             tipo = trade['type']
+            ordertype = trade.get('ordertype', '')
             volumen = float(trade['vol'])
             cost = float(trade['cost'])
             fee = float(trade['fee'])
+            
+            # Filtrar operaciones excluidas
+            if excluded_operations:
+                operation_key = f"{tipo.title()} {ordertype.title()}"
+                if operation_key in excluded_operations:
+                    continue
             
             total_fees_asset += fee
             trades_procesados += 1
@@ -763,7 +810,8 @@ def calcular_realized_gains(
     trades_df: pd.DataFrame,
     cryptos_filter: Optional[List[str]] = None,
     fecha_inicio: Optional[Union[str, date]] = None,
-    fecha_fin: Optional[Union[str, date]] = None
+    fecha_fin: Optional[Union[str, date]] = None,
+    excluded_operations: Optional[set] = None
 ) -> Dict[str, Any]:
     """
     Calcula Realized Gains usando metodología FIFO con parámetros flexibles
@@ -829,9 +877,16 @@ def calcular_realized_gains(
         # Procesar cada trade de este asset en orden cronológico
         for _, trade in asset_trades.iterrows():
             tipo = trade['type']
+            ordertype = trade.get('ordertype', '')
             volumen = float(trade['vol'])
             cost = float(trade['cost'])
             fee = float(trade['fee'])
+            
+            # Filtrar operaciones excluidas
+            if excluded_operations:
+                operation_key = f"{tipo.title()} {ordertype.title()}"
+                if operation_key in excluded_operations:
+                    continue
             
             trades_procesados += 1
             
@@ -1328,7 +1383,7 @@ async def get_trades_date_range():
     except Exception as e:
         return {"error": f"Error obteniendo rango de fechas: {str(e)}"}
 
-def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame) -> List[Dict[str, Any]]:
+def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, excluded_operations: set = None) -> List[Dict[str, Any]]:
     """
     Calcula timeline diario del portfolio usando el sistema de cache híbrido
     """
@@ -1347,9 +1402,32 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame) -> List[Dict[st
         
         # Preparar datos
         df = trades_df.copy()
-        print(f"🔍 [TIMELINE] Columnas disponibles: {list(df.columns)}")
-        print(f"🔍 [TIMELINE] Primeras filas:")
-        print(df.head(2))
+        # Datos básicos comentados para reducir logs
+        # print(f"🔍 [TIMELINE] Columnas disponibles: {list(df.columns)}")
+        # print(f"🔍 [TIMELINE] Primeras filas:")
+        # print(df.head(2))
+        
+        # DEBUG: Verificar tipos de operaciones disponibles
+        global operation_types_info  # Variable global para compartir con frontend
+        operation_types_info = None
+        
+        if 'type' in df.columns:
+            tipos_unicos = df['type'].unique()
+            print(f"🔍 [TIMELINE] Tipos de operaciones encontradas: {tipos_unicos}")
+            
+            # Crear información para el frontend
+            operation_types_info = {
+                "available_types": tipos_unicos.tolist(),
+                "type_counts": {}
+            }
+            
+            for tipo in tipos_unicos:
+                count = len(df[df['type'] == tipo])
+                operation_types_info["type_counts"][tipo] = count
+                print(f"   - {tipo}: {count} operaciones")
+        else:
+            print("❌ [TIMELINE] No se encuentra columna 'type' en los datos")
+            operation_types_info = {"error": "No se encuentra columna 'type' en los datos"}
         df['time'] = pd.to_datetime(df['time'])
         df['fecha'] = df['time'].dt.date
         df = df.sort_values('time')
@@ -1400,6 +1478,7 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame) -> List[Dict[st
         for fecha in fechas_timeline:
             # Procesar trades del día
             trades_del_dia = df[df['fecha'] == fecha]
+            operaciones_del_dia = []  # Lista de operaciones para este día
             
             for _, trade in trades_del_dia.iterrows():
                 # Extraer asset del par (ej: 'BTC/EUR' -> 'BTC')
@@ -1414,9 +1493,31 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame) -> List[Dict[st
                     continue
                 
                 tipo = trade['type']
+                ordertype = trade.get('ordertype', '')
                 cantidad = float(trade['vol'])
                 cost = float(trade['cost'])
                 fee = float(trade['fee'])
+                
+                # Crear información de la operación para el frontend
+                operation_key = f"{tipo.title()} {ordertype.title()}"
+                operacion_info = {
+                    'type': tipo,
+                    'ordertype': ordertype,
+                    'operation_key': operation_key,  # Para filtrado en frontend
+                    'asset': asset,
+                    'cantidad': cantidad,
+                    'cost': cost,
+                    'fee': fee,
+                    'timestamp': trade['time'].isoformat(),
+                    'pair': pair
+                }
+                operaciones_del_dia.append(operacion_info)
+                
+                # Filtrar operaciones excluidas (mantener lógica del backend)
+                if excluded_operations:
+                    # Verificar si esta operación debe ser excluida
+                    if operation_key in excluded_operations:
+                        continue
                 
                 # Inicializar estructuras si no existen
                 if asset not in holdings_acumulados:
@@ -1532,7 +1633,8 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame) -> List[Dict[st
                 'value': valor_total,       # Cambiar 'portfolio_value' a 'value' para el frontend
                 'cost': cost_basis_total,        # NUEVO: Cost basis usando FIFO
                 'holdings': dict(holdings_acumulados),  # Snapshot de holdings
-                'assets_con_valor': assets_con_valor
+                'assets_con_valor': assets_con_valor,
+                'operations': operaciones_del_dia  # NUEVO: Operaciones del día para filtrado en frontend
             })
         
         print(f"✅ [TIMELINE] Timeline generado: {len(timeline)} puntos")
@@ -1549,7 +1651,10 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame) -> List[Dict[st
         return []
 
 @app.post("/api/portfolio/csv")
-async def upload_csv_and_get_portfolio(csv_file: UploadFile = File(...)):
+async def upload_csv_and_get_portfolio(
+    csv_file: UploadFile = File(...),
+    excluded_operations: Optional[str] = Form(None)
+):
     """
     Endpoint principal que procesa CSV y retorna KPIs usando funciones modulares
     """
@@ -1569,20 +1674,42 @@ async def upload_csv_and_get_portfolio(csv_file: UploadFile = File(...)):
         contents = await csv_file.read()
         df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
         
+        # 1.5. Procesar excluded_operations
+        excluded_ops_set = set()
+        if excluded_operations:
+            try:
+                import json
+                excluded_ops_list = json.loads(excluded_operations)
+                excluded_ops_set = set(excluded_ops_list)
+                print(f"🚫 [FILTROS] Operaciones excluidas: {excluded_ops_set}")
+            except Exception as e:
+                print(f"❌ [FILTROS] Error procesando excluded_operations: {e}")
+        
+        # 1.6. Generar mapeo dinámico de assets basado en el CSV
+        dynamic_asset_mapping = get_dynamic_asset_mapping(df)
+        print(f"🔄 [MAPPING] Mapeo dinámico generado: {dynamic_asset_mapping}")
+        
         # 2. Calcular Portfolio Value
         portfolio_result = calcular_portfolio_value(
             trades_df=df,
-            obtener_precios_externos=True
+            obtener_precios_externos=True,
+            excluded_operations=excluded_ops_set
         )
         
         # 3. Calcular Cost Basis
-        cost_basis_result = calcular_cost_basis(trades_df=df)
+        cost_basis_result = calcular_cost_basis(
+            trades_df=df,
+            excluded_operations=excluded_ops_set
+        )
         
         # 4. Calcular Unrealized Gains
         unrealized_result = calcular_unrealized_gains(portfolio_result, cost_basis_result)
         
         # 5. Calcular Realized Gains
-        realized_result = calcular_realized_gains(trades_df=df)
+        realized_result = calcular_realized_gains(
+            trades_df=df,
+            excluded_operations=excluded_ops_set
+        )
         
         # 6. Extraer totales
         portfolio_value = portfolio_result.get('totales', {}).get('total_portfolio_value', 0)
@@ -1659,7 +1786,7 @@ async def upload_csv_and_get_portfolio(csv_file: UploadFile = File(...)):
         # 10. Generar Timeline usando cache híbrido (optimizado)
         timeline_start = time.time()
         print(f"⏱️ [TIMELINE] Iniciando cálculo de timeline...")
-        timeline_data = calcular_timeline_con_cache_hibrido(df)
+        timeline_data = calcular_timeline_con_cache_hibrido(df, excluded_ops_set)
         timeline_time = time.time() - timeline_start
         print(f"⏱️ [TIMELINE] Completado en {timeline_time:.3f}s")
         
@@ -1675,9 +1802,10 @@ async def upload_csv_and_get_portfolio(csv_file: UploadFile = File(...)):
         print(f"⏱️ [TOTAL] Endpoint procesado en {total_time:.3f}s")
         
         # 12. Respuesta final
-        return {
+        response_data = {
             'portfolio_data': portfolio_array,
             'timeline': timeline_data,
+            'asset_mapping': dynamic_asset_mapping,  # Include dynamic asset mapping for frontend
             'kpis': {
                 'total_invested': total_invested,
                 'current_value': portfolio_value,
@@ -1692,6 +1820,12 @@ async def upload_csv_and_get_portfolio(csv_file: UploadFile = File(...)):
             'data_source': 'csv_v2',
             'version': '2.0.0'
         }
+        
+        # Añadir información de tipos de operaciones si está disponible
+        if 'operation_types_info' in globals() and operation_types_info:
+            response_data['operation_types'] = operation_types_info
+            
+        return response_data
         
     except TimeoutError as e:
         signal.alarm(0)  # Cancelar timeout

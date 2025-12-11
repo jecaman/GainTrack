@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import OverviewSection from './Sections/Overview/OverviewSection';
 import AnalyticsSection from './Sections/Analytics/AnalyticsSection';
 import PortfolioSection from './Sections/Portfolio/PortfolioSection';
@@ -14,8 +14,16 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     minValue: '',
     profitOnly: false
   });
+  const [hiddenAssets, setHiddenAssets] = useState(new Set());
+  const [excludedOperations, setExcludedOperations] = useState(new Set());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('overview');
+  
+  // Debug: Log operation types when portfolio data changes
+  useEffect(() => {
+    if (portfolioData && portfolioData.operation_types) {
+    }
+  }, [portfolioData]);
   const [showApplyPopup, setShowApplyPopup] = useState(false);
   const [popupSource, setPopupSource] = useState('filter'); // 'filter' or 'timeline'
   // Dates for filters (can be point click dates)
@@ -34,48 +42,41 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   
   // Track if we're in point click mode
   const [isInPointClickMode, setIsInPointClickMode] = useState(false);
+  const [isApplyingFromTimeline, setIsApplyingFromTimeline] = useState(false);
   
   // Wrapper functions for timeline date changes that handle point click mode
   const handleTimelineStartDateChange = (newStartDate) => {
-    console.log('handleTimelineStartDateChange called:', { newStartDate, isInPointClickMode });
     if (isInPointClickMode) {
       // In point click mode, don't update timeline dates at all
       // Exception: if it's a reset to default dates, then exit point click mode
       const { defaultStartDate } = getDefaultDates();
       if (newStartDate === defaultStartDate) {
-        console.log('Reset detected - exiting point click mode and syncing dates');
         setIsInPointClickMode(false);
         setStartDate(newStartDate);
         setTimelineStartDate(newStartDate);
       } else {
-        console.log('Point click mode - ignoring timeline date change');
         // Do nothing - preserve timeline dates
       }
     } else {
       // Normal mode: just update timeline dates
-      console.log('Normal mode: updating timeline start date only');
       setTimelineStartDate(newStartDate);
     }
   };
   
   const handleTimelineEndDateChange = (newEndDate) => {
-    console.log('handleTimelineEndDateChange called:', { newEndDate, isInPointClickMode });
     if (isInPointClickMode) {
       // In point click mode, don't update timeline dates at all
       // Exception: if it's a reset to default dates, then exit point click mode
       const { defaultEndDate } = getDefaultDates();
       if (newEndDate === defaultEndDate) {
-        console.log('Reset detected - exiting point click mode and syncing dates');
         setIsInPointClickMode(false);
         setEndDate(newEndDate);
         setTimelineEndDate(newEndDate);
       } else {
-        console.log('Point click mode - ignoring timeline date change');
         // Do nothing - preserve timeline dates
       }
     } else {
       // Normal mode: just update timeline dates
-      console.log('Normal mode: updating timeline end date only');
       setTimelineEndDate(newEndDate);
     }
   };
@@ -95,7 +96,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   useEffect(() => {
     // Only sync on initial mount, not during resets or other operations
     if (startDate && endDate && (!timelineStartDate || !timelineEndDate) && !showApplyPopup) {
-      console.log('Dashboard useEffect: Syncing timeline dates from filter dates:', { startDate, endDate });
       setTimelineStartDate(startDate);
       setTimelineEndDate(endDate);
     }
@@ -108,7 +108,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   useEffect(() => {
     // If we just exited point click mode (was true, now false)
     if (prevIsInPointClickMode.current && !isInPointClickMode) {
-      console.log('Just exited point click mode, checking for popup...');
       
       // Clear any existing timeout to avoid multiple popups
       if (popupTimeoutRef.current) {
@@ -150,6 +149,18 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
 
   const handleFiltersChange = (newFilters, skipTimelineUpdate = false) => {
     setFilters(newFilters);
+    
+    // Handle asset filter changes
+    if (newFilters.type === 'assetFilter' && newFilters.hiddenAssets !== undefined) {
+      setHiddenAssets(newFilters.hiddenAssets);
+      return;
+    }
+    
+    // Handle operations filter changes
+    if (newFilters.type === 'excludedOperations' && newFilters.excludedOperations !== undefined) {
+      setExcludedOperations(newFilters.excludedOperations);
+      return;
+    }
     
     // Capture selected preset from filters
     if (newFilters.selectedPreset) {
@@ -202,6 +213,9 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       setTimelineStartDate(resetData.dateRange.from);
       setTimelineEndDate(resetData.dateRange.to);
       
+      // Reset hidden assets as well
+      setHiddenAssets(new Set());
+      
       // Exit point click mode on reset
       setIsInPointClickMode(false);
       
@@ -220,8 +234,18 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
 
   // Timeline can only update Filter dates when "Apply to All" is used
   const handleTimelineApplyToAll = (timelineData) => {
+    // Prevent multiple simultaneous applications
+    if (isApplyingFromTimeline) {
+      return;
+    }
+    
+    setIsApplyingFromTimeline(true);
+    
     // Use stored timeline dates if available
     const datesToUse = window.timelineDates || timelineData.dateRange;
+    
+    console.log('🎯 APPLY TIMELINE TO ALL - DATES TO USE:', datesToUse);
+    console.log('🎯 WINDOW.TIMELINE DATES:', window.timelineDates);
     
     if (datesToUse) {
       // Check if this is a special point-click case
@@ -255,33 +279,46 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         // For zoom/range changes: Update both Filter and Timeline dates
         const newStartDate = datesToUse.from || datesToUse.startDate;
         const newEndDate = datesToUse.to || datesToUse.endDate;
+        
+        // Update all state immediately 
         setStartDate(newStartDate);
         setEndDate(newEndDate);
         setTimelineStartDate(newStartDate);
         setTimelineEndDate(newEndDate);
-        
-        // Disable point click mode for range/zoom changes
         setIsInPointClickMode(false);
-        
-        handleFiltersChange({
-          type: 'dateRange',
-          dateRange: {
-            from: datesToUse.from || datesToUse.startDate,
-            to: datesToUse.to || datesToUse.endDate
-          }
-        });
         
         // Set the timeline quick filter if available
         if (datesToUse.quickFilter) {
           setTimelineQuickFilter(datesToUse.quickFilter);
         }
+        
+        // Call handleFiltersChange
+        handleFiltersChange({
+          type: 'dateRange',
+          dateRange: {
+            from: newStartDate,
+            to: newEndDate
+          }
+        });
+        
+        // Clear the applying flag immediately 
+        setIsApplyingFromTimeline(false);
+        
+        // Reset popup tracking when applying
+        lastShownPopup.current = '';
       }
       
       // Clean up temporary storage
       window.timelineDates = null;
+    } else {
+      // If no datesToUse, just clear the applying flag
+      setIsApplyingFromTimeline(false);
     }
   };
 
+  // Track the last popup we showed to prevent duplicates
+  const lastShownPopup = useRef('');
+  
   // Function to show popup from Timeline changes
   const showTimelinePopup = (timelineDates) => {
     // Don't show popup if we're currently in point click mode (startDate === endDate)
@@ -289,9 +326,30 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       return;
     }
     
+    // Don't show popup if we're currently applying
+    if (isApplyingFromTimeline) {
+      return;
+    }
+    
     // Only show popup if timeline dates are different from filter dates
     if (timelineDates && 
         (timelineDates.startDate !== startDate || timelineDates.endDate !== endDate)) {
+      
+      // Create a unique key for this popup request
+      const popupKey = `${timelineDates.startDate}-${timelineDates.endDate}`;
+      
+      // Don't show if we already showed this exact popup
+      if (lastShownPopup.current === popupKey) {
+        console.log('🚫 DUPLICATE POPUP BLOCKED:', popupKey);
+        return;
+      }
+      
+      console.log('✅ SHOWING NEW POPUP:', popupKey);
+      lastShownPopup.current = popupKey;
+      
+      // CLEAR any old timeline dates first to prevent mixing old with new
+      window.timelineDates = null;
+      
       setPopupSource('timeline');
       // Store timeline dates temporarily for the popup (both use YYYY-MM-DD now)
       window.timelineDates = {
@@ -299,6 +357,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         endDate: timelineDates.endDate,
         quickFilter: timelineDates.quickFilter
       };
+      
+      console.log('📦 STORED TIMELINE DATES:', window.timelineDates);
       setShowApplyPopup(true);
     }
   };
@@ -338,10 +398,12 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             theme={theme}
             onShowGainTrack={onShowGainTrack}
             filters={filters}
+            hiddenAssets={hiddenAssets}
+            excludedOperations={excludedOperations}
             showApplyPopup={showApplyPopup}
             setShowApplyPopup={setShowApplyPopup}
-            startDate={isInPointClickMode ? startDate : (timelineStartDate || startDate)}
-            endDate={isInPointClickMode ? endDate : (timelineEndDate || endDate)}
+            startDate={startDate}
+            endDate={endDate}
             buttonStartDate={timelineStartDate || startDate}
             buttonEndDate={timelineEndDate || endDate}
             setStartDate={handleTimelineStartDateChange}
@@ -354,6 +416,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             sidebarOpen={sidebarOpen}
             timelineUnfreezeTooltipRef={timelineUnfreezeTooltipRef}
             filterSelectedPreset={filterSelectedPreset}
+            onFilterReset={handleFilterReset}
+            isApplyingFromTimeline={isApplyingFromTimeline}
           />
         );
       case 'analytics':
@@ -379,7 +443,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
 
   return (
     <div style={{
-      minHeight: '100vh',
       background: theme.bg,
       color: theme.textPrimary,
       fontFamily: "'Inter', sans-serif",
@@ -420,7 +483,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         padding: '0 4rem 0 4rem', // Sin margen arriba
         marginTop: '-200px', // Compensar el espacio que deja la línea fixed
         paddingTop: '2px', // Justo debajo de la línea divisora
-        minHeight: 'calc(100vh - 100px)', // Altura mínima, no máxima
         overflow: 'visible' // Permitir que el ticker salga por arriba
       }}>
         {renderCurrentSection()}

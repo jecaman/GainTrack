@@ -382,7 +382,7 @@ const splitLinePlugin = {
 // Registrar los plugins
 Chart.register(hoverPlugin, hideGrayLinesPlugin, splitLinePlugin);
 
-const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, buttonStartDate, buttonEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, isInPointClickMode, setIsInPointClickMode }) => {
+const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), excludedOperations = new Set(), showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, buttonStartDate, buttonEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, isInPointClickMode, setIsInPointClickMode, onFilterReset, isApplyingFromTimeline }) => {
   // Constantes de estilo reutilizables
   const COLORS = {
     HOVER_LIGHT: 'rgba(255, 255, 255, 0.12)',
@@ -392,9 +392,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   };
 
   // Función centralizada para formatear fechas
-  // Use standard YYYY-MM-DD format (same as Filter)
+  // Use standard YYYY-MM-DD format (same as Filter) - avoid timezone issues
   const formatDate = (date) => {
-    return date.toISOString().split('T')[0];
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const [showTotalInvested, setShowTotalInvested] = useState(false);
@@ -412,16 +415,23 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const [isDragging, setIsDragging] = useState(false);
   const [isTooltipFrozen, setIsTooltipFrozen] = useState(false);
   const [isChartStabilizing, setIsChartStabilizing] = useState(false);
+  const [popupBlocked, setPopupBlocked] = useState(false);
+  const popupTimeoutRef = useRef(null);
   
   const chartRef = useRef(null);
   const hasUserInteractedWithTimeline = useRef(false);
-  const isPopupFromDirectClick = useRef(false);
-  const lastAutoShowDates = useRef({ startDate: null, endDate: null });
-  const ignoreNextExternalSync = useRef(false);
+  const userClosedPopup = useRef(false);
+  
   
   // Cleanup del chart al desmontar el componente o cuando cambien las dependencias críticas
   useEffect(() => {
     return () => {
+      // Clear any pending popup timeouts
+      if (popupTimeoutRef.current) {
+        clearTimeout(popupTimeoutRef.current);
+        popupTimeoutRef.current = null;
+      }
+      
       if (chartRef.current && chartRef.current.destroy) {
         chartRef.current.destroy();
         chartRef.current = null;
@@ -447,19 +457,184 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
            (currentMode === 'day' && prevMode !== 'day');
   };
 
-  // Función para obtener datos filtrados por el rango de fechas actual
+  // Función para recalcular timeline excluyendo operaciones específicas
+  const recalculateTimelineWithoutOperations = (timelineData, excludedOperations) => {
+    if (!timelineData || timelineData.length === 0) return [];
+    
+    // Simular recálculo del portfolio día a día excluyendo operaciones
+    let holdings_acumulados = {}; // Asset -> cantidad actual
+    let cost_basis_fifo = {}; // Asset -> cola FIFO para cost basis
+    
+    const recalculatedTimeline = timelineData.map(dayData => {
+      const operations = dayData.operations || [];
+      
+      // Procesar operaciones del día (excluyendo las filtradas)
+      operations.forEach(operation => {
+        if (!excludedOperations.has(operation.operation_key)) {
+          const asset = operation.asset;
+          const tipo = operation.type;
+          const cantidad = operation.cantidad;
+          const cost = operation.cost;
+          const fee = operation.fee;
+          
+          // Inicializar estructuras si no existen
+          if (!holdings_acumulados[asset]) {
+            holdings_acumulados[asset] = 0;
+          }
+          if (!cost_basis_fifo[asset]) {
+            cost_basis_fifo[asset] = [];
+          }
+          
+          // Procesar según tipo de operación
+          if (tipo === 'buy') {
+            holdings_acumulados[asset] += cantidad;
+            // Agregar compra a cola FIFO
+            const cost_con_fee = cost + fee;
+            cost_basis_fifo[asset].push({
+              volumen: cantidad,
+              cost: cost_con_fee
+            });
+          } else if (tipo === 'sell') {
+            holdings_acumulados[asset] -= cantidad;
+            // Procesar venta usando FIFO
+            let volumen_restante = cantidad;
+            
+            while (volumen_restante > 0 && cost_basis_fifo[asset].length > 0) {
+              const lote = cost_basis_fifo[asset][0];
+              
+              if (lote.volumen <= volumen_restante) {
+                // Consumir lote completo
+                volumen_restante -= lote.volumen;
+                cost_basis_fifo[asset].shift();
+              } else {
+                // Consumir parcialmente
+                const proporcion = volumen_restante / lote.volumen;
+                lote.volumen -= volumen_restante;
+                lote.cost -= lote.cost * proporcion;
+                volumen_restante = 0;
+              }
+            }
+          }
+        }
+      });
+      
+      // Calcular valores para este día con holdings actualizados
+      let valor_total = 0;
+      let cost_basis_total = 0;
+      const assets_con_valor_recalc = {};
+      
+      // Usar precios originales del timeline
+      Object.keys(holdings_acumulados).forEach(asset => {
+        const cantidad = holdings_acumulados[asset];
+        if (cantidad > 0) {
+          // Buscar precio del asset en assets_con_valor original
+          const precio = dayData.assets_con_valor?.[asset]?.precio || 0;
+          const valor_asset = cantidad * precio;
+          valor_total += valor_asset;
+          
+          assets_con_valor_recalc[asset] = {
+            cantidad: cantidad,
+            precio: precio,
+            valor: valor_asset
+          };
+          
+          // Calcular cost basis del asset
+          const cost_basis_asset = cost_basis_fifo[asset]?.reduce((sum, lote) => sum + lote.cost, 0) || 0;
+          cost_basis_total += cost_basis_asset;
+        }
+      });
+      
+      return {
+        ...dayData,
+        value: valor_total,
+        cost: cost_basis_total,
+        assets_con_valor: assets_con_valor_recalc
+      };
+    });
+    
+    return recalculatedTimeline;
+  };
+
+  // Función para obtener datos filtrados por el rango de fechas y assets ocultos
   const getFilteredTimelineData = () => {
     if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return [];
     
-    if (!startDate || !endDate) return portfolioData.timeline;
+    let filteredData = portfolioData.timeline;
     
-    const startDateObj = new Date(startDate);
-    const endDateObj = new Date(endDate);
+    // Apply date range filter
+    if (startDate && endDate) {
+      // Use string comparison to avoid timezone issues
+      const startDateStr = startDate;
+      const endDateStr = endDate;
+      
+      filteredData = filteredData.filter(entry => {
+        // Extract date part from entry.date (YYYY-MM-DD)
+        const entryDateStr = entry.date.split('T')[0];
+        return entryDateStr >= startDateStr && entryDateStr <= endDateStr;
+      });
+    }
     
-    return portfolioData.timeline.filter(entry => {
-      const entryDate = new Date(entry.date);
-      return entryDate >= startDateObj && entryDate <= endDateObj;
-    });
+    // Apply hidden assets filter
+    if (hiddenAssets && hiddenAssets.size > 0) {
+      // Use asset mapping from backend, fallback to hardcoded for safety
+      const assetMapping = portfolioData?.asset_mapping || {
+        'BTC': 'XXBT',  // Fallback mapping
+        'ETH': 'XETH'
+      };
+      
+      // Convert hidden assets to timeline names
+      const hiddenTimelineAssets = new Set();
+      hiddenAssets.forEach(asset => {
+        const timelineAsset = assetMapping[asset] || asset;
+        hiddenTimelineAssets.add(timelineAsset);
+      });
+      
+      filteredData = filteredData.map(entry => {
+        const filteredEntry = { ...entry };
+        
+        // Filter assets_con_valor and recalculate totals
+        if (entry.assets_con_valor) {
+          filteredEntry.assets_con_valor = {};
+          let newTotalValue = 0;
+          
+          Object.keys(entry.assets_con_valor).forEach(assetName => {
+            if (!hiddenTimelineAssets.has(assetName)) {
+              filteredEntry.assets_con_valor[assetName] = entry.assets_con_valor[assetName];
+              newTotalValue += entry.assets_con_valor[assetName].valor || 0;
+            }
+          });
+          
+          // Recalculate proportional cost based on filtered assets
+          const originalValue = entry.value || 0;
+          const originalCost = entry.cost || 0;
+          const costRatio = originalValue > 0 ? originalCost / originalValue : 0;
+          const newTotalCost = newTotalValue * costRatio;
+          
+          // Update value and cost with filtered totals
+          filteredEntry.value = newTotalValue;
+          filteredEntry.cost = newTotalCost;
+        }
+        
+        // Filter holdings to match assets_con_valor
+        if (entry.holdings) {
+          filteredEntry.holdings = {};
+          Object.keys(entry.holdings).forEach(assetName => {
+            if (!hiddenTimelineAssets.has(assetName)) {
+              filteredEntry.holdings[assetName] = entry.holdings[assetName];
+            }
+          });
+        }
+        
+        return filteredEntry;
+      });
+    }
+    
+    // Apply operation filter - recalculate timeline excluding filtered operations
+    if (excludedOperations && excludedOperations.size > 0) {
+      filteredData = recalculateTimelineWithoutOperations(filteredData, excludedOperations);
+    }
+
+    return filteredData;
   };
 
   // Función para verificar si hay suficientes datos para cada tipo de agregación
@@ -601,10 +776,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     
     // Simular el filtro temporalmente
     const filteredData = portfolioData?.timeline?.filter(entry => {
-      const entryDate = new Date(entry.date);
-      const startDateObj = new Date(simulatedDateRange.startDate);
-      const endDateObj = new Date(simulatedDateRange.endDate);
-      return entryDate >= startDateObj && entryDate <= endDateObj;
+      // Use string comparison to avoid timezone issues
+      const entryDateStr = entry.date.split('T')[0];
+      const startDateStr = simulatedDateRange.startDate;
+      const endDateStr = simulatedDateRange.endDate;
+      return entryDateStr >= startDateStr && entryDateStr <= endDateStr;
     }) || [];
     
     // Verificar si habría suficientes períodos únicos para la agregación actual
@@ -656,7 +832,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const handleQuickFilter = (range) => {
     // Activar bloqueo de hover durante transición
     setIsChartStabilizing(true);
-    console.log('🔄 Iniciando transición de filtro, bloqueando hover...');
     
     if (range === 'all') {
       // ALL siempre ejecuta reset completo, independientemente del estado actual
@@ -695,6 +870,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
       // Marcar como cambio de filtro rápido y establecer fechas
       isQuickFilterChange.current = true;
+      userClosedPopup.current = false; // Reset popup close flag when quick filter changes dates
       setStartDate(defaultStartDate);
       setEndDate(defaultEndDate);
       
@@ -710,6 +886,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       if (dateRange) {
         // Marcar que el cambio de fecha es por filtro rápido ANTES de cambiar las fechas
         isQuickFilterChange.current = true;
+        userClosedPopup.current = false; // Reset popup close flag when quick filter changes dates
         
         setStartDate(dateRange.startDate);
         setEndDate(dateRange.endDate);
@@ -722,7 +899,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     // Desbloquear hover después de la transición (700ms)
     setTimeout(() => {
       setIsChartStabilizing(false);
-      console.log('🔄 Hover desbloqueado después de transición de filtro');
     }, 700);
   };
 
@@ -782,7 +958,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       const mappedFilter = timelineFilterMap[filterSelectedPreset];
       if (mappedFilter && mappedFilter !== activeQuickFilter) {
         setActiveQuickFilter(mappedFilter);
-        console.log(`Synced filter preset '${filterSelectedPreset}' to timeline quick filter '${mappedFilter}'`);
       }
     }
   }, [filterSelectedPreset]);
@@ -811,6 +986,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   
   // Sincronizar fechas externas con estados locales
   useEffect(() => {
+    // Don't sync if we're currently applying from timeline
+    if (isApplyingFromTimeline) {
+      return;
+    }
+    
     // Check if we should ignore this sync due to point click
     if (typeof window !== 'undefined' && window.ignoreTimelineSync) {
       window.ignoreTimelineSync = false;
@@ -824,43 +1004,57 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     }
     
     if (externalStartDate && externalStartDate !== startDate) {
-      setStartDate(externalStartDate);
-      // Reset interaction flag when dates are updated from external source (Filter)
-      hasUserInteractedWithTimeline.current = false;
+      // Sync timeline dates if not zoomed OR if we're applying from timeline
+      if (!isZoomed || isApplyingFromTimeline) {
+        console.log('📋 SYNCING TIMELINE startDate with external:', { external: externalStartDate, current: startDate, isZoomed, isApplyingFromTimeline });
+        setStartDate(externalStartDate);
+        // Reset interaction flag when dates are updated from external source (Filter)
+        hasUserInteractedWithTimeline.current = false;
+        // Reset popup flags when external dates change (new date state)
+        userClosedPopup.current = false;
+        lastProcessedDates.current = { startDate: '', endDate: '' }; // Reset to allow new popup for new state
+      }
       
-      // Check if external dates are back to default range - reset zoom state
+      // Check if external dates are back to default range - reset zoom state only if timeline was not manually zoomed
       const { defaultStartDate, defaultEndDate } = getDefaultDates();
-      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate) {
+      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate && !hasUserInteractedWithTimeline.current) {
         setIsZoomed(false);
       }
     }
-  }, [externalStartDate, externalEndDate]);
+  }, [externalStartDate, externalEndDate, popupBlocked, isApplyingFromTimeline]);
   
-  useEffect(() => {
+  useEffect(() => {    
     // Check if we should ignore this sync due to point click
     if (typeof window !== 'undefined' && window.ignoreTimelineSync) {
       window.ignoreTimelineSync = false;
       return;
     }
     
-    // Don't update timeline button dates when tab dates are equal (point click scenario)
-    if (externalStartDate === externalEndDate) {
+    // Don't update timeline button dates when tab dates are equal (point click scenario) - UNLESS applying
+    if (externalStartDate === externalEndDate && !isApplyingFromTimeline) {
       // Tab dates are equal, this is a point click - don't update timeline dates
       return;
     }
     
     if (externalEndDate && externalEndDate !== endDate) {
-      setEndDate(externalEndDate);
-      // Reset interaction flag when dates are updated from external source (Filter)
-      hasUserInteractedWithTimeline.current = false;
+      // Sync timeline dates if not zoomed OR if we're applying from timeline
+      if (!isZoomed || isApplyingFromTimeline) {
+        console.log('📋 SYNCING TIMELINE endDate with external:', { external: externalEndDate, current: endDate, isZoomed, isApplyingFromTimeline });
+        setEndDate(externalEndDate);
+        // Reset interaction flag when dates are updated from external source (Filter)
+        hasUserInteractedWithTimeline.current = false;
+        // Reset popup flags when external dates change (new date state)
+        userClosedPopup.current = false;
+        lastProcessedDates.current = { startDate: '', endDate: '' }; // Reset to allow new popup for new state
+      }
       
-      // Check if external dates are back to default range - reset zoom state
+      // Check if external dates are back to default range - reset zoom state only if timeline was not manually zoomed
       const { defaultStartDate, defaultEndDate } = getDefaultDates();
-      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate) {
+      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate && !hasUserInteractedWithTimeline.current) {
         setIsZoomed(false);
       }
     }
-  }, [externalEndDate, externalStartDate]);
+  }, [externalEndDate, externalStartDate, popupBlocked, isApplyingFromTimeline]);
   
   // NOTE: Timeline changes should NOT automatically sync to external dates
   // Only sync when user explicitly clicks "Apply to All"
@@ -869,13 +1063,35 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const showApplyToAllPopup = () => setShowApplyPopup(true);
   const hideApplyPopup = () => {
     console.log('Timeline: hideApplyPopup called');
+    userClosedPopup.current = true; // Track that user manually closed popup
+    // Keep lastProcessedDates to prevent re-showing same popup
     setShowApplyPopup(false);
   };
   
-  // Function to apply Timeline changes to Filter (Apply to All)
+  // Apply timeline dates to filter - SIMPLE
   const handleApplyTimelineToFilter = () => {
     if (onTimelineApplyToAll && startDate && endDate) {
-      // Both Timeline and Filter now use YYYY-MM-DD format, no conversion needed
+      console.log('APPLYING DATES:', startDate, endDate);
+      
+      // Reset our tracking to prevent duplicate detections
+      lastProcessedDates.current = { startDate: '', endDate: '' };
+      
+      // Close popup and block new ones for 5 seconds
+      setShowApplyPopup(false);
+      setPopupBlocked(true);
+      setTimeout(() => setPopupBlocked(false), 5000);
+      
+      // Apply the dates
+      if (typeof window !== 'undefined') {
+        window.timelineDates = {
+          from: startDate,
+          to: endDate,
+          startDate: startDate,
+          endDate: endDate,
+          quickFilter: activeQuickFilter
+        };
+      }
+      
       onTimelineApplyToAll({
         type: 'dateRange',
         dateRange: {
@@ -883,9 +1099,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           to: endDate
         }
       });
-      
-      console.log('Timeline: handleApplyTimelineToFilter - closing popup');
-      setShowApplyPopup(false);
     }
   };
   
@@ -899,53 +1112,55 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   // Auto-show popup only for specific timeline interactions (zoom, date changes)
   // NOT for direct clicks - those are handled separately
 
-  // Reset direct click flag when popup is closed
+  // Simple popup logic - only show ONCE when dates actually change
+  const lastProcessedDates = useRef({ startDate: '', endDate: '' });
+  
   useEffect(() => {
-    if (!showApplyPopup) {
-      isPopupFromDirectClick.current = false;
-    }
-  }, [showApplyPopup]);
-
-  // Auto-control popup based on date differences between timeline and filter
-  useEffect(() => {
-    // Skip if we're in point click mode
-    if (isInPointClickMode) {
-      return;
-    }
+    // Skip if popup blocked
+    if (popupBlocked) return;
     
-    // Skip if we're still in click mode (legacy check)
-    const isInClickMode = typeof window !== 'undefined' && 
-                          window.timelineDates && 
-                          window.timelineDates.isPointClick;
+    // Skip if we're applying from timeline
+    if (isApplyingFromTimeline) return;
     
-    if (isInClickMode) {
-      return;
-    }
+    // Compare timeline button dates with external filter dates
+    const datesAreDifferent = startDate !== externalStartDate || endDate !== externalEndDate;
     
-    // Compare timeline dates with filter dates
-    const timelineDatesMatch = (startDate === externalStartDate && endDate === externalEndDate);
+    // Only proceed if dates actually changed from what we last processed OR if we need to hide popup
+    const currentDates = `${startDate}-${endDate}`;
+    const lastDates = `${lastProcessedDates.current.startDate}-${lastProcessedDates.current.endDate}`;
+    const datesChanged = currentDates !== lastDates;
+    const shouldHidePopup = !datesAreDifferent && showApplyPopup;
     
+    if (!datesChanged && !shouldHidePopup) return;
     
-    if (timelineDatesMatch && showApplyPopup) {
-      // Don't hide popup if we just showed it from point click exit
-      if (typeof window !== 'undefined' && window.justShowedPopupFromPointClickExit) {
-        console.log('Timeline useEffect: NOT hiding popup - just showed from point click exit');
-        return;
-      }
+    if (datesAreDifferent) {
+      console.log('🔥 DATES DIFFERENT - SHOWING POPUP:', { 
+        timelineButtons: { startDate, endDate },
+        filterDates: { externalStartDate, externalEndDate }
+      });
       
-      // Dates are the same, hide popup
-      console.log('Timeline useEffect: Hiding popup because dates match');
-      setShowApplyPopup(false);
-    } else if (!timelineDatesMatch && !showApplyPopup) {
-      // Dates are different, show popup (only if not recently exited from point click mode)
-      console.log('Timeline useEffect: Showing popup because dates differ');
+      // Update our tracking
+      lastProcessedDates.current = { startDate, endDate };
+      
+      // Show popup when dates are different
       showTimelinePopup && showTimelinePopup({ 
         startDate, 
         endDate, 
         quickFilter: activeQuickFilter 
       });
+    } else {
+      console.log('✅ DATES MATCH - HIDING POPUP:', { 
+        timelineButtons: { startDate, endDate },
+        filterDates: { externalStartDate, externalEndDate }
+      });
+      
+      // Update our tracking when hiding
+      lastProcessedDates.current = { startDate, endDate };
+      
+      // Hide popup when dates match
+      setShowApplyPopup(false);
     }
-  }, [startDate, endDate, externalStartDate, externalEndDate, showApplyPopup, isInPointClickMode]);
+  }, [startDate, endDate, externalStartDate, externalEndDate, popupBlocked, showApplyPopup, isApplyingFromTimeline]);
 
   // Definir animación base una sola vez
   React.useEffect(() => {
@@ -974,11 +1189,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   useEffect(() => {
     if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
       const firstDate = new Date(portfolioData.timeline[0].date);
-      const today = new Date(); // Fecha actual en lugar de última fecha de datos
+      const lastDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date); // Usar última fecha de los datos
       
       // Solo establecer si no están ya establecidas (para no sobrescribir selecciones del usuario)
       if (!startDate) setStartDate(formatDate(firstDate));
-      if (!endDate) setEndDate(formatDate(today));
+      if (!endDate) setEndDate(formatDate(lastDate));
     }
     
     // Ocultar iconos de calendario de manera agresiva
@@ -1033,6 +1248,75 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showStartCalendar, showEndCalendar]);
+
+  // Exit point click mode when clicking outside the chart
+  useEffect(() => {
+    const handleClickOutsideChart = (event) => {
+      // Only handle if we're in point click mode
+      if (!isInPointClickMode) return;
+      
+      // Check if click is outside the chart container
+      const chartContainer = document.querySelector('.timeline-chart-container');
+      if (chartContainer && !chartContainer.contains(event.target)) {
+        
+        // Simple cleanup: just exit point click mode and unfreeze tooltip
+        setIsInPointClickMode(false);
+        if (chartRef.current?.frozenTooltip?.isFrozen) {
+          unfreezeTooltip();
+        }
+      }
+    };
+
+    if (isInPointClickMode) {
+      document.addEventListener('mousedown', handleClickOutsideChart);
+      return () => document.removeEventListener('mousedown', handleClickOutsideChart);
+    }
+  }, [isInPointClickMode]);
+
+  // Function to handle complete reset (extracted from reset button logic)
+  const handleCompleteReset = () => {
+    const { defaultStartDate, defaultEndDate } = getDefaultDates();
+    
+    // Resetear zoom si existe
+    if (chartRef.current) {
+      chartRef.current.resetZoom();
+      chartRef.current._isDragZoom = false; // Limpiar flag de drag zoom
+    }
+    
+    // Descongelar tooltip si está congelado
+    unfreezeTooltip();
+    
+    // Resetear fechas y estado ANTES de salir del point click mode
+    // Esto es importante para que handleTimelineStartDateChange detecte el reset correctamente
+    isQuickFilterChange.current = true;
+    userClosedPopup.current = false; // Reset popup close flag when complete reset happens
+    setStartDate(defaultStartDate);
+    setEndDate(defaultEndDate);
+    
+    // Período de estabilización después del reset (DESPUÉS de unfreezeTooltip)
+    setIsChartStabilizing(true);
+    if (chartRef.current) {
+      chartRef.current._stabilizing = true;
+    }
+    setTimeout(() => {
+      setIsChartStabilizing(false);
+      if (chartRef.current) {
+        chartRef.current._stabilizing = false;
+      }
+    }, 700);
+    setIsZoomed(false);
+    setActiveQuickFilter('all');
+    
+    // Limpiar completamente el estado de click para volver al modo normal
+    if (typeof window !== 'undefined') {
+      window.timelineDates = null;
+      window.justShowedPopupFromPointClickExit = false;
+    }
+    isPopupFromDirectClick.current = false;
+    
+    // Marcar que el usuario ha interactuado
+    hasUserInteractedWithTimeline.current = true;
+  };
   
   // Inicializar tooltip estático (para modos que no son P&L View)
   useEffect(() => {
@@ -1062,7 +1346,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           setTimeout(() => {
             if (chartRef.current && chartRef.current.canvas && chartRef.current.canvas.ownerDocument && !chartRef.current._isDestroying) {
               chartRef.current._stabilizing = false;
-              console.log('🔄 Chart estabilizado después de cambio de datos');
+              // console.log('🔄 Chart estabilizado después de cambio de datos');
             }
           }, 700);
         }
@@ -1081,31 +1365,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       return;
     }
 
-    let timelineData = [...portfolioData.timeline];
-
-    // Filtrar por fechas si están definidas
-    if (startDate || endDate) {
-      timelineData = timelineData.filter(entry => {
-        const entryDate = new Date(entry.date);
-        let includeEntry = true;
-        
-        if (startDate) {
-          const startDateObj = new Date(startDate);
-          if (entryDate < startDateObj) {
-            includeEntry = false;
-          }
-        }
-        
-        if (endDate && includeEntry) {
-          const endDateObj = new Date(endDate + 'T23:59:59');
-          if (entryDate > endDateObj) {
-            includeEntry = false;
-          }
-        }
-        
-        return includeEntry;
-      });
-    }
+    // Use the existing filtered data function that handles both dates and assets
+    let timelineData = getFilteredTimelineData();
 
     // Función para agrupar datos según el período seleccionado
     const groupDataByPeriod = (data, period) => {
@@ -1169,7 +1430,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     // Aplicar agrupación
     const processedData = groupDataByPeriod(timelineData, periodMode);
     setProcessedTimelineData(processedData);
-  }, [portfolioData, startDate, endDate, periodMode]);
+  }, [portfolioData, startDate, endDate, periodMode, hiddenAssets, excludedOperations]);
 
   // Crear datos interpolados para P&L View tooltip
   const interpolatedDataForTooltip = useMemo(() => {
@@ -1308,11 +1569,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     }
     
     const firstDate = new Date(portfolioData.timeline[0].date);
-    const today = new Date();
+    const lastDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date);
     
     return {
       defaultStartDate: formatDate(firstDate),
-      defaultEndDate: formatDate(today)
+      defaultEndDate: formatDate(lastDate)
     };
   };
 
@@ -1360,8 +1621,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       return; // No permitir seleccionar fechas fuera del rango
     }
     
-    const selectedDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day);
-    const formattedDate = formatDate(selectedDate); // Use YYYY-MM-DD format
+    // Create date string directly to avoid timezone issues
+    const year = calendarDate.getFullYear();
+    const month = (calendarDate.getMonth() + 1).toString().padStart(2, '0');
+    const dayStr = day.toString().padStart(2, '0');
+    const formattedDate = `${year}-${month}-${dayStr}`;
     
     if (calendarType === 'start') {
       // Validar que fecha inicio no sea posterior a fecha fin
@@ -1579,7 +1843,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     };
     
     // Construir el contenido en una sola línea con estilos específicos y buen espaciado
-    const profitColor = profit >= 0 ? '#22c55e' : '#ef4444';
+    const profitColor = profit >= 0 ? '#00FF99' : '#ef4444';
     const profitTriangle = profit >= 0 ? '▲' : '▼';
     
     const formatCurrencyEuroAfter = (value) => {
@@ -1622,7 +1886,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     
     if (viewMode === 'balance') {
       // En P&L View, mostrar fecha + P&L acumulados y porcentaje
-      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'UNREALIZED P&L';
+      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'TOTAL P&L';
       content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     } else {
       // Full View - mostrar portfolio value primero
@@ -1631,7 +1895,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     
     if (showTotalInvested && viewMode === 'both') {
       // Determinar el tipo de profit mostrado basado en datos disponibles
-      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'UNREALIZED GAINS';
+      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'TOTAL GAINS';
       // Todo en una línea con tamaño uniforme
       content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
     }
@@ -1649,7 +1913,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         color: #ffffff;
         padding: 0;
         margin: 0;
-        width: 100%;
+        min-width: max-content;
+        width: auto;
+        white-space: nowrap;
         display: flex;
         align-items: baseline;
         font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
@@ -1659,6 +1925,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         transform: scale(1);
         letter-spacing: 0.3px;
         line-height: 1;
+        flex-shrink: 0;
+        overflow: visible;
       ">
         ${content}
       </div>
@@ -1724,8 +1992,18 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-      const canvasX = x * scaleX;
-      const canvasY = y * scaleY;
+      
+      // Detectar zoom del navegador y corregir coordenadas
+      const browserZoom = window.devicePixelRatio || 1;
+      const visualZoom = window.visualViewport?.scale || 1;
+      const zoomFactor = browserZoom / visualZoom;
+      
+      const canvasX = (x * scaleX) / zoomFactor;
+      const canvasY = (y * scaleY) / zoomFactor;
+      
+      // Debug zoom correction (solo mostrar ocasionalmente)
+      if (Math.random() < 0.001) { // 0.1% de las veces
+      }
       
       
       // Añadir tolerancia extra cuando hay zoom para evitar detección errónea de bordes
@@ -1938,7 +2216,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
       // Si está congelado, no resetear el tooltip al salir
       if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
-        console.log('MouseLeave bloqueado - tooltip congelado');
         return;
       }
       
@@ -2023,7 +2300,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     const chart = chartRef.current;
     if (!chart || !chart.frozenTooltip || !chart.frozenTooltip.isFrozen) return;
     
-    console.log('Descongelando tooltip por reset');
     
     // Limpiar estados
     chart.hoveredDataIndex = undefined;
@@ -2127,7 +2403,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       // Detectar drag: movimiento mínimo de 5px en cualquier dirección
       if ((deltaX > 5 || deltaY > 5) && deltaTime > 50) {
         chart._dragDetected = true;
-        console.log('🎯 Drag zoom detectado - completando línea');
         
         // Restaurar todas las líneas completas inmediatamente
         chart.data.datasets.forEach(dataset => {
@@ -2171,6 +2446,17 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   const { defaultStartDate, defaultEndDate } = getDefaultDates();
   const isUsingDefaultRange = (startDate === defaultStartDate && endDate === defaultEndDate);
   
+  console.log('🔥 RESET BUTTON CHECK:', 
+    'startDate:', startDate, 
+    'endDate:', endDate, 
+    'defaultStart:', defaultStartDate, 
+    'defaultEnd:', defaultEndDate,
+    'isUsingDefaultRange:', isUsingDefaultRange, 
+    'isZoomed:', isZoomed, 
+    'isTooltipFrozen:', isTooltipFrozen,
+    'shouldShow:', !isUsingDefaultRange || isZoomed || isTooltipFrozen
+  );
+  
   
   // Forzar re-evaluación del botón de reset después de cambios de zoom
   useEffect(() => {
@@ -2184,34 +2470,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       return null;
     }
 
-    let timelineData = portfolioData.timeline;
-    
-    // Filter data based on selected date range (only if not using default range)
-    if ((startDate || endDate) && !isUsingDefaultRange) {
-      timelineData = timelineData.filter(entry => {
-        const entryDate = new Date(entry.date);
-        let includeEntry = true;
-        
-        if (startDate) {
-          const [startDay, startMonth, startYear] = startDate.split('/');
-          const startDateObj = new Date(startYear, startMonth - 1, startDay);
-          if (entryDate < startDateObj) {
-            includeEntry = false;
-          }
-        }
-        
-        if (endDate && includeEntry) {
-          const [endDay, endMonth, endYear] = endDate.split('/');
-          // Incluir todo el día de la fecha fin (hasta las 23:59:59)
-          const endDateObj = new Date(endYear, endMonth - 1, endDay, 23, 59, 59);
-          if (entryDate > endDateObj) {
-            includeEntry = false;
-          }
-        }
-        
-        return includeEntry;
-      });
-    }
+    // Use the existing filtered data function that handles both dates and assets  
+    let timelineData = getFilteredTimelineData();
 
     // Usar datos ya procesados del useEffect
     timelineData = processedTimelineData.length > 0 ? processedTimelineData : timelineData;
@@ -2236,7 +2496,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
     // Create point colors based on profit/loss at each point
     const pointColors = portfolioValues.map((value, index) => {
       const invested = investedValues[index] || 0;
-      return value >= invested ? '#22c55e' : '#ef4444'; // Green if profit, red if loss
+      return value >= invested ? '#00FF99' : '#ef4444'; // Green if profit, red if loss
     });
 
     // PRE-CALCULAR COLORES PARA EVITAR PROBLEMAS
@@ -2375,6 +2635,29 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           backgroundColor: false // Deshabilitar animación de gradiente en reset
         }
       });
+
+      // Área de degradado bajo la línea principal P&L
+      datasets.push({
+        label: 'P&L Gradient Area',
+        data: interpolatedBalanceValues,
+        pointRadius: 0,
+        borderColor: 'transparent',
+        borderWidth: 0,
+        backgroundColor: 'transparent',
+        fill: 'start', // Rellenar desde el top del chart
+        tension: 0.15,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        skipDuringMouseMove: true,
+        originalData: [...interpolatedBalanceValues],
+        spanGaps: false,
+        order: 5, // Renderizar detrás de la línea principal
+        animation: {
+          backgroundColor: false
+        }
+      });
       
       // Línea principal (con efecto progresivo) - estilo copiado de Full View
       datasets.push({
@@ -2403,13 +2686,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           const value = interpolatedBalanceValues[context.dataIndex];
           const isZeroCrossing = value === 0;
           if (isZeroCrossing) return 'transparent';
-          return value >= 0 ? '#10d56e' : '#ef4444';
+          return value >= 0 ? '#10d56e' : '#ff3030';
         },
         pointBorderColor: function(context) {
           const value = interpolatedBalanceValues[context.dataIndex];
           const isZeroCrossing = value === 0;
           if (isZeroCrossing) return 'transparent';
-          return value >= 0 ? '#10d56e' : '#ef4444';
+          return value >= 0 ? '#10d56e' : '#ff3030';
         },
         pointBorderWidth: 2,
         pointHoverBorderWidth: 3,
@@ -2424,7 +2707,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             const endValue = interpolatedBalanceValues[endIndex];
             
             // Usar solo el valor final del segmento para evitar cambios durante transiciones
-            return endValue >= 0 ? '#10d56e' : '#ff4757';
+            return endValue >= 0 ? '#10d56e' : '#ff2020';
           }
         }
       });
@@ -2453,13 +2736,13 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         }
       });
       
-      // Dataset para el brillo de Total P&L
+      // Dataset para el brillo de Total P&L - capa difuminada
       datasets.push({
-        label: 'Total P&L Glow',
+        label: 'Total P&L Glow Outer',
         data: interpolatedBalanceValues,
         originalData: [...interpolatedBalanceValues],
         indexMap: indexMap,
-        borderColor: 'rgba(16, 213, 110, 0.3)', // Verde con transparencia para el brillo
+        borderColor: 'rgba(255, 255, 255, 0.08)', // Aura exterior limpia
         backgroundColor: 'transparent',
         fill: false,
         tension: 0.15,
@@ -2469,18 +2752,38 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointBorderColor: 'transparent',
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
-        borderWidth: 6, // Más grueso para el efecto de brillo
+        borderWidth: 10, // Tamaño moderado para limpieza
+        order: -1, // Render más atrás
+        pointStyle: 'circle',
+        segment: {
+          borderColor: function(ctx) {
+            return 'rgba(255, 255, 255, 0.08)';
+          }
+        }
+      });
+      
+      // Dataset para el brillo de Total P&L - capa interna
+      datasets.push({
+        label: 'Total P&L Glow',
+        data: interpolatedBalanceValues,
+        originalData: [...interpolatedBalanceValues],
+        indexMap: indexMap,
+        borderColor: 'rgba(255, 255, 255, 0.18)', // Aura interna visible pero limpia
+        backgroundColor: 'transparent',
+        fill: false,
+        tension: 0.15,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderWidth: 5, // Tamaño pequeño y limpio
         order: 0, // Render detrás de la línea principal
         pointStyle: 'circle',
         segment: {
           borderColor: function(ctx) {
-            const startIndex = ctx.p0DataIndex;
-            const endIndex = ctx.p1DataIndex;
-            const startValue = interpolatedBalanceValues[startIndex];
-            const endValue = interpolatedBalanceValues[endIndex];
-            
-            // Color de brillo según el valor
-            return endValue >= 0 ? 'rgba(16, 213, 110, 0.3)' : 'rgba(255, 71, 87, 0.3)';
+            return 'rgba(255, 255, 255, 0.18)';
           }
         }
       });
@@ -2617,12 +2920,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointStyle: 'circle'
       });
       
-      // Dataset para el brillo de la línea principal
+      // Dataset para el brillo de la línea principal - capa difuminada
       datasets.push({
-        label: 'Portfolio Value Glow',
+        label: 'Portfolio Value Glow Outer',
         data: portfolioValues,
         originalData: [...portfolioValues],
-        borderColor: 'rgba(0, 255, 136, 0.3)', // Verde con transparencia para el brillo
+        borderColor: 'rgba(255, 255, 255, 0.08)', // Aura exterior limpia
         backgroundColor: 'transparent',
         fill: false,
         tension: 0.1,
@@ -2632,7 +2935,27 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         pointBorderColor: 'transparent',
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
-        borderWidth: 6, // Más grueso para el efecto de brillo
+        borderWidth: 10, // Tamaño moderado para limpieza
+        order: -1, // Render más atrás
+        pointStyle: 'circle'
+      });
+      
+      // Dataset para el brillo de la línea principal - capa interna
+      datasets.push({
+        label: 'Portfolio Value Glow',
+        data: portfolioValues,
+        originalData: [...portfolioValues],
+        borderColor: 'rgba(255, 255, 255, 0.18)', // Aura interna visible pero limpia
+        backgroundColor: 'transparent',
+        fill: false,
+        tension: 0.1,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: 'transparent',
+        pointBorderWidth: 0,
+        pointHoverBorderWidth: 0,
+        borderWidth: 5, // Tamaño pequeño y limpio
         order: 0, // Render detrás de la línea principal
         pointStyle: 'circle'
       });
@@ -2675,7 +2998,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       return chartRef.current.data;
     }
     return createTimelineData();
-  }, [portfolioData, startDate, endDate, processedTimelineData, viewMode, showTotalInvested, isTooltipFrozen]);
+  }, [portfolioData, startDate, endDate, processedTimelineData, viewMode, showTotalInvested, isTooltipFrozen, excludedOperations]);
   
   const getDynamicTimelineOptions = () => {
     return {
@@ -2697,7 +3020,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         intersect: false,
       },
       onClick: function(event, elements, chart) {
-        console.log('Click detectado!', elements);
         
         // Asegurar que el estado existe
         if (!chart.frozenTooltip) {
@@ -2710,11 +3032,9 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         
         if (elements && elements.length > 0) {
           const clickedIndex = elements[0].index;
-          console.log('Índice clickeado:', clickedIndex);
           
           // Si ya está congelado, descongelar (sin importar el punto) - actuar como RESET
           if (chart.frozenTooltip.isFrozen) {
-            console.log('Segundo click detectado - actuando como reset');
             
             // Limpiar estados
             chart.hoveredDataIndex = undefined;
@@ -2730,15 +3050,21 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
             
             setIsTooltipFrozen(false);
             
-            // Exit point click mode and trigger popup for timeline dates
+            // Exit point click mode and hide popup
             if (setIsInPointClickMode) {
               setIsInPointClickMode(false);
-              console.log('Exiting point click mode due to second click - returning to timeline range');
             }
             
-            // Don't reset to default dates - keep current timeline start/end dates
-            // The timeline dates (startDate, endDate) should remain as they are
-            // This will trigger the Dashboard to show popup since timeline dates != filter dates
+            // Hide popup when clicking another point (acting as reset)
+            if (setShowApplyPopup) {
+              setShowApplyPopup(false);
+            }
+            
+            // Reset to default dates like the reset button would do
+            const { defaultStartDate, defaultEndDate } = getDefaultDates();
+            userClosedPopup.current = false; // Reset popup close flag when timeline changes dates
+            setStartDate(defaultStartDate);
+            setEndDate(defaultEndDate);
             
             // No llamar forceHidePopup() aquí para permitir que el popup funcione correctamente
             if (chart && chart.canvas && chart.canvas.ownerDocument) {
@@ -2756,7 +3082,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           }
           } else {
             // Congelar en este punto
-            console.log('Congelando tooltip en índice:', clickedIndex);
             
             const indexToFreeze = chart.hoveredDataIndex !== undefined ? chart.hoveredDataIndex : clickedIndex;
             
@@ -2844,7 +3169,6 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               borderColor: 'rgba(34, 197, 94, 0.8)',
               borderWidth: 2,
               onDragStart: function({chart}) {
-                console.log('🎯 Drag iniciado - restaurando línea completa');
                 
                 // Restaurar todas las líneas completas para el drag/zoom
                 chart.data.datasets.forEach(dataset => {
@@ -2870,13 +3194,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           }
               },
               onDragEnd: function({chart}) {
-                console.log('🎯 Drag terminado');
                 // El onZoomComplete se encargará de limpiar el flag
               }
             },
             mode: 'x',
             onZoomComplete: function({chart}) {
-              console.log('onZoomComplete ejecutado');
               
               // Limpiar flag de drag zoom
               chart._isDragZoom = false;
@@ -2885,7 +3207,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
               chart._stabilizing = true;
               setTimeout(() => {
                 chart._stabilizing = false;
-                console.log('🔄 Chart estabilizado después del zoom');
+                // console.log('🔄 Chart estabilizado después del zoom');
               }, 700); // 0.6 segundos
               
               if (chart && chart.scales && chart.scales.x) {
@@ -2901,7 +3223,11 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 const newStartDate = formatZoomDate(startDate);
                 const newEndDate = formatZoomDate(endDate);
                 
-                console.log('Configurando zoom - nuevas fechas:', newStartDate, newEndDate);
+                userClosedPopup.current = false; // Reset popup close flag when zoom changes dates
+                
+                // Reset tracking when zoom changes dates to prevent duplicate popups
+                lastProcessedDates.current = { startDate: '', endDate: '' };
+                
                 setStartDate(newStartDate);
                 setEndDate(newEndDate);
                 setIsZoomed(true);
@@ -2909,14 +3235,12 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 // Exit point click mode on zoom
                 if (setIsInPointClickMode) {
                   setIsInPointClickMode(false);
-                  console.log('Exiting point click mode due to zoom');
                 }
                 
                 // Marcar que el usuario ha interactuado con el timeline
                 hasUserInteractedWithTimeline.current = true;
                 
                 // El popup se controlará automáticamente por el useEffect que compara fechas
-                console.log('Zoom completo - isZoomed set to true');
               }
             }
           },
@@ -2986,7 +3310,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   if (!timelineData) {
     return (
       <div style={{
-        height: "650px",
+        height: "520px",
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -2999,7 +3323,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
   }
 
   return (
-    <div style={{
+    <div className="timeline-chart-container" style={{
       width: '100%',
       height: "fit-content",
       display: 'flex',
@@ -3029,8 +3353,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
           <div style={{
           position: 'absolute',
           top: '0',
-          left: '0',
-          right: '0', // Hasta el borde derecho real
+          left: '20px',
+          right: '20px', // Márgenes de 20px en ambos lados
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -3559,7 +3883,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span id="timeline-start-date-display" style={{ textAlign: 'left', flex: '1' }}>{buttonStartDate || startDate}</span>
+                <span id="timeline-start-date-display" style={{ textAlign: 'left', flex: '1' }}>{startDate}</span>
                 {(() => {
                   const { defaultStartDate } = getDefaultDates();
                   const currentStartDate = startDate;
@@ -4141,7 +4465,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                   <line x1="8" y1="2" x2="8" y2="6"></line>
                   <line x1="3" y1="10" x2="21" y2="10"></line>
                 </svg>
-                <span id="timeline-end-date-display" style={{ textAlign: 'left', flex: '1' }}>{buttonEndDate || endDate}</span>
+                <span id="timeline-end-date-display" style={{ textAlign: 'left', flex: '1' }}>{endDate}</span>
                 {(() => {
                   const { defaultEndDate } = getDefaultDates();
                   const currentEndDate = endDate;
@@ -4177,15 +4501,18 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         marginBottom: '1rem',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        overflow: 'visible'
       }}>
         <div id="tooltip-area" style={{ 
-          flex: 1,
+          flex: '1 1 auto',
           position: 'relative',
           padding: '15px 10px',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-start'
+          justifyContent: 'flex-start',
+          minWidth: 0,
+          overflow: 'visible'
         }}>
           {/* El tooltip se inicializará con el último día */}
         </div>
@@ -4194,9 +4521,10 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
       
 
       <div style={{
-        height: '750px',
-        width: 'calc(100% + 30px)',
-        marginLeft: '0',
+        height: '600px',
+        width: 'calc(100% - 40px)',
+        marginLeft: '20px',
+        marginRight: '20px',
         position: 'relative',
       }}>
         <Line 
@@ -4259,6 +4587,7 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
         {/* Botón de reset de fechas - posicionado en margen derecho del gráfico */}
         {((!isUsingDefaultRange || isZoomed || isTooltipFrozen)) && (
           <div
+            id="timeline-reset-button"
             onClick={(e) => {
               // Añadir efecto visual de click
               e.target.style.transform = 'scale(0.95) translateY(0px)';
@@ -4269,56 +4598,8 @@ const TimelineChart = ({ portfolioData, theme, showApplyPopup, setShowApplyPopup
                 e.target.style.transition = 'transform 0.2s ease-out';
               }, 100);
               
-              const { defaultStartDate, defaultEndDate } = getDefaultDates();
-              
-              // Resetear zoom si existe
-              if (chartRef.current) {
-                chartRef.current.resetZoom();
-                chartRef.current._isDragZoom = false; // Limpiar flag de drag zoom
-              }
-              
-              // Descongelar tooltip si está congelado
-              unfreezeTooltip();
-              
-              // Exit point click mode on reset
-              if (setIsInPointClickMode) {
-                setIsInPointClickMode(false);
-                console.log('Exiting point click mode due to reset');
-              }
-              
-              // Período de estabilización después del reset (DESPUÉS de unfreezeTooltip)
-              setIsChartStabilizing(true);
-              if (chartRef.current) {
-                chartRef.current._stabilizing = true;
-                console.log('🔒 Iniciando estabilización después del reset filtros (700ms)');
-              }
-              setTimeout(() => {
-                setIsChartStabilizing(false);
-                if (chartRef.current) {
-                  chartRef.current._stabilizing = false;
-                }
-                console.log('🔄 Chart estabilizado después del reset filtros');
-              }, 700);
-              
-              // Resetear fechas y estado
-              isQuickFilterChange.current = true;
-              setStartDate(defaultStartDate);
-              setEndDate(defaultEndDate);
-              setIsZoomed(false);
-              setActiveQuickFilter('all');
-              
-              
-              // Limpiar completamente el estado de click para volver al modo normal
-              if (typeof window !== 'undefined') {
-                window.timelineDates = null;
-              }
-              isPopupFromDirectClick.current = false;
-              
-              // Marcar que el usuario ha interactuado
-              hasUserInteractedWithTimeline.current = true;
-              
-              // Como salimos del modo click, ahora debemos comparar fechas del timeline vs filtro
-              // El useEffect debe activarse normalmente después de esto
+              // Use the shared reset function
+              handleCompleteReset();
             }}
             style={{
               position: 'absolute',

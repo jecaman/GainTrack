@@ -167,7 +167,7 @@ const ZigzagLogo = ({
   );
 };
 
-const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, showApplyPopup, setShowApplyPopup, startDate, endDate, buttonStartDate, buttonEndDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, isInPointClickMode, setIsInPointClickMode, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset }) => {
+const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, hiddenAssets, excludedOperations, showApplyPopup, setShowApplyPopup, startDate, endDate, buttonStartDate, buttonEndDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, isInPointClickMode, setIsInPointClickMode, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, onFilterReset, isApplyingFromTimeline }) => {
   const [sloganGlow, setSloganGlow] = useState(false);
   const lastProfitRef = useRef(null);
 
@@ -192,7 +192,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
   if (isLoading) {
     return (
       <div style={{
-        minHeight: '100vh',
+        minHeight: '60vh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -236,7 +236,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
 
   return (
     <section style={{
-      height: '100%',
+      minHeight: 'auto',
       background: theme.bg,
       color: theme.textPrimary,
       fontFamily: "'Inter', sans-serif",
@@ -245,11 +245,10 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       flexDirection: 'column',
       marginTop: '0',
       paddingTop: '0',
+      paddingBottom: '0',
       overflow: 'visible', // Permitir que el ticker salga por arriba
-      transform: 'scale(0.85)',
-      transformOrigin: 'top left',
-      width: '117.65%', // Compensar la escala para mantener el ancho completo
-      height: '117.65%' // Compensar la escala para mantener la altura completa
+      width: '100%', // Ancho normal sin compensación
+      marginBottom: '0'
     }}>
       {/* Price Ticker */}
       <PriceTicker portfolioData={portfolioData} theme={theme} />
@@ -261,7 +260,15 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         width: '100%',
         marginTop: '50px' // Espacio para el ticker absoluto
       }}>
-        <KPIGrid portfolioData={portfolioData} theme={theme} />
+        <KPIGrid 
+          portfolioData={portfolioData} 
+          theme={theme} 
+          startDate={startDate}
+          endDate={endDate}
+          hiddenAssets={hiddenAssets}
+          excludedOperations={excludedOperations}
+          sidebarOpen={sidebarOpen}
+        />
       </div>
 
       {/* Segunda línea: Timeline Chart - Full width */}
@@ -272,6 +279,8 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         <TimelineChart 
           portfolioData={portfolioData} 
           theme={theme}
+          hiddenAssets={hiddenAssets}
+          excludedOperations={excludedOperations}
           showApplyPopup={showApplyPopup}
           setShowApplyPopup={setShowApplyPopup}
           startDate={startDate}
@@ -288,6 +297,8 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           sidebarOpen={sidebarOpen}
           timelineUnfreezeTooltipRef={timelineUnfreezeTooltipRef}
           filterSelectedPreset={filterSelectedPreset}
+          onFilterReset={onFilterReset}
+          isApplyingFromTimeline={isApplyingFromTimeline}
         />
       </div>
 
@@ -303,9 +314,18 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         {/* Tercera línea: Tabla ocupando todo el ancho */}
         <div style={{
           width: '100%',
-          marginTop: '2rem' // Separación del timeline
+          marginTop: '2rem', // Separación del timeline
+          marginBottom: '0', // Sin margen extra al final
+          paddingBottom: '0.5rem' // Padding mínimo
         }}>
-          <AssetLeaderboard portfolioData={portfolioData} theme={theme} />
+          <AssetLeaderboard 
+            portfolioData={portfolioData} 
+            theme={theme} 
+            startDate={startDate}
+            endDate={endDate}
+            hiddenAssets={hiddenAssets}
+            excludedOperations={excludedOperations}
+          />
         </div>
       </div>
     </section>

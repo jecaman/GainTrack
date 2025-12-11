@@ -2,14 +2,94 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import './Filters.css';
 
+// Asset Logo Component with multiple fallbacks
+const AssetLogo = ({ asset, size = 16 }) => {
+  const [imageError, setImageError] = useState(false);
+  const [currentSrc, setCurrentSrc] = useState('');
+
+  // Asset name mapping for logo URLs (some assets have different names in APIs)
+  const assetLogoMapping = {
+    'BTC': 'bitcoin',
+    'ETH': 'ethereum', 
+    'XRP': 'xrp',
+    'SOL': 'solana',
+    'LINK': 'chainlink',
+    'HBAR': 'hedera-hashgraph',
+    'TRUMP': 'trump' // Might not exist, will fallback
+  };
+
+  // Multiple logo sources with fallbacks
+  const logoSources = [
+    // CoinCap (usually most reliable)
+    `https://assets.coincap.io/assets/icons/${(assetLogoMapping[asset] || asset).toLowerCase()}@2x.png`,
+    // CoinGecko alternative
+    `https://coin-images.coingecko.com/coins/images/${(assetLogoMapping[asset] || asset).toLowerCase()}/small/${(assetLogoMapping[asset] || asset).toLowerCase()}.png`,
+    // Direct asset name fallback
+    `https://assets.coincap.io/assets/icons/${asset.toLowerCase()}@2x.png`
+  ];
+
+  useEffect(() => {
+    setCurrentSrc(logoSources[0]);
+    setImageError(false);
+  }, [asset]);
+
+  const handleImageError = () => {
+    const currentIndex = logoSources.indexOf(currentSrc);
+    if (currentIndex < logoSources.length - 1) {
+      // Try next source
+      setCurrentSrc(logoSources[currentIndex + 1]);
+    } else {
+      // All sources failed, show fallback
+      setImageError(true);
+    }
+  };
+
+  if (imageError) {
+    // Fallback: Show a generic crypto icon or first letter
+    return (
+      <div style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '50%',
+        background: 'linear-gradient(135deg, #00ff99, #00cc7a)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: `${size * 0.6}px`,
+        fontWeight: '700',
+        color: '#000',
+        fontFamily: "'SF Mono', monospace"
+      }}>
+        {asset[0]}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={currentSrc}
+      alt={asset}
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '50%',
+        objectFit: 'cover'
+      }}
+      onError={handleImageError}
+    />
+  );
+};
+
 const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSidebarToggle, showApplyPopup, setShowApplyPopup, startDate, endDate, onApplyToAll, popupSource, timelineQuickFilter }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showTabPulse, setShowTabPulse] = useState(false);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
   const [activeSection, setActiveSection] = useState('filters');
   const [hiddenAssets, setHiddenAssets] = useState(new Set());
+  const [disabledAssets, setDisabledAssets] = useState(new Set()); // Track threshold-filtered assets (disabled, not hidden)
+  const [manuallyHiddenAssets, setManuallyHiddenAssets] = useState(new Set()); // Track assets manually hidden by user
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
-  const [selectedTimePreset, setSelectedTimePreset] = useState('');
+  const [selectedTimePreset, setSelectedTimePreset] = useState('All');
   const [minAllocation, setMinAllocation] = useState('0');
   const [balanceThreshold, setBalanceThreshold] = useState('0');
   const [excludedOperations, setExcludedOperations] = useState(new Set());
@@ -436,11 +516,86 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     }, 200);
   };
 
-  // Get available assets from portfolio data
+  // Auto-disable assets that don't meet threshold criteria
+  useEffect(() => {
+    if (!portfolioData?.portfolio_data) return;
+    
+    // Calculate which assets should be disabled based on thresholds
+    const assetsToDisable = portfolioData.portfolio_data
+      .filter(asset => {
+        if ((asset.current_value || 0) <= 0) return false;
+        
+        // Calculate total portfolio value for allocation percentage
+        const totalPortfolioValue = portfolioData.portfolio_data.reduce((sum, a) => sum + (a.current_value || 0), 0);
+        
+        // Calculate allocation percentage for this asset
+        const allocationPercent = totalPortfolioValue > 0 ? (asset.current_value / totalPortfolioValue) * 100 : 0;
+        
+        // Apply minAllocation filter
+        const minAllocThreshold = parseFloat(minAllocation || 0);
+        const meetsAllocation = allocationPercent >= minAllocThreshold;
+        
+        // Apply balanceThreshold filter
+        const balanceThresholdValue = parseFloat(balanceThreshold || 0);
+        const meetsBalance = asset.current_value >= balanceThresholdValue;
+        
+        // Return true if asset should be disabled (doesn't meet criteria)
+        return !(meetsAllocation && meetsBalance);
+      })
+      .map(asset => asset.asset);
+    
+    const newDisabledAssets = new Set(assetsToDisable);
+    
+    // Only update if there's a change
+    if (newDisabledAssets.size !== disabledAssets.size || 
+        [...newDisabledAssets].some(asset => !disabledAssets.has(asset)) ||
+        [...disabledAssets].some(asset => !newDisabledAssets.has(asset))) {
+      setDisabledAssets(newDisabledAssets);
+      
+      // For visual feedback only - disabled assets remain visible but grayed out
+      // We still hide them from the chart/data processing by including them in hiddenAssets
+      // BUT preserve manually hidden assets - only remove previously threshold-disabled assets that are now enabled
+      const currentlyDisabled = new Set(disabledAssets);
+      const newlyDisabled = new Set(assetsToDisable);
+      
+      // Remove assets that were disabled by threshold but are now enabled (if they weren't manually hidden)
+      const assetsToUnhide = [...currentlyDisabled].filter(asset => !newlyDisabled.has(asset));
+      
+      // Start with manually hidden assets (always preserved) plus newly disabled assets
+      const newHiddenAssets = new Set([...manuallyHiddenAssets, ...assetsToDisable]);
+      
+      setHiddenAssets(newHiddenAssets);
+      updateActiveFiltersCount(newHiddenAssets, dateRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+      
+      // Notify parent component about asset filter changes
+      onFiltersChange({
+        type: 'assetFilter',
+        hiddenAssets: newHiddenAssets
+      });
+    }
+  }, [minAllocation, balanceThreshold, portfolioData]);
+
+  // Get available assets from portfolio data (show all assets, disabled ones will be styled differently)
   const availableAssets = portfolioData?.portfolio_data ? 
     portfolioData.portfolio_data
       .filter(asset => (asset.current_value || 0) > 0)
       .map(asset => asset.asset) : [];
+
+  // Helper function to get max portfolio value from timeline
+  const getMaxTimelineValue = () => {
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
+      console.log('No timeline data, using fallback 100');
+      return 100; // Fallback
+    }
+    
+    const values = portfolioData.timeline.map(item => {
+      return item.portfolio_value || item.total_value || item.value || 0;
+    });
+    
+    const maxValue = Math.max(...values);
+    // console.log('Max timeline value found:', maxValue, 'Ceiling:', Math.ceil(maxValue));
+    return Math.max(100, Math.ceil(maxValue)); // At least 100 as minimum
+  };
 
   // Helper function to update active filters count
   const updateActiveFiltersCount = (hiddenAssets, dateRng, timePreset, minAlloc, balThreshold, excludedOps) => {
@@ -460,8 +615,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     }
     
     if (timePreset) count++;
-    if (parseFloat(minAlloc) > 0) count++;
-    if (parseFloat(balThreshold) > 0) count++;
+    if (minAlloc && parseFloat(minAlloc) > 0) count++;
+    if (balThreshold && parseFloat(balThreshold) > 0) count++;
     if (excludedOps && excludedOps.size > 0) count++;
     setActiveFilters(count);
   };
@@ -552,7 +707,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isOpen, onSidebarToggle]);
 
-  // Add CSS animations and hide scrollbar styles
+  // Add CSS animations, hide scrollbar styles, and custom scrollbars
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
@@ -567,20 +722,70 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
         -ms-overflow-style: none;
         scrollbar-width: none;
       }
+      /* Global custom scrollbars */
+      body ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+      }
+      body ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      body ::-webkit-scrollbar-thumb {
+        background: #00ff99;
+        border-radius: 2px;
+      }
+      body ::-webkit-scrollbar-thumb:hover {
+        background: #00cc7a;
+      }
+      /* Filter sidebar scrollbars */
+      .filter-sidebar ::-webkit-scrollbar {
+        width: 4px;
+      }
+      .filter-sidebar ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .filter-sidebar ::-webkit-scrollbar-thumb {
+        background: #00ff99;
+        border-radius: 2px;
+      }
+      .filter-sidebar ::-webkit-scrollbar-thumb:hover {
+        background: #00cc7a;
+      }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
 
   const handleAssetToggle = (asset) => {
-    const newHidden = new Set(hiddenAssets);
-    if (newHidden.has(asset)) {
-      newHidden.delete(asset);
-    } else {
-      newHidden.add(asset);
+    // Prevent toggling disabled assets
+    if (disabledAssets.has(asset)) {
+      return;
     }
+    
+    const newHidden = new Set(hiddenAssets);
+    const newManuallyHidden = new Set(manuallyHiddenAssets);
+    
+    if (newHidden.has(asset)) {
+      // Unhiding asset - remove from both hidden and manually hidden
+      newHidden.delete(asset);
+      newManuallyHidden.delete(asset);
+    } else {
+      // Hiding asset - add to both hidden and manually hidden
+      newHidden.add(asset);
+      newManuallyHidden.add(asset);
+    }
+    
     setHiddenAssets(newHidden);
+    setManuallyHiddenAssets(newManuallyHidden);
     updateActiveFiltersCount(newHidden, dateRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+    
+    // Send asset filter change to Timeline
+    if (onFiltersChange) {
+      onFiltersChange({
+        type: 'assetFilter',
+        hiddenAssets: newHidden
+      });
+    }
   };
 
   const handleOperationToggle = (operation) => {
@@ -592,6 +797,14 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     }
     setExcludedOperations(newExcluded);
     updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, balanceThreshold, newExcluded);
+    
+    // Notify parent component about operation filter changes
+    if (onFiltersChange) {
+      onFiltersChange({
+        type: 'excludedOperations',
+        excludedOperations: newExcluded
+      });
+    }
   };
 
   const handleTabClick = () => {
@@ -650,7 +863,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             borderRadius: '12px 0 0 12px',
             padding: '0px 10px',
             color: theme.textSecondary,
-            fontSize: '12px',
+            fontSize: '14px',
             cursor: 'pointer',
             transition: 'background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.3s ease',
             boxShadow: 'none',
@@ -658,8 +871,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '100px',
-            width: '50px',
+            height: '120px',
+            width: '60px',
             position: 'relative',
             top: '245px',
             animation: showTabPulse ? 'tabPulse 2s ease-in-out infinite' : 'none',
@@ -696,7 +909,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
         >
           {/* FILTERS text written horizontally but rotated */}
           <div style={{
-            fontSize: '10px',
+            fontSize: '12px',
             fontWeight: '600',
             letterSpacing: '2px',
             textTransform: 'uppercase',
@@ -736,7 +949,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
         </button>
 
         {/* Main Sidebar Panel */}
-        <div style={{
+        <div className="filter-sidebar" style={{
           width: '320px',
           height: '100vh',
           background: theme.bgElevated,
@@ -814,14 +1027,14 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                 }}>
                   
                   {/* Date Range */}
-                  <div style={{ marginBottom: '16px' }}>
+                  <div style={{ marginBottom: '16px', marginTop: '20px' }}>
                     <label style={{
                       display: 'block',
-                      marginBottom: '12px',
-                      color: theme.textSecondary,
-                      fontSize: '13px',
+                      marginBottom: '8px',
+                      color: '#ffffff',
+                      fontSize: '14px',
                       fontWeight: '600',
-                      fontFamily: "'Inter', sans-serif",
+                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                       letterSpacing: '0.5px',
                       textTransform: 'uppercase'
                     }}>Date Range</label>
@@ -833,8 +1046,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           display: 'block',
                           marginBottom: '6px',
                           color: theme.textSecondary,
-                          fontSize: '11px',
-                          fontWeight: '500',
+                          fontSize: '12px',
+                          fontWeight: '600',
                           fontFamily: "'Inter', sans-serif",
                           letterSpacing: '0.025em',
                           textTransform: 'uppercase'
@@ -851,11 +1064,11 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                               padding: '8px 12px',
                               border: `1px solid ${isStartDateModified() ? '#00ff99' : theme.borderColor}`,
                               borderRadius: '4px',
-                              background: theme.bgElevated,
+                              background: theme.bgContainer,
                               color: theme.textPrimary,
                               fontSize: '13px',
                               fontFamily: "'Inter', sans-serif",
-                              fontWeight: '400',
+                              fontWeight: '600',
                               outline: 'none',
                               transition: 'all 0.2s ease',
                               cursor: 'default',
@@ -870,7 +1083,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                 height: '36px',
                                 border: `1px solid ${theme.borderColor}`,
                                 borderRadius: '4px',
-                                background: theme.bgElevated,
+                                background: theme.bgContainer,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -930,8 +1143,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           display: 'block',
                           marginBottom: '6px',
                           color: theme.textSecondary,
-                          fontSize: '11px',
-                          fontWeight: '500',
+                          fontSize: '12px',
+                          fontWeight: '600',
                           fontFamily: "'Inter', sans-serif",
                           letterSpacing: '0.025em',
                           textTransform: 'uppercase'
@@ -948,11 +1161,11 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                               padding: '8px 12px',
                               border: `1px solid ${isEndDateModified() ? '#00ff99' : theme.borderColor}`,
                               borderRadius: '4px',
-                              background: theme.bgElevated,
+                              background: theme.bgContainer,
                               color: theme.textPrimary,
                               fontSize: '13px',
                               fontFamily: "'Inter', sans-serif",
-                              fontWeight: '400',
+                              fontWeight: '600',
                               outline: 'none',
                               transition: 'all 0.2s ease',
                               cursor: 'default',
@@ -967,7 +1180,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                 height: '36px',
                                 border: `1px solid ${theme.borderColor}`,
                                 borderRadius: '4px',
-                                background: theme.bgElevated,
+                                background: theme.bgContainer,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -1031,10 +1244,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           background: 'rgba(0, 255, 153, 0.1)',
                           border: '1px solid rgba(0, 255, 153, 0.3)',
                           borderRadius: '4px',
-                          fontSize: '11px',
+                          fontSize: '12px',
                           color: '#00ff99',
                           fontFamily: "'Inter', sans-serif",
-                          fontWeight: '500',
+                          fontWeight: '700',
                           marginTop: '8px'
                         }}>
                           <div style={{
@@ -1068,7 +1281,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                               padding: '6px 12px',
                               border: `1px solid ${theme.borderColor}`,
                               borderRadius: '6px',
-                              background: theme.bgElevated,
+                              background: theme.bgContainer,
                               color: '#ff6b6b',
                               fontSize: '11px',
                               fontWeight: '600',
@@ -1114,7 +1327,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     <label style={{
                       display: 'block',
                       marginBottom: '8px',
-                      color: theme.textSecondary,
+                      color: '#ffffff',
                       fontSize: '12px',
                       fontWeight: '600',
                       fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
@@ -1169,145 +1382,608 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   <label style={{
                     display: 'block',
                     marginBottom: '8px',
-                    color: theme.textSecondary,
+                    color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: '600',
                     fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
-                  }}>Assets</label>
+                  }}>ASSETS</label>
+                  
                   <div style={{ 
                     display: 'flex', 
                     flexDirection: 'column', 
                     gap: '8px', 
-                    maxHeight: '160px', 
+                    maxHeight: '240px', 
                     overflowY: 'auto',
                     border: `1px solid ${theme.borderColor}`,
                     borderRadius: '6px',
-                    padding: '8px'
+                    padding: '8px',
+                    marginBottom: '8px'
                   }}>
-                    {availableAssets.map(asset => (
+                    {availableAssets.map(asset => {
+                      const isDisabled = disabledAssets.has(asset);
+                      return (
                       <label key={asset} style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px',
-                        cursor: 'pointer',
-                        padding: '6px',
+                        gap: '12px',
+                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                        padding: '10px',
                         borderRadius: '4px',
-                        transition: 'background 0.2s ease'
+                        transition: 'background 0.2s ease, opacity 0.2s ease',
+                        opacity: isDisabled ? 0.4 : 1,
+                        filter: isDisabled ? 'grayscale(0.8)' : 'none'
                       }}
                       onMouseEnter={(e) => {
-                        e.target.style.background = theme.bgContainer;
+                        if (!isDisabled) {
+                          e.currentTarget.style.background = theme.bgContainer;
+                        }
                       }}
                       onMouseLeave={(e) => {
-                        e.target.style.background = 'transparent';
+                        if (!isDisabled) {
+                          e.currentTarget.style.background = 'transparent';
+                        }
                       }}
                       >
                         <input
                           type="checkbox"
                           checked={!hiddenAssets.has(asset)}
                           onChange={() => handleAssetToggle(asset)}
+                          disabled={isDisabled}
                           style={{
-                            accentColor: '#00ff99'
+                            accentColor: isDisabled ? 'rgba(0, 255, 153, 0.3)' : '#00ff99',
+                            cursor: isDisabled ? 'not-allowed' : 'pointer'
                           }}
                         />
+                        {/* Asset Logo */}
+                        <div style={{ opacity: isDisabled ? 0.5 : 1 }}>
+                          <AssetLogo asset={asset} size={20} />
+                        </div>
                         <span style={{
-                          color: theme.textPrimary,
-                          fontSize: '12px',
+                          color: isDisabled ? 'rgba(245, 245, 245, 0.4)' : theme.textPrimary,
+                          fontSize: '14px',
                           fontWeight: '600',
-                          fontFamily: "'Inter', sans-serif"
+                          fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
                         }}>{asset}</span>
+                        {isDisabled && (
+                          <span style={{
+                            marginLeft: 'auto',
+                            fontSize: '11px',
+                            color: 'rgba(245, 245, 245, 0.5)',
+                            fontStyle: 'italic'
+                          }}>
+                            Filtered
+                          </span>
+                        )}
                       </label>
-                    ))}
+                    )})}
+                    
                   </div>
+                  
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    cursor: 'pointer',
+                    padding: '6px',
+                    borderRadius: '4px'
+                  }}>
+                    <span style={{
+                      color: theme.textSecondary,
+                      fontSize: '10px',
+                      fontWeight: '600',
+                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      letterSpacing: '0.1px',
+                      textTransform: 'uppercase'
+                    }}>SELECT ALL</span>
+                    <input
+                      type="checkbox"
+                      checked={availableAssets.filter(asset => !disabledAssets.has(asset) && !hiddenAssets.has(asset)).length === availableAssets.filter(asset => !disabledAssets.has(asset)).length && availableAssets.filter(asset => !disabledAssets.has(asset)).length > 0}
+                      ref={(input) => {
+                        if (input) {
+                          const enabledAssets = availableAssets.filter(asset => !disabledAssets.has(asset));
+                          const selectedEnabledAssets = enabledAssets.filter(asset => !hiddenAssets.has(asset));
+                          input.indeterminate = selectedEnabledAssets.length > 0 && selectedEnabledAssets.length < enabledAssets.length;
+                        }
+                      }}
+                      onChange={() => {
+                        const enabledAssets = availableAssets.filter(asset => !disabledAssets.has(asset));
+                        const selectedEnabledAssets = enabledAssets.filter(asset => !hiddenAssets.has(asset));
+                        
+                        if (selectedEnabledAssets.length === enabledAssets.length) {
+                          // If all enabled are selected, deselect all enabled
+                          const newHidden = new Set([...hiddenAssets, ...enabledAssets]);
+                          const newManuallyHidden = new Set([...manuallyHiddenAssets, ...enabledAssets]);
+                          setHiddenAssets(newHidden);
+                          setManuallyHiddenAssets(newManuallyHidden);
+                          updateActiveFiltersCount(newHidden, dateRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                          if (onFiltersChange) {
+                            onFiltersChange({
+                              type: 'assetFilter',
+                              hiddenAssets: newHidden
+                            });
+                          }
+                        } else {
+                          // Select all enabled assets (keep disabled assets hidden)
+                          const newHidden = new Set([...hiddenAssets]);
+                          const newManuallyHidden = new Set(manuallyHiddenAssets);
+                          enabledAssets.forEach(asset => {
+                            newHidden.delete(asset);
+                            newManuallyHidden.delete(asset);
+                          });
+                          
+                          setHiddenAssets(newHidden);
+                          setManuallyHiddenAssets(newManuallyHidden);
+                          updateActiveFiltersCount(newHidden, dateRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+                          if (onFiltersChange) {
+                            onFiltersChange({
+                              type: 'assetFilter',
+                              hiddenAssets: newHidden
+                            });
+                          }
+                        }
+                      }}
+                      style={{
+                        accentColor: '#00ff99',
+                        cursor: 'pointer'
+                      }}
+                    />
+                  </label>
                 </div>
 
-                {/* Portfolio Filters */}
+                {/* Threshold Filters */}
                 <div style={{
                   background: theme.bgContainer,
-                  padding: '10px',
+                  padding: '12px',
                   borderRadius: '8px',
                   border: `1px solid ${theme.borderColor}`,
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                 }}>
                   <label style={{
                     display: 'block',
-                    marginBottom: '8px',
-                    color: theme.textSecondary,
+                    marginBottom: '12px',
+                    color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: '600',
                     fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
-                  }}>Portfolio Filters</label>
+                  }}>THRESHOLD FILTERS</label>
                   
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {/* Min Allocation % */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Min Allocation % - Compact Design */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        marginBottom: '6px',
-                        color: theme.textSecondary,
-                        fontSize: '11px',
-                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                        fontWeight: '600',
-                        letterSpacing: '0.5px',
-                        textTransform: 'uppercase'
-                      }}>Min Allocation %</label>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginBottom: '6px'
+                      }}>
+                        <label style={{
+                          color: '#ffffff',
+                          fontSize: '11px',
+                          fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                          fontWeight: '600',
+                          letterSpacing: '0.5px',
+                          textTransform: 'uppercase'
+                        }}>Min Allocation</label>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={minAllocation}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                
+                                if (value === '') {
+                                  setMinAllocation('');
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, '', balanceThreshold, excludedOperations);
+                                  onFiltersChange({
+                                    type: 'minAllocation',
+                                    minAllocation: ''
+                                  });
+                                  return;
+                                }
+                                
+                                const regex = /^(\d{1,2}(\.\d?)?|100(\.0?)?)$/;
+                                
+                                if (regex.test(value)) {
+                                  const numValue = parseFloat(value);
+                                  if (numValue >= 0 && numValue <= 100) {
+                                    setMinAllocation(value);
+                                    updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, value, balanceThreshold, excludedOperations);
+                                    onFiltersChange({
+                                      type: 'minAllocation',
+                                      minAllocation: value
+                                    });
+                                  }
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const value = e.target.value;
+                                if (value.endsWith('.')) {
+                                  const newValue = value.slice(0, -1);
+                                  setMinAllocation(newValue);
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, newValue, balanceThreshold, excludedOperations);
+                                  onFiltersChange({
+                                    type: 'minAllocation',
+                                    minAllocation: newValue
+                                  });
+                                }
+                              }}
+                              placeholder="0%"
+                              style={{
+                                width: '55px',
+                                padding: '4px 18px 4px 6px',
+                                border: `1px solid ${theme.borderColor}`,
+                                borderRadius: '4px 0 0 4px',
+                                background: theme.bgContainer,
+                                color: theme.textPrimary,
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                fontFamily: "'Inter', sans-serif",
+                                textAlign: 'left'
+                              }}
+                            />
+                            <span style={{
+                              position: 'absolute',
+                              right: '24px',
+                              color: '#ffffff',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              pointerEvents: 'none'
+                            }}>%</span>
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              border: `1px solid ${theme.borderColor}`,
+                              borderLeft: 'none',
+                              borderRadius: '0 4px 4px 0',
+                              background: theme.bgElevated
+                            }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentValue = parseFloat(minAllocation) || 0;
+                                  const newValue = Math.min(100, currentValue + 0.1);
+                                  const formattedValue = newValue % 1 === 0 ? newValue.toString() : newValue.toFixed(1);
+                                  setMinAllocation(formattedValue);
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, formattedValue, balanceThreshold, excludedOperations);
+                                  onFiltersChange({
+                                    type: 'minAllocation',
+                                    minAllocation: formattedValue
+                                  });
+                                }}
+                                style={{
+                                  width: '16px',
+                                  height: '12px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: theme.textSecondary,
+                                  cursor: 'pointer',
+                                  fontSize: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  lineHeight: '1'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.color = '#00ff99';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.color = theme.textSecondary;
+                                }}
+                              >
+                                ▲
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentValue = parseFloat(minAllocation) || 0;
+                                  const newValue = Math.max(0, currentValue - 0.1);
+                                  const formattedValue = newValue % 1 === 0 ? newValue.toString() : newValue.toFixed(1);
+                                  setMinAllocation(formattedValue);
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, formattedValue, balanceThreshold, excludedOperations);
+                                  onFiltersChange({
+                                    type: 'minAllocation',
+                                    minAllocation: formattedValue
+                                  });
+                                }}
+                                style={{
+                                  width: '16px',
+                                  height: '12px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: theme.textSecondary,
+                                  cursor: 'pointer',
+                                  fontSize: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  lineHeight: '1'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.color = '#00ff99';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.color = theme.textSecondary;
+                                }}
+                              >
+                                ▼
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
                       <input
-                        type="number"
-                        value={minAllocation}
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={parseFloat(minAllocation) || 0}
                         onChange={(e) => {
-                          setMinAllocation(e.target.value);
-                          updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, e.target.value, balanceThreshold, excludedOperations);
+                          const value = parseFloat(e.target.value);
+                          const formattedValue = value % 1 === 0 ? value.toString() : value.toFixed(1);
+                          setMinAllocation(formattedValue);
+                          updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, formattedValue, balanceThreshold, excludedOperations);
+                          onFiltersChange({
+                            type: 'minAllocation',
+                            minAllocation: formattedValue
+                          });
                         }}
-                        placeholder="0"
                         style={{
                           width: '100%',
-                          padding: '8px',
-                          border: `1px solid ${theme.borderColor}`,
-                          borderRadius: '6px',
-                          background: theme.bgElevated,
-                          color: theme.textPrimary,
-                          fontSize: '12px',
-                          fontFamily: "'Inter', sans-serif"
+                          height: '4px',
+                          background: `linear-gradient(to right, #00ff99 0%, #00ff99 ${(parseFloat(minAllocation) || 0)}%, ${theme.borderColor} ${(parseFloat(minAllocation) || 0)}%, ${theme.borderColor} 100%)`,
+                          borderRadius: '2px',
+                          outline: 'none',
+                          appearance: 'none',
+                          cursor: 'pointer'
+                        }}
+                        onInput={(e) => {
+                          const value = parseFloat(e.target.value);
+                          e.target.style.background = `linear-gradient(to right, #00ff99 0%, #00ff99 ${value}%, ${theme.borderColor} ${value}%, ${theme.borderColor} 100%)`;
                         }}
                       />
                     </div>
 
-                    {/* Balance Threshold */}
+                    {/* Balance Threshold - Compact Design */}
                     <div>
-                      <label style={{
-                        display: 'block',
-                        marginBottom: '6px',
-                        color: theme.textSecondary,
-                        fontSize: '11px',
-                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
-                        fontWeight: '600',
-                        letterSpacing: '0.5px',
-                        textTransform: 'uppercase'
-                      }}>Balance Threshold</label>
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginBottom: '6px'
+                      }}>
+                        <label style={{
+                          color: '#ffffff',
+                          fontSize: '11px',
+                          fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                          fontWeight: '600',
+                          letterSpacing: '0.5px',
+                          textTransform: 'uppercase'
+                        }}>Min Balance</label>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={balanceThreshold}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                
+                                if (value === '') {
+                                  setBalanceThreshold('');
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, '', excludedOperations);
+                                  onFiltersChange({
+                                    type: 'balanceThreshold',
+                                    balanceThreshold: ''
+                                  });
+                                  return;
+                                }
+                                
+                                const regex = /^\d{1,2}(\.\d?)?$/;
+                                
+                                if (regex.test(value)) {
+                                  const numValue = parseFloat(value);
+                                  if (numValue >= 0) {
+                                    setBalanceThreshold(value);
+                                    updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, value, excludedOperations);
+                                    onFiltersChange({
+                                      type: 'balanceThreshold',
+                                      balanceThreshold: value
+                                    });
+                                  }
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const value = e.target.value;
+                                if (value.endsWith('.')) {
+                                  const newValue = value.slice(0, -1);
+                                  setBalanceThreshold(newValue);
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, newValue, excludedOperations);
+                                  onFiltersChange({
+                                    type: 'balanceThreshold',
+                                    balanceThreshold: newValue
+                                  });
+                                }
+                              }}
+                              placeholder="0€"
+                              style={{
+                                width: '55px',
+                                padding: '4px 18px 4px 6px',
+                                border: `1px solid ${theme.borderColor}`,
+                                borderRadius: '4px 0 0 4px',
+                                background: theme.bgContainer,
+                                color: theme.textPrimary,
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                fontFamily: "'Inter', sans-serif",
+                                textAlign: 'left'
+                              }}
+                            />
+                            <span style={{
+                              position: 'absolute',
+                              right: '24px',
+                              color: '#ffffff',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              pointerEvents: 'none'
+                            }}>€</span>
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              border: `1px solid ${theme.borderColor}`,
+                              borderLeft: 'none',
+                              borderRadius: '0 4px 4px 0',
+                              background: theme.bgElevated
+                            }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentValue = parseFloat(balanceThreshold) || 0;
+                                  const maxValue = getMaxTimelineValue();
+                                  const newValue = Math.min(maxValue, currentValue + 1);
+                                  setBalanceThreshold(newValue.toString());
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, newValue.toString(), excludedOperations);
+                                  onFiltersChange({
+                                    type: 'balanceThreshold',
+                                    balanceThreshold: newValue.toString()
+                                  });
+                                }}
+                                style={{
+                                  width: '16px',
+                                  height: '12px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: theme.textSecondary,
+                                  cursor: 'pointer',
+                                  fontSize: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  lineHeight: '1'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.color = '#00ff99';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.color = theme.textSecondary;
+                                }}
+                              >
+                                ▲
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentValue = parseFloat(balanceThreshold) || 0;
+                                  const newValue = Math.max(0, currentValue - 1);
+                                  setBalanceThreshold(newValue.toString());
+                                  updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, newValue.toString(), excludedOperations);
+                                  onFiltersChange({
+                                    type: 'balanceThreshold',
+                                    balanceThreshold: newValue.toString()
+                                  });
+                                }}
+                                style={{
+                                  width: '16px',
+                                  height: '12px',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: theme.textSecondary,
+                                  cursor: 'pointer',
+                                  fontSize: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  lineHeight: '1'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.color = '#00ff99';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.color = theme.textSecondary;
+                                }}
+                              >
+                                ▼
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
                       <input
-                        type="number"
-                        value={balanceThreshold}
+                        type="range"
+                        min="0"
+                        max={getMaxTimelineValue()}
+                        step="1"
+                        value={parseFloat(balanceThreshold) || 0}
                         onChange={(e) => {
-                          setBalanceThreshold(e.target.value);
-                          updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, e.target.value, excludedOperations);
+                          const value = parseFloat(e.target.value);
+                          setBalanceThreshold(value.toString());
+                          updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, value.toString(), excludedOperations);
+                          onFiltersChange({
+                            type: 'balanceThreshold',
+                            balanceThreshold: value.toString()
+                          });
                         }}
-                        placeholder="0"
                         style={{
                           width: '100%',
-                          padding: '8px',
-                          border: `1px solid ${theme.borderColor}`,
-                          borderRadius: '6px',
-                          background: theme.bgElevated,
-                          color: theme.textPrimary,
-                          fontSize: '12px',
-                          fontFamily: "'Inter', sans-serif"
+                          height: '4px',
+                          background: `linear-gradient(to right, #00ff99 0%, #00ff99 ${((parseFloat(balanceThreshold) || 0) / getMaxTimelineValue()) * 100}%, ${theme.borderColor} ${((parseFloat(balanceThreshold) || 0) / getMaxTimelineValue()) * 100}%, ${theme.borderColor} 100%)`,
+                          borderRadius: '2px',
+                          outline: 'none',
+                          appearance: 'none',
+                          cursor: 'pointer'
+                        }}
+                        onInput={(e) => {
+                          const value = parseFloat(e.target.value);
+                          const maxValue = getMaxTimelineValue();
+                          const percentage = (value / maxValue) * 100;
+                          e.target.style.background = `linear-gradient(to right, #00ff99 0%, #00ff99 ${percentage}%, ${theme.borderColor} ${percentage}%, ${theme.borderColor} 100%)`;
                         }}
                       />
                     </div>
                   </div>
+                  
+                  <style jsx>{`
+                    input[type="range"]::-webkit-slider-thumb {
+                      appearance: none;
+                      width: 14px;
+                      height: 14px;
+                      border-radius: 50%;
+                      background: #ffffff;
+                      border: 2px solid #00ff99;
+                      cursor: pointer;
+                      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                    }
+                    input[type="range"]::-webkit-slider-thumb:hover {
+                      background: #00ff99;
+                      border-color: #ffffff;
+                    }
+                    input[type="range"]::-moz-range-thumb {
+                      width: 14px;
+                      height: 14px;
+                      border-radius: 50%;
+                      background: #ffffff;
+                      border: 2px solid #00ff99;
+                      cursor: pointer;
+                      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                    }
+                    input[type="range"]::-moz-range-thumb:hover {
+                      background: #00ff99;
+                      border-color: #ffffff;
+                    }
+                  `}</style>
                 </div>
 
                 {/* Operations */}
@@ -1321,7 +1997,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   <label style={{
                     display: 'block',
                     marginBottom: '8px',
-                    color: theme.textSecondary,
+                    color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: '600',
                     fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
@@ -1330,7 +2006,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   }}>Operations</label>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    {['Buy', 'Sell', 'Market Orders', 'Limit Orders'].map(operation => (
+                    {['Buy Limit', 'Buy Market', 'Sell Limit'].map(operation => (
                       <label key={operation} style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -1356,13 +2032,75 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           }}
                         />
                         <span style={{
-                          color: excludedOperations.has(operation) ? theme.textSecondary : theme.textPrimary,
-                          fontWeight: excludedOperations.has(operation) ? '400' : '600',
-                          fontSize: '12px',
+                          color: theme.textPrimary,
+                          fontWeight: '600',
+                          fontSize: '14px',
                           fontFamily: "'Inter', sans-serif"
                         }}>{operation}</span>
                       </label>
                     ))}
+                    
+                    {/* Select All Operations */}
+                    <div style={{
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      padding: '6px',
+                      borderRadius: '4px',
+                      marginTop: '6px'
+                    }}>
+                      <span style={{
+                        color: theme.textSecondary,
+                        fontSize: '10px',
+                        fontWeight: '600',
+                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                        letterSpacing: '0.1px',
+                        textTransform: 'uppercase'
+                      }}>SELECT ALL</span>
+                      <input
+                        type="checkbox"
+                        checked={excludedOperations.size === 0}
+                        ref={(input) => {
+                          if (input) {
+                            const operations = ['Buy Limit', 'Buy Market', 'Sell Limit'];
+                            const selectedOperations = operations.filter(op => !excludedOperations.has(op));
+                            input.indeterminate = selectedOperations.length > 0 && selectedOperations.length < operations.length;
+                          }
+                        }}
+                        onChange={() => {
+                          const operations = ['Buy Limit', 'Buy Market', 'Sell Limit'];
+                          const selectedOperations = operations.filter(op => !excludedOperations.has(op));
+                          
+                          if (selectedOperations.length === operations.length) {
+                            // If all are selected, deselect all
+                            const newExcluded = new Set(operations);
+                            setExcludedOperations(newExcluded);
+                            updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, balanceThreshold, newExcluded);
+                            if (onFiltersChange) {
+                              onFiltersChange({
+                                type: 'excludedOperations',
+                                excludedOperations: newExcluded
+                              });
+                            }
+                          } else {
+                            // Select all operations
+                            const newExcluded = new Set();
+                            setExcludedOperations(newExcluded);
+                            updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, balanceThreshold, newExcluded);
+                            if (onFiltersChange) {
+                              onFiltersChange({
+                                type: 'excludedOperations',
+                                excludedOperations: newExcluded
+                              });
+                            }
+                          }
+                        }}
+                        style={{
+                          accentColor: '#00ff99',
+                          cursor: 'pointer'
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1379,10 +2117,12 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     onClick={() => {
                       const defaultRange = getDefaultDateRange();
                       setHiddenAssets(new Set());
+                      setDisabledAssets(new Set()); // Clear disabled assets
+                      setManuallyHiddenAssets(new Set()); // Clear manually hidden assets
                       setDateRange(defaultRange);
                       setSelectedTimePreset('All');
-                      setMinAllocation('0');
-                      setBalanceThreshold('0');
+                      setMinAllocation('');
+                      setBalanceThreshold('');
                       setExcludedOperations(new Set());
                       setActiveFilters(0);
                       console.log('All filters cleared');
@@ -1391,6 +2131,22 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                         onFilterReset({
                           type: 'dateRange',
                           dateRange: defaultRange
+                        });
+                      }
+                      // Send asset filter reset to Timeline
+                      if (onFiltersChange) {
+                        onFiltersChange({
+                          type: 'assetFilter',
+                          hiddenAssets: new Set()
+                        });
+                        // Send threshold filter resets
+                        onFiltersChange({
+                          type: 'minAllocation',
+                          minAllocation: ''
+                        });
+                        onFiltersChange({
+                          type: 'balanceThreshold',
+                          balanceThreshold: ''
                         });
                       }
                     }}
@@ -1609,13 +2365,13 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
               background: 'rgba(0, 0, 0, 0.9)',
               border: '1px solid #00ff88',
               borderRadius: '6px',
-              padding: '8px',
+              padding: '12px',
               fontFamily: 'Inter, sans-serif',
               pointerEvents: 'auto',
               boxShadow: popupAnimation === 'applying' ? '0 0 40px rgba(0, 255, 136, 0.8)' : '0 0 20px rgba(0, 255, 136, 0.3)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '6px',
+              gap: '8px',
               transition: popupAnimation === 'entering' ? 'all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'all 0.3s ease-out',
               transform: getTransform(),
               opacity: popupAnimation === 'exitingRight' ? 0 : 1,
@@ -1626,7 +2382,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '8px',
             }}>
             <button
               onClick={handleApplyFilter}
@@ -1635,8 +2391,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                 color: '#000000',
                 border: 'none',
                 borderRadius: '4px',
-                padding: '6px 10px',
-                fontSize: '11px',
+                padding: '8px 14px',
+                fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
                 letterSpacing: '0.1px',
@@ -1664,8 +2420,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                 color: '#ffffff',
                 fontSize: '16px',
                 cursor: 'pointer',
-                width: '26px',
-                height: '26px',
+                width: '30px',
+                height: '30px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

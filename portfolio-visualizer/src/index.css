@@ -11,13 +11,26 @@
   html, body {
     margin: 0;
     padding: 0;
-    height: 100%;
     width: 100%;
     overflow-x: hidden;
     background-color: black;
     font-family: 'JetBrains Mono', 'Courier New', monospace;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -ms-overflow-style: none;  /* Hide scrollbar for IE and Edge */
+    scrollbar-width: none;     /* Hide scrollbar for Firefox */
+  }
+  
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for WebKit browsers */
+  }
+  
+  body {
+    overflow-y: auto; /* Permitir scroll natural del body */
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    overscroll-behavior: none; /* Prevent bounce/overscroll on iOS */
   }
 
   *, *::before, *::after {
@@ -25,7 +38,6 @@
   }
 
   #root {
-    min-height: 100%;
     width: 100%;
   }
 }
@@ -91,21 +103,45 @@
 
 /* === SCROLLBAR === */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(31, 41, 55, 0.5);
+  background: rgba(0, 0, 0, 0.3);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(170, 0, 254, 0.5);
-  border-radius: 4px;
+  background: rgba(0, 255, 153, 0.6);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(170, 0, 254, 0.7);
+  background: rgba(0, 255, 153, 0.8);
+}
+
+::-webkit-scrollbar-button {
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: rgba(0, 255, 153, 0.4);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-button:hover {
+  background: rgba(0, 255, 153, 0.7);
+}
+
+::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' viewBox='0 0 6 6'%3E%3Cpath d='M3 1L1 4h4z' fill='%2300ff99'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6' viewBox='0 0 6 6'%3E%3Cpath d='M3 5L1 2h4z' fill='%2300ff99'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 /* === ANIMATIONS === */

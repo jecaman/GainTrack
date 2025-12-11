@@ -3,10 +3,26 @@ import { assetLabelMap } from '../../../../../utils/chartUtils';
 import { formatEuropeanNumber, formatEuropeanCurrency, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
 import { getAssetLogo, KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 
-const AssetLeaderboard = ({ portfolioData, theme }) => {
+const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set() }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'portfolioPercent', direction: 'desc' });
   const getFiatSymbol = () => '€';
+
+  // Map frontend asset names to backend asset names (same as KPIGrid)
+  const mapFrontendToBackend = (frontendAsset) => {
+    const mapping = {
+      'BTC': 'XXBT',
+      'ETH': 'XETH',
+      'BITCOIN': 'XXBT',
+      'ETHEREUM': 'XETH'
+    };
+    return mapping[frontendAsset] || frontendAsset;
+  };
+  
+  // Convert hiddenAssets to use backend names
+  const hiddenAssetsBackend = new Set(
+    Array.from(hiddenAssets).map(asset => mapFrontendToBackend(asset))
+  );
 
   // Get full asset name from KRAKEN_ASSETS database
   const getAssetFullName = (assetSymbol) => {
@@ -20,53 +36,193 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
     return KRAKEN_ASSETS[cleanSymbol]?.color || '#95A5A6'; // Default neutral gray if not found
   };
 
-  // Process portfolio data for leaderboard
+  // Calculate filtered portfolio data based on date range and operations (similar to KPIGrid)
   const processPortfolioData = () => {
-    if (!portfolioData?.portfolio_data) return [];
-
-    const totalPortfolioValue = portfolioData.portfolio_data.reduce((sum, asset) => sum + (asset.current_value || 0), 0);
+    // Fallback to original data if timeline is not available
+    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
+      if (!portfolioData?.portfolio_data) return [];
+      
+      const totalPortfolioValue = portfolioData.portfolio_data.reduce((sum, asset) => sum + (asset.current_value || 0), 0);
+      
+      return portfolioData.portfolio_data
+        .filter(asset => !hiddenAssetsBackend.has(asset.asset)) // Apply hidden assets filter
+        .map(asset => {
+          const realizedGains = asset.realized_gains || 0;
+          const unrealizedGains = asset.unrealized_gains || 0;
+          const netProfit = asset.net_profit || (realizedGains + unrealizedGains);
+          const netProfitPercent = asset.net_profit_percent || 0;
+          
+          return {
+            asset: assetLabelMap[asset.asset] || asset.asset,
+            portfolioPercent: totalPortfolioValue > 0 ? ((asset.current_value || 0) / totalPortfolioValue * 100) : 0,
+            fiatValue: asset.current_value || 0,
+            marketPrice: asset.current_price || 0,
+            avgCost: (asset.amount || 0) > 0 ? (asset.total_invested || 0) / (asset.amount || 0) : 0,
+            nativeValue: asset.amount || 0,
+            nativeSymbol: assetLabelMap[asset.asset] || asset.asset,
+            netProfit: netProfit,
+            netProfitPercent: netProfitPercent,
+            realizedGains: realizedGains,
+            unrealizedGains: unrealizedGains,
+            originalAsset: asset
+          };
+        });
+    }
     
-    return portfolioData.portfolio_data
-      .map(asset => {
-        // Use the new fields from backend
-        const realizedGains = asset.realized_gains || 0;
-        const unrealizedGains = asset.unrealized_gains || 0;
-        const netProfit = asset.net_profit || (realizedGains + unrealizedGains);
-        const netProfitPercent = asset.net_profit_percent || 0;
-        
-        return {
-          asset: assetLabelMap[asset.asset] || asset.asset,
-          portfolioPercent: totalPortfolioValue > 0 ? ((asset.current_value || 0) / totalPortfolioValue * 100) : 0,
-          fiatValue: asset.current_value || 0,
-          marketPrice: asset.current_price || 0, // Precio actual de mercado
-          avgCost: (asset.amount || 0) > 0 ? (asset.total_invested || 0) / (asset.amount || 0) : 0, // Precio medio de compra
-          nativeValue: asset.amount || 0,
-          nativeSymbol: asset.asset,
-          netProfit: netProfit,
-          netProfitPercent: netProfitPercent,
-          realizedGains: realizedGains,
-          unrealizedGains: unrealizedGains,
-          originalAsset: asset
-        };
-      })
-      .sort((a, b) => {
-        // Apply current sort configuration
-        const { key, direction } = sortConfig;
-        let aValue = a[key];
-        let bValue = b[key];
-        
-        // Handle string sorting for asset names
-        if (key === 'asset') {
-          aValue = aValue.toLowerCase();
-          bValue = bValue.toLowerCase();
+    // Process timeline data with date filtering (same logic as KPIGrid)
+    let timelineToProcess = portfolioData.timeline;
+    const isPointClick = startDate === endDate; // Detect if it's a specific date (point click)
+    
+    // Apply date filtering if specified
+    if (startDate && endDate) {
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      
+      if (isPointClick) {
+        // Point click mode: process all data up to that date (same as KPIGrid for consistency)
+        timelineToProcess = portfolioData.timeline.filter(entry => {
+          const entryDate = new Date(entry.date);
+          return entryDate <= endDateObj; // All data up to selected date (inclusive)
+        });
+      } else {
+        // Range mode: process only data within the range
+        timelineToProcess = portfolioData.timeline.filter(entry => {
+          const entryDate = new Date(entry.date);
+          return entryDate >= startDateObj && entryDate <= endDateObj;
+        });
+      }
+    }
+    
+    if (timelineToProcess.length === 0) {
+      return [];
+    }
+    
+    // Calculate per-asset holdings using FIFO cost basis
+    let assetHoldings = {}; // Asset -> current quantity
+    let assetCostBasis = {}; // Asset -> FIFO queue for cost basis
+    let assetTotalInvested = {}; // Asset -> total invested
+    let assetRealizedGains = {}; // Asset -> realized gains
+    
+    timelineToProcess.forEach(dayData => {
+      const operations = dayData.operations || [];
+      operations.forEach(operation => {
+        // Skip operations for hidden assets or excluded operations
+        if (hiddenAssetsBackend.has(operation.asset) || excludedOperations.has(operation.operation_key)) {
+          return;
         }
         
-        if (direction === 'asc') {
-          return aValue > bValue ? 1 : -1;
-        } else {
-          return aValue < bValue ? 1 : -1;
+        const asset = operation.asset;
+        const tipo = operation.type;
+        const cantidad = parseFloat(operation.cantidad) || 0;
+        const cost = parseFloat(operation.cost) || 0;
+        const fee = parseFloat(operation.fee) || 0;
+        
+        // Initialize asset tracking if not exists
+        if (!assetHoldings[asset]) {
+          assetHoldings[asset] = 0;
+          assetCostBasis[asset] = [];
+          assetTotalInvested[asset] = 0;
+          assetRealizedGains[asset] = 0;
+        }
+        
+        if (tipo === 'buy') {
+          assetHoldings[asset] += cantidad;
+          const costConFee = cost + fee;
+          assetCostBasis[asset].push({
+            volumen: cantidad,
+            cost: costConFee
+          });
+          assetTotalInvested[asset] += costConFee;
+        } else if (tipo === 'sell') {
+          assetHoldings[asset] -= cantidad;
+          // Process sale using FIFO
+          let volumenRestante = cantidad;
+          let totalCostVendido = 0;
+          
+          while (volumenRestante > 0 && assetCostBasis[asset].length > 0) {
+            const lote = assetCostBasis[asset][0];
+            
+            if (lote.volumen <= volumenRestante) {
+              volumenRestante -= lote.volumen;
+              totalCostVendido += lote.cost;
+              assetCostBasis[asset].shift();
+            } else {
+              const proporcion = volumenRestante / lote.volumen;
+              totalCostVendido += lote.cost * proporcion;
+              lote.volumen -= volumenRestante;
+              lote.cost -= lote.cost * proporcion;
+              volumenRestante = 0;
+            }
+          }
+          
+          const saleProceeds = cost - fee;
+          assetRealizedGains[asset] += (saleProceeds - totalCostVendido);
         }
       });
+    });
+    
+    // Get latest prices from the timeline
+    const latestData = timelineToProcess[timelineToProcess.length - 1];
+    const assetsData = [];
+    let totalPortfolioValue = 0;
+    
+    // Process each asset with current holdings
+    Object.keys(assetHoldings).forEach(asset => {
+      const holdings = assetHoldings[asset];
+      if (holdings <= 0) return; // Skip assets with no current holdings
+      
+      const assetData = latestData.assets_con_valor?.[asset];
+      if (!assetData) return;
+      
+      const currentPrice = assetData.precio || 0;
+      const currentValue = holdings * currentPrice;
+      const totalInvested = assetTotalInvested[asset] || 0;
+      const realizedGains = assetRealizedGains[asset] || 0;
+      const unrealizedGains = currentValue - totalInvested;
+      const netProfit = realizedGains + unrealizedGains;
+      const netProfitPercent = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
+      const avgCost = holdings > 0 ? totalInvested / holdings : 0;
+      
+      totalPortfolioValue += currentValue;
+      
+      assetsData.push({
+        asset: assetLabelMap[asset] || asset,
+        portfolioPercent: 0, // Will be calculated after we know total
+        fiatValue: currentValue,
+        marketPrice: currentPrice,
+        avgCost: avgCost,
+        nativeValue: holdings,
+        nativeSymbol: assetLabelMap[asset] || asset, // Use mapped name for logo compatibility
+        netProfit: netProfit,
+        netProfitPercent: netProfitPercent,
+        realizedGains: realizedGains,
+        unrealizedGains: unrealizedGains,
+        originalAsset: { asset, current_value: currentValue, current_price: currentPrice, amount: holdings }
+      });
+    });
+    
+    // Calculate portfolio percentages
+    assetsData.forEach(assetData => {
+      assetData.portfolioPercent = totalPortfolioValue > 0 ? (assetData.fiatValue / totalPortfolioValue * 100) : 0;
+    });
+    
+    // Apply sorting
+    return assetsData.sort((a, b) => {
+      const { key, direction } = sortConfig;
+      let aValue = a[key];
+      let bValue = b[key];
+      
+      if (key === 'asset') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
+      
+      if (direction === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
   };
 
   const processedData = processPortfolioData();
@@ -205,13 +361,12 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
         borderRadius: '0',
         overflow: 'hidden'
       }}>
-        {/* Tabla con scroll horizontal y vertical con efecto rebote */}
+        {/* Tabla con scroll horizontal solamente */}
         <div style={{
           overflowX: 'auto',
-          overflowY: 'scroll',
-          maxHeight: '1200px', // Altura para mostrar hasta 10 filas + header
+          overflowY: 'visible', // Sin scroll vertical - lo maneja el container padre
+          maxHeight: 'none', // Sin límite de altura
           scrollBehavior: 'auto', // Scroll normal para mejor control
-          overscrollBehavior: 'auto', // Permite over-scroll con efecto rebote natural
           WebkitOverflowScrolling: 'touch', // Scroll suave en dispositivos táctiles
           // Propiedades específicas para efecto rebote
           overscrollBehaviorY: 'auto', // Permite rebote vertical
@@ -434,7 +589,7 @@ const AssetLeaderboard = ({ portfolioData, theme }) => {
                           e.target.style.display = 'none';
                         }}
                         onLoad={(e) => {
-                          console.log(`✅ Logo loaded for ${row.nativeSymbol}`);
+                          // console.log(`✅ Logo loaded for ${row.nativeSymbol}`);
                         }}
                       />
                     ) : (
