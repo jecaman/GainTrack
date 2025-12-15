@@ -25,9 +25,10 @@ export const formatEuropeanNumber = (number, decimals = 2, locale = 'de-DE') => 
  * @param {number} decimals - Number of decimal places (default: 2)
  * @returns {string} Formatted currency string
  */
-export const formatEuropeanCurrency = (number, currency = '€', decimals = 2) => {
-  const formattedNumber = formatEuropeanNumber(number, decimals);
-  return `${formattedNumber}\u2009${currency}`;
+export const formatEuropeanCurrency = (number, currency = '€', decimals = 0) => {
+  // Usar formateo escalado para números grandes, sin céntimos
+  const formattedNumber = formatEuropeanScaled(number, decimals);
+  return `${formattedNumber}${currency}`; // Sin espacio entre número y euro
 };
 
 /**
@@ -36,7 +37,7 @@ export const formatEuropeanCurrency = (number, currency = '€', decimals = 2) =
  * @param {number} decimals - Number of decimal places (default: 2)
  * @returns {string} Formatted percentage string
  */
-export const formatEuropeanPercentage = (number, decimals = 2) => {
+export const formatEuropeanPercentage = (number, decimals = 1) => {
   const formattedNumber = formatEuropeanNumber(number, decimals);
   return `${formattedNumber}%`;
 };
@@ -47,13 +48,25 @@ export const formatEuropeanPercentage = (number, decimals = 2) => {
  * @param {number} decimals - Number of decimal places (default: 1)
  * @returns {string} Formatted scaled number
  */
-export const formatEuropeanScaled = (number, decimals = 1) => {
-  if (Math.abs(number) >= 1e9) {
-    return formatEuropeanNumber(number / 1e9, decimals) + 'B';
-  } else if (Math.abs(number) >= 1e6) {
-    return formatEuropeanNumber(number / 1e6, decimals) + 'M';
-  } else if (Math.abs(number) >= 1e3) {
-    return formatEuropeanNumber(number / 1e3, decimals) + 'K';
+export const formatEuropeanScaled = (number, decimals = 0) => {
+  const absNumber = Math.abs(number);
+  
+  // Para billones: siempre abreviar (números muy largos)
+  if (absNumber >= 1e9) {
+    return formatEuropeanNumber(number / 1e9, 1) + 'B';
   }
-  return formatEuropeanNumber(number, decimals);
+  
+  // Para millones: abreviar solo si el número completo sería muy largo (>7 cifras)
+  if (absNumber >= 1e7) { // 10 millones o más
+    return formatEuropeanNumber(number / 1e6, 1) + 'M';
+  }
+  
+  // Para miles: abreviar solo si el número completo sería muy largo (>5 cifras)
+  if (absNumber >= 1e5) { // 100.000 o más
+    return formatEuropeanNumber(number / 1e3, 0) + 'K'; // Sin decimal para miles
+  }
+  
+  // Números menores: mostrar completos
+  // 1.552€, 12.345€, 99.999€ se muestran enteros
+  return formatEuropeanNumber(number, 0);
 };

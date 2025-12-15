@@ -1,233 +1,245 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { formatEuropeanCurrency, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
 
-// KPI Card Component
-const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false, tooltip = null, sidebarOpen = false }) => {
-  const [isCardHovered, setIsCardHovered] = useState(false);
+// KPI Card Component - Diseño limpio sin rectangulos
+const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false, tooltip = null, sidebarOpen = false, windowWidth = 1200, isSmaller = false, isVerySmall = false }) => {
   const [isTooltipHovered, setIsTooltipHovered] = useState(false);
+  const [isCardHovered, setIsCardHovered] = useState(false);
   
-  // Función para determinar el tamaño responsivo basado en sidebar y contenido
-  const getResponsiveSize = () => {
-    const valueLength = value.length;
+  // Tamaño de fuente ADAPTADO al ancho disponible INDIVIDUAL de cada KPI
+  const getValueFontSize = () => {
+    const containerWidth = getCardWidthPixels(); // Ancho fijo del contenedor
+    const margin = 14; // Margen lateral mínimo de 14px
+    const availableWidth = containerWidth - margin;
     
-    // TAMAÑO FIJO RECTANGULAR MÁS ALARGADO
-    const cardWidth = sidebarOpen ? '160px' : '180px';
-    const cardHeight = sidebarOpen ? '100px' : '110px';
+    // Usar el contenido REAL de este KPI específico
+    const thisValueLength = value ? value.toString().length : 0;
+    const thisPercentLength = changePercent ? changePercent.toString().length : 0;
+    const thisContentChars = thisValueLength + thisPercentLength + (showChange ? 2 : 0); // +2 solo si hay porcentaje
     
-    // Calcular tamaño de fuente más grande para cuadrados grandes
-    const getValueFontSize = () => {
-      const baseSize = sidebarOpen ? 1.4 : 1.6;
-      
-      if (valueLength > 18) return `${baseSize * 0.6}rem`; // Números muy largos
-      else if (valueLength > 15) return `${baseSize * 0.7}rem`; 
-      else if (valueLength > 12) return `${baseSize * 0.8}rem`;
-      else if (valueLength > 9) return `${baseSize * 0.9}rem`;
-      else if (valueLength > 6) return `${baseSize * 0.95}rem`;
-      else return `${baseSize}rem`; // Números cortos
-    };
+    // Debug: Log para ver qué está pasando
+    if (label?.includes('Gains')) {
+      console.log(`${label}: value="${value}" (${thisValueLength} chars), percent="${changePercent}" (${thisPercentLength} chars), total=${thisContentChars}`);
+    }
     
-    return {
-      cardWidth: cardWidth,
-      cardHeight: cardHeight,
-      titleFont: sidebarOpen ? '0.9rem' : '0.95rem',
-      titleHeight: '26px',
-      valueFont: getValueFontSize(),
-      contentHeight: '50px',
-      padding: '1.2rem'
-    };
+    if (thisContentChars === 0) return '1.8rem'; // Default si no hay contenido
+    
+    // Calcular tamaño de fuente para que EL CONTENIDO DE ESTE KPI quepa
+    const pixelsPerChar = availableWidth / thisContentChars;
+    const fontSize = Math.min(pixelsPerChar / 12, 1.8); // Cambiado de 16 a 12 para permitir fuentes más grandes
+    
+    // Mínimo legible
+    const minFontSize = windowWidth < 768 ? 0.9 : 1.0;
+    
+    const finalSize = Math.max(fontSize, minFontSize);
+    
+    if (label?.includes('Gains')) {
+      console.log(`${label}: fontSize calculated = ${finalSize}rem`);
+    }
+    
+    return `${finalSize}rem`;
   };
   
+  // Tamaño de fuente para porcentajes PROPORCIONAL al valor
   const getPercentageFontSize = () => {
-    const valueLength = value.length;
-    const percentLength = changePercent ? changePercent.replace('+', '').replace('-', '').length : 0;
-    const totalContentLength = valueLength + percentLength;
-    
-    // Base más grande para porcentajes en cuadrados grandes
-    let baseSize = sidebarOpen ? 0.9 : 1.0;
-    
-    // Reducir si el contenido total es muy largo
-    if (totalContentLength > 20) baseSize *= 0.7;
-    else if (totalContentLength > 15) baseSize *= 0.8;
-    else if (totalContentLength > 10) baseSize *= 0.9;
-    
-    return `${baseSize}rem`;
+    const valueFontSize = parseFloat(getValueFontSize());
+    return `${valueFontSize * 0.85}rem`; // 15% más pequeño que el valor
   };
   
-  const responsiveSize = getResponsiveSize();
+  // Ancho FIJO con margen constante - la letra se adapta
+  const getCardWidthPixels = () => {
+    // Ancho aumentado por dispositivo
+    if (windowWidth < 768) return 220; // Móvil +20px
+    if (windowWidth < 1024) return 250; // Tablet +30px
+    return 270; // Desktop +30px
+  };
+  
+  const getCardWidth = () => {
+    return `${getCardWidthPixels()}px`;
+  };
   
   return (
     <div 
       style={{
-        background: theme.bg,
-        borderRadius: '0.5rem',
-        padding: responsiveSize.padding,
-        border: `2px solid ${theme.borderColor}`,
-        boxShadow: 'inset 0 0 10px rgba(0, 255, 136, 0.05)',
-        transition: 'all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-        cursor: 'pointer',
-        position: 'relative',
-        overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
         alignItems: 'center',
+        justifyContent: 'center', // Centrar verticalmente todo el contenido
         textAlign: 'center',
-        width: responsiveSize.cardWidth,
-        height: responsiveSize.cardHeight,
-        minWidth: responsiveSize.cardWidth,
-        maxWidth: responsiveSize.cardWidth,
-        flex: '0 0 auto'
+        position: 'relative',
+        width: getCardWidth(),
+        minWidth: getCardWidth(),
+        maxWidth: getCardWidth(),
+        height: '110px', // Altura reducida para menos margen inferior
+        overflow: 'hidden', // Contener el contenido dentro del KPI
+        border: `1px solid ${isCardHovered ? '#00ff88' : 'transparent'}`, // Borde verde fosforito en hover
+        borderRadius: '12px', // Bordes redondeados
+        padding: '6px', // Padding aún más reducido
+        transition: 'all 0.3s ease', // Transición suave para efectos hover
+        boxShadow: isCardHovered ? '0 0 20px rgba(0, 255, 136, 0.3)' : 'none', // Resplandor verde en hover
+        cursor: tooltip ? 'pointer' : 'default' // Cursor pointer si hay tooltip
       }}
-      onMouseEnter={(e) => {
-        setIsCardHovered(true);
-        e.currentTarget.style.transform = 'translateY(-2px)';
-        e.currentTarget.style.borderColor = '#00ff88';
-        e.currentTarget.style.boxShadow = '0 0 15px rgba(0, 255, 136, 0.2), inset 0 0 15px rgba(0, 255, 136, 0.05)';
-        e.currentTarget.style.background = 'rgba(0, 255, 136, 0.03)';
-        
-        const label = e.currentTarget.querySelector('[data-kpi-label]');
-        if (label) {
-          label.style.color = '#ffffff';
-          label.style.fontWeight = '700';
-          label.style.textShadow = '0 0 8px rgba(0, 255, 136, 0.6)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        setIsCardHovered(false);
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.borderColor = theme.borderColor;
-        e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(0, 255, 136, 0.05)';
-        e.currentTarget.style.background = theme.bg;
-        
-        const label = e.currentTarget.querySelector('[data-kpi-label]');
-        if (label) {
-          label.style.color = '#ffffff';
-          label.style.fontWeight = '700';
-          label.style.textShadow = 'none';
-        }
-      }}
+      onMouseEnter={() => setIsCardHovered(true)}
+      onMouseLeave={() => setIsCardHovered(false)}
     >
-      {/* Botón info con tooltip */}
-      {tooltip && (
-        <div 
-          style={{
-            position: 'absolute',
-            top: '4px',
-            right: '4px',
-            width: '16px',
-            height: '16px',
-            borderRadius: '50%',
-            backgroundColor: isTooltipHovered ? '#00ff88' : '#666666',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            fontSize: '11px',
-            fontWeight: '600',
-            color: '#ffffff',
-            fontFamily: "'Inter', sans-serif",
-            transition: 'all 0.2s ease',
-            zIndex: 1000,
-            transform: isTooltipHovered ? 'scale(1.1)' : 'scale(1)'
-          }}
-          onMouseEnter={() => setIsTooltipHovered(true)}
-          onMouseLeave={() => setIsTooltipHovered(false)}
-        >
-          i
-        </div>
-      )}
 
-      {/* Tooltip overlay */}
+      {/* Tooltip overlay - exactamente encuadrado en el KPI */}
       {tooltip && isTooltipHovered && (
         <div 
           style={{
             position: 'absolute',
-            top: '0',
-            left: '0',
-            right: '0',
-            bottom: '0',
-            backgroundColor: 'rgba(0, 0, 0, 0.95)',
-            border: '2px solid #00ff88',
-            borderRadius: '0.75rem',
-            padding: '1rem',
+            top: '0px', // Alineado con el top del KPI
+            left: '0px', // Alineado con el left del KPI
+            width: '100%', // Mismo ancho que el KPI
+            height: '100%', // Misma altura que el KPI
+            backgroundColor: 'rgba(0, 0, 0, 0.95)', // Fondo negro
+            border: '1px solid rgba(0, 255, 136, 0.4)',
+            borderRadius: '12px', // Mismos bordes redondeados que el KPI
+            padding: '8px', // Mismo padding que el KPI
+            zIndex: 999,
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+            color: '#ffffff',
+            fontSize: '0.8rem', // Letra más grande
+            lineHeight: '1.3',
+            fontFamily: 'SF Mono, Monaco, monospace', // Misma fuente que el título
+            pointerEvents: 'none',
+            textAlign: 'center', // Centrado como el resto del contenido
+            whiteSpace: 'pre-line',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            zIndex: 999,
-            backdropFilter: 'blur(15px)',
-            boxShadow: '0 0 20px rgba(0, 255, 136, 0.3)',
-            color: '#ffffff',
-            fontSize: '0.85rem',
-            lineHeight: '1.3',
-            fontFamily: "'Inter', sans-serif",
-            pointerEvents: 'none'
+            justifyContent: 'center'
           }}
         >
           {tooltip}
         </div>
       )}
 
-      {/* Layout simple con padding fijo */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        width: '100%',
-        height: '100%',
-        padding: '16px'
-      }}>
-        {/* Título arriba */}
-        <div 
-          data-kpi-label
-          style={{
-            color: theme.textSecondary,
-            fontSize: responsiveSize.titleFont,
-            fontWeight: '500',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            fontFamily: 'SF Mono, Monaco, monospace',
-            textAlign: 'center',
-            lineHeight: '1.2'
-          }}
-        >
-          {label}
-        </div>
-        
-        {/* Números en el centro */}
-        <div style={{
+      {/* Título del KPI con botón tooltip integrado */}
+      <div 
+        style={{
+          color: '#ffffff',
+          fontSize: '1.0rem', // Título un poco más grande
+          fontWeight: '600',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          fontFamily: 'SF Mono, Monaco, monospace',
+          textAlign: 'center',
+          marginBottom: '8px', // Menos espacio entre título y contenido
+          minHeight: '20px',
           display: 'flex',
-          flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '0.5rem'
+          whiteSpace: 'nowrap',
+          position: 'relative',
+          width: '100%' // Asegurar que ocupe todo el ancho
+        }}
+      >
+        {/* Título centrado */}
+        <span style={{
+          position: 'absolute',
+          left: '50%',
+          transform: 'translateX(-50%)', // Centrar exactamente
+          whiteSpace: 'nowrap'
         }}>
+          {label}
+        </span>
+        
+        {/* Tooltip esquinado arriba derecha */}
+        {tooltip && (
           <div 
             style={{
-              fontSize: responsiveSize.valueFont,
+              width: '16px',
+              height: '16px',
+              borderRadius: '50%',
+              backgroundColor: isTooltipHovered ? '#00ff88' : 'rgba(255, 255, 255, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '10px',
               fontWeight: '700',
-              color: '#ffffff',
-              fontFamily: 'SF Mono, Monaco, monospace',
-              whiteSpace: 'nowrap'
+              color: isTooltipHovered ? '#000000' : '#ffffff',
+              fontFamily: "'Inter', sans-serif",
+              transition: 'all 0.2s ease',
+              opacity: isTooltipHovered ? 1 : 0.7,
+              transform: isTooltipHovered ? 'scale(1.1)' : 'scale(1)',
+              position: 'absolute',
+              top: '-1px', // 3 píxeles más arriba
+              right: '2px', // Esquina derecha
+              zIndex: 1000 // Por encima del tooltip overlay
             }}
+            onMouseEnter={() => setIsTooltipHovered(true)}
+            onMouseLeave={() => setIsTooltipHovered(false)}
           >
-            {value}
+            <span style={{marginTop: '-1px'}}>?</span>
           </div>
-          {showChange && changePercent && (
-            <div style={{
+        )}
+      </div>
+      
+      {/* Valores en una sola línea */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'row', // Volver a fila
+        alignItems: 'baseline',
+        justifyContent: 'center',
+        gap: '4px', // Gap entre valor y porcentaje
+        minHeight: '50px',
+        width: '100%',
+        textAlign: 'center',
+        flexWrap: 'nowrap'
+      }}>
+        {/* Valor principal */}
+        <span 
+          style={{
+            fontSize: getValueFontSize(),
+            fontWeight: '700',
+            color: (label === 'Portfolio Value' || label === 'Cost Basis') ? '#ffffff' : (isPositive ? '#00FF99' : '#ef4444'),
+            fontFamily: 'SF Mono, Monaco, monospace',
+            lineHeight: '1',
+            maxWidth: showChange && changePercent ? '65%' : '100%', // Espacio compartido con porcentaje
+            flexShrink: 1, // Permitir reducirse si es necesario
+            whiteSpace: 'nowrap' // Mantener en una línea
+          }}
+        >
+          {value}
+        </span>
+        
+        {/* Porcentaje si existe */}
+        {showChange && changePercent && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0px', // Sin espacio entre triángulo y porcentaje
+            flexShrink: 0, // No permitir que se reduzca
+            minWidth: 'fit-content' // Mantener tamaño mínimo
+          }}>
+            {/* Triángulo indicador */}
+            <span style={{
+              fontSize: getPercentageFontSize(),
+              fontWeight: '600',
+              color: isPositive ? '#00FF99' : '#ef4444',
+              lineHeight: '1'
+            }}>
+              {isPositive ? '▲' : '▼'}
+            </span>
+            
+            {/* Porcentaje */}
+            <span style={{
               fontSize: getPercentageFontSize(),
               fontWeight: '600',
               color: isPositive ? '#00FF99' : '#ef4444',
               fontFamily: 'SF Mono, Monaco, monospace',
-              whiteSpace: 'nowrap'
+              lineHeight: '1',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '100%'
             }}>
               {changePercent}
-            </div>
-          )}
-        </div>
-        
-        {/* Espacio vacío abajo para balance */}
-        <div></div>
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -235,6 +247,18 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
 
 // Main KPI Grid Component (LIMPIO)
 const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), sidebarOpen = false }) => {
+  
+  // Estado para controlar el tamaño de la ventana
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   
   // Map frontend asset names to backend asset names
   const mapFrontendToBackend = (frontendAsset) => {
@@ -540,28 +564,23 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
 
   return (
     <div style={{
-      height: "fit-content",
+      width: '100%',
       display: 'flex',
-      flexDirection: 'column',
-      position: 'relative',
-      margin: '0',
-      overflow: 'visible'
+      justifyContent: 'center',
+      paddingTop: '40px' // Espacio arriba de los KPIs
     }}>
       
       <div style={{
         display: 'flex',
-        flexDirection: 'row',
-        gap: sidebarOpen ? '0.5rem' : '0.6rem',
-        height: 'fit-content',
-        padding: '0',
-        background: 'transparent',
-        border: 'none',
-        overflow: 'visible',
-        alignItems: 'stretch',
-        justifyContent: 'center',
-        flexWrap: 'wrap',
+        flexDirection: windowWidth < 768 ? 'column' : 'row',
+        alignItems: 'center',
+        justifyContent: 'center', // Centrado en lugar de space-evenly
         width: '100%',
-        transition: 'gap 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
+        maxWidth: `${windowWidth - (windowWidth < 768 ? 20 : 40)}px`, // Contenedor más ancho
+        padding: windowWidth < 768 ? '0 20px' : '0 40px',
+        flexWrap: 'nowrap', // Siempre en línea para los 5 KPIs
+        margin: '0 auto',
+        gap: `${windowWidth < 768 ? 15 : 20}px` // Gap más pequeño para usar más espacio
       }}>
         <KPICard
           label="Portfolio Value"
@@ -569,14 +588,28 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           theme={theme}
           tooltip="Current market value of all your holdings calculated with real-time prices"
           sidebarOpen={sidebarOpen}
+          windowWidth={windowWidth}
         />
         
         <KPICard
           label="Cost Basis"
           value={kpiData.totalInvested}
           theme={theme}
-          tooltip="Total amount invested in fiat purchases only, including all trading fees"
+          tooltip={`Total amount invested in purchases\n\nOf this amount, ${kpiData.fees} went to trading fees`}
           sidebarOpen={sidebarOpen}
+          windowWidth={windowWidth}
+        />
+        
+        <KPICard
+          label="Total Gains"
+          value={kpiData.profit}
+          changePercent={kpiData.profitPercent}
+          isPositive={kpiData.isPositive}
+          theme={theme}
+          showChange={true}
+          tooltip="Combined realized and unrealized gains/losses - your total profit or loss"
+          sidebarOpen={sidebarOpen}
+          windowWidth={windowWidth}
         />
         
         <KPICard
@@ -588,6 +621,7 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           showChange={true}
           tooltip="Profit or loss from assets you have sold (locked in gains/losses)"
           sidebarOpen={sidebarOpen}
+          windowWidth={windowWidth}
         />
         
         <KPICard
@@ -599,25 +633,7 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           showChange={true}
           tooltip="Profit or loss from assets you currently hold (paper gains/losses)"
           sidebarOpen={sidebarOpen}
-        />
-        
-        <KPICard
-          label="Total Gains"
-          value={kpiData.totalGains}
-          changePercent={kpiData.profitPercent}
-          isPositive={kpiData.totalGainsIsPositive}
-          theme={theme}
-          showChange={true}
-          tooltip="Combined realized and unrealized gains/losses - your total profit or loss"
-          sidebarOpen={sidebarOpen}
-        />
-        
-        <KPICard
-          label="Total Fees"
-          value={kpiData.fees}
-          theme={theme}
-          tooltip="Total trading fees paid to the exchange for all buy and sell transactions"
-          sidebarOpen={sidebarOpen}
+          windowWidth={windowWidth}
         />
       </div>
     </div>
