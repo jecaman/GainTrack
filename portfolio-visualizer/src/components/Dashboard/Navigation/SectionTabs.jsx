@@ -2,7 +2,7 @@
 const SectionTabs = ({ activeSection, onSectionChange, theme, onBackToForm, onToggleTheme, sidebarOpen }) => {
   const sections = [
     { id: 'overview', label: 'Overview' },
-    { id: 'analytics', label: 'Analytics' },
+    { id: 'operations', label: 'Operations' },
     { id: 'portfolio', label: 'Portfolio' }
   ];
 

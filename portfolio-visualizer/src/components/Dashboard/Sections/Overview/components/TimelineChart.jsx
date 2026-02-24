@@ -1006,7 +1006,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     if (externalStartDate && externalStartDate !== startDate) {
       // Sync timeline dates if not zoomed OR if we're applying from timeline
       if (!isZoomed || isApplyingFromTimeline) {
-        console.log('📋 SYNCING TIMELINE startDate with external:', { external: externalStartDate, current: startDate, isZoomed, isApplyingFromTimeline });
+        // console.log('📋 SYNCING TIMELINE startDate with external:', { external: externalStartDate, current: startDate, isZoomed, isApplyingFromTimeline });
         setStartDate(externalStartDate);
         // Reset interaction flag when dates are updated from external source (Filter)
         hasUserInteractedWithTimeline.current = false;
@@ -1039,7 +1039,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     if (externalEndDate && externalEndDate !== endDate) {
       // Sync timeline dates if not zoomed OR if we're applying from timeline
       if (!isZoomed || isApplyingFromTimeline) {
-        console.log('📋 SYNCING TIMELINE endDate with external:', { external: externalEndDate, current: endDate, isZoomed, isApplyingFromTimeline });
+        // console.log('📋 SYNCING TIMELINE endDate with external:', { external: externalEndDate, current: endDate, isZoomed, isApplyingFromTimeline });
         setEndDate(externalEndDate);
         // Reset interaction flag when dates are updated from external source (Filter)
         hasUserInteractedWithTimeline.current = false;
@@ -1062,7 +1062,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   // Funciones para manejar el popup
   const showApplyToAllPopup = () => setShowApplyPopup(true);
   const hideApplyPopup = () => {
-    console.log('Timeline: hideApplyPopup called');
+    // console.log('Timeline: hideApplyPopup called');
     userClosedPopup.current = true; // Track that user manually closed popup
     // Keep lastProcessedDates to prevent re-showing same popup
     setShowApplyPopup(false);
@@ -1071,7 +1071,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   // Apply timeline dates to filter - SIMPLE
   const handleApplyTimelineToFilter = () => {
     if (onTimelineApplyToAll && startDate && endDate) {
-      console.log('APPLYING DATES:', startDate, endDate);
+      // console.log('APPLYING DATES:', startDate, endDate);
       
       // Reset our tracking to prevent duplicate detections
       lastProcessedDates.current = { startDate: '', endDate: '' };
@@ -1104,7 +1104,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   
   // Funciones simples para manejar el popup
   const forceHidePopup = () => {
-    console.log('Timeline: forceHidePopup called');
+    // console.log('Timeline: forceHidePopup called');
     setShowApplyPopup(false);
   };
   const showCleanPopup = () => setShowApplyPopup(true);
@@ -1134,10 +1134,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     if (!datesChanged && !shouldHidePopup) return;
     
     if (datesAreDifferent) {
-      console.log('🔥 DATES DIFFERENT - SHOWING POPUP:', { 
-        timelineButtons: { startDate, endDate },
-        filterDates: { externalStartDate, externalEndDate }
-      });
+      // console.log('🔥 DATES DIFFERENT - SHOWING POPUP:', { 
+      //   timelineButtons: { startDate, endDate },
+      //   filterDates: { externalStartDate, externalEndDate }
+      // });
       
       // Update our tracking
       lastProcessedDates.current = { startDate, endDate };
@@ -1149,10 +1149,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         quickFilter: activeQuickFilter 
       });
     } else {
-      console.log('✅ DATES MATCH - HIDING POPUP:', { 
-        timelineButtons: { startDate, endDate },
-        filterDates: { externalStartDate, externalEndDate }
-      });
+      // console.log('✅ DATES MATCH - HIDING POPUP:', { 
+      //   timelineButtons: { startDate, endDate },
+      //   filterDates: { externalStartDate, externalEndDate }
+      // });
       
       // Update our tracking when hiding
       lastProcessedDates.current = { startDate, endDate };
@@ -1808,6 +1808,43 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     return lastDayOfYear < minDate || firstDayOfYear > maxDate;
   };
   
+  // Función para calcular tamaño de fuente responsive para tooltip
+  const getTooltipFontSize = (contentLength, baseSize = 22) => {
+    // Obtener ancho del gráfico como referencia principal
+    const containerWidth = window.innerWidth;
+    
+    // Calcular ancho disponible considerando el sidebar
+    let chartWidth;
+    if (sidebarOpen) {
+      // Cuando el sidebar está abierto, restar 350px del ancho total
+      chartWidth = containerWidth - 350;
+    } else {
+      // Sin sidebar, usar todo el ancho disponible
+      chartWidth = containerWidth;
+    }
+    
+    // Margen mínimo y máximo del tooltip
+    const margin = 60; // Margen lateral del gráfico
+    const maxTooltipWidth = chartWidth - (margin * 2); // El tooltip puede usar todo el ancho del gráfico
+    
+    if (contentLength === 0) return `${baseSize}px`;
+    
+    // Agregar buffer más grande para hacer mucho menos sensible - rangos de 15 caracteres
+    const bufferedContentLength = Math.ceil(contentLength / 15) * 15;
+    
+    // Calcular tamaño de fuente menos restrictivo para permitir fuentes más grandes
+    const safeTooltipWidth = maxTooltipWidth * 0.8; // Usar 80% del ancho disponible
+    const pixelsPerChar = safeTooltipWidth / bufferedContentLength;
+    const fontSize = Math.min(pixelsPerChar * 0.7, baseSize); // Menos restrictivo para permitir fuentes más grandes
+    
+    // Tamaño mínimo legible moderado
+    const minFontSize = window.innerWidth < 768 ? 18 : 20; // Mínimos moderados
+    
+    const finalSize = Math.max(fontSize, minFontSize);
+    
+    return `${finalSize}px`;
+  };
+
   // Función para renderizar tooltip con datos específicos
   const renderTooltipContent = (dataIndex = null, processedData = null) => {
     // Usar datos procesados si están disponibles, sino usar datos originales
@@ -1824,14 +1861,58 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     const marketValue = entry.value || 0;
     const investedValue = entry.cost || 0;
     
-    // En Full View, usar el mismo cálculo que los gráficos para consistencia visual
-    // En P&L View, usar los cálculos precisos del backend
-    const profit = viewMode === 'balance' 
-      ? (entry.total_gain !== undefined ? entry.total_gain :
-         entry.net_profit !== undefined ? entry.net_profit :
-         (marketValue - investedValue))
-      : (marketValue - investedValue); // Consistente con las líneas visuales
-    const profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
+    // DEBUG: Log para entender qué datos llegan
+    // console.log('DEBUG renderTooltipContent:', {
+    //   dataIndex,
+    //   entryDate: entry.date,
+    //   dataSourceLength: dataSource.length,
+    //   firstEntryDate: dataSource[0]?.date,
+    //   entryTotalGain: entry.total_gain,
+    //   firstEntryTotalGain: dataSource[0]?.total_gain,
+    //   viewMode
+    // });
+    
+    // Calcular ganancias del período filtrado
+    let profit;
+    let profitPct;
+    
+    // Obtener total_gain actual
+    const currentTotalGain = entry.total_gain !== undefined ? entry.total_gain :
+                           entry.net_profit !== undefined ? entry.net_profit :
+                           (marketValue - investedValue);
+    
+    // Si tenemos datos filtrados y más de un punto, calcular ganancias relativas al período
+    if (dataSource.length > 1) {
+      const firstEntry = dataSource[0];
+      const firstTotalGain = firstEntry.total_gain !== undefined ? firstEntry.total_gain :
+                            firstEntry.net_profit !== undefined ? firstEntry.net_profit :
+                            ((firstEntry.value || 0) - (firstEntry.cost || 0));
+      
+      // Ganancias del período = ganancias actuales - ganancias del primer punto del período
+      profit = currentTotalGain - firstTotalGain;
+      
+      // DEBUG: Log del cálculo
+      console.log('DEBUG period calculation:', {
+        currentTotalGain,
+        firstTotalGain,
+        periodProfit: profit
+      });
+      
+      // Porcentaje basado en el cost basis del primer punto del período para mejor contexto
+      const firstCostBasis = firstEntry.cost || 0;
+      profitPct = firstCostBasis > 0 ? ((profit / firstCostBasis) * 100) : 0;
+    } else {
+      // Si solo hay un punto, usar las ganancias totales
+      profit = currentTotalGain;
+      profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
+    }
+    
+    // En Full View (sin cost basis), usar el cálculo directo para consistencia visual
+    // En Both View (con cost basis), mantener el cálculo del período
+    if (viewMode !== 'balance' && !showTotalInvested) {
+      profit = marketValue - investedValue;
+      profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
+    }
     
     const formatCurrency = (value) => {
       return new Intl.NumberFormat('en-US', {
@@ -1844,7 +1925,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     
     // Construir el contenido en una sola línea con estilos específicos y buen espaciado
     const profitColor = profit >= 0 ? '#00FF99' : '#ef4444';
-    const profitTriangle = profit >= 0 ? '▲' : '▼';
+    const profitTriangle = profit >= 0 ? '▲' : '▼'; // Mismo triángulo que los KPIs
     
     const formatCurrencyEuroAfter = (value) => {
       const absValue = Math.abs(value);
@@ -1887,17 +1968,77 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     if (viewMode === 'balance') {
       // En P&L View, mostrar fecha + P&L acumulados y porcentaje
       const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL P&L' : 'TOTAL P&L';
-      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      
+      // Calcular longitud del contenido para responsive
+      const mainContentLength = dateFormat.length + profitLabel.length + formatCurrencyEuroAfter(profit).length + 6; // +6 por el % y símbolos
+      const mainFontSize = getTooltipFontSize(mainContentLength, 28); // Tamaño moderado
+      const labelFontSize = getTooltipFontSize(mainContentLength, 28); // Tamaño moderado
+      const valueFontSize = getTooltipFontSize(mainContentLength, 28); // Tamaño moderado
+      
+      content = `<span style="color: #ffffff; font-size: ${mainFontSize}; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${labelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
+      
+      // Añadir desglose de realized y unrealized gains en P&L View
+      const realizedGainPeriod = entry.realized_gain_period || 0;
+      const unrealizedGainPeriod = entry.unrealized_gain || 0;
+      
+      // Calcular ganancias del período
+      let periodRealizedGain = realizedGainPeriod;
+      let periodUnrealizedGain = unrealizedGainPeriod;
+      
+      // Si tenemos datos filtrados y más de un punto, calcular ganancias relativas al período
+      if (dataSource.length > 1) {
+        const firstEntry = dataSource[0];
+        const firstRealizedGain = firstEntry.realized_gain_period || 0;
+        const firstUnrealizedGain = firstEntry.unrealized_gain || 0;
+        
+        // Ganancias del período
+        periodRealizedGain = realizedGainPeriod - firstRealizedGain;
+        periodUnrealizedGain = unrealizedGainPeriod - firstUnrealizedGain;
+      }
+      
+      // Colores para cada tipo de ganancia
+      const realizedColor = periodRealizedGain >= 0 ? '#00FF99' : '#ef4444';
+      const unrealizedColor = periodUnrealizedGain >= 0 ? '#00FF99' : '#ef4444';
+      
+      // Usar los mismos tamaños que el contenido principal para uniformidad
+      const breakdownLabelFontSize = labelFontSize; // Mismo tamaño que las etiquetas principales
+      const breakdownValueFontSize = valueFontSize; // Mismo tamaño que los valores principales
+      
+      // Añadir desglose al tooltip
+      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">UNREALIZED</span>&nbsp;<span style="color: ${unrealizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${periodUnrealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodUnrealizedGain)}</span>`;
+      
+      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">REALIZED</span>&nbsp;<span style="color: ${realizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${periodRealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodRealizedGain)}</span>`;
     } else {
       // Full View - mostrar portfolio value primero
-      content = `<span style="color: #ffffff; font-size: 28px; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">PORTFOLIO VALUE</span>&nbsp;&nbsp;<span style="font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+      const portfolioLabel = 'PORTFOLIO VALUE';
+      
+      // Calcular longitud del contenido para responsive (sin desglose = MÁS ESPACIO)
+      const fullContentLength = dateFormat.length + portfolioLabel.length + formatCurrencyEuroAfter(marketValue).length + 4; // +4 por espacios
+      
+      // Tamaño responsive uniforme para todo el tooltip en Full View
+      const fullUniformFontSize = getTooltipFontSize(fullContentLength, 28); // Tamaño moderado
+      const fullMainFontSize = fullUniformFontSize; // Mismo tamaño
+      const fullLabelFontSize = fullUniformFontSize; // Mismo tamaño  
+      const fullValueFontSize = fullUniformFontSize; // Mismo tamaño
+      
+      content = `<span style="color: #ffffff; font-size: ${fullMainFontSize}; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${fullLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${portfolioLabel}</span>&nbsp;<span style="font-size: ${fullValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     }
     
     if (showTotalInvested && viewMode === 'both') {
-      // Determinar el tipo de profit mostrado basado en datos disponibles
-      const profitLabel = (entry.total_gain !== undefined || entry.net_profit !== undefined) ? 'TOTAL GAINS' : 'TOTAL GAINS';
-      // Todo en una línea con tamaño uniforme
-      content += `&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">COST BASIS</span>&nbsp;&nbsp;<span style="font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>&nbsp;&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: 24px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;&nbsp;<span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: top; position: relative; top: -2px;">&nbsp;${profitTriangle}</span><span style="color: ${profitColor}; font-size: 32px; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline; position: relative; top: 0px;">${Math.abs(profitPct).toFixed(1)}%</span>`;
+      // Calcular tamaños responsive para el contenido simplificado (sin UNR/REA)
+      const costBasisLabel = 'COST BASIS';
+      const totalLabel = 'TOTAL P&L';
+      const bothContentLength = (costBasisLabel.length + formatCurrencyEuroAfter(investedValue).length + 
+                                totalLabel.length + formatCurrencyEuroAfter(profit).length + 8); // +8 por espacios
+      
+      const bothLabelFontSize = getTooltipFontSize(bothContentLength, 28); // Tamaño moderado
+      const bothValueFontSize = getTooltipFontSize(bothContentLength, 28); // Tamaño moderado
+      
+      // Layout simplificado: PORTFOLIO VALUE ya mostrado + COST BASIS + TOTAL P&L
+      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${costBasisLabel}</span>&nbsp;<span style="font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>`;
+      
+      // Total P&L con porcentaje
+      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${totalLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
     }
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
@@ -2446,16 +2587,16 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   const { defaultStartDate, defaultEndDate } = getDefaultDates();
   const isUsingDefaultRange = (startDate === defaultStartDate && endDate === defaultEndDate);
   
-  console.log('🔥 RESET BUTTON CHECK:', 
-    'startDate:', startDate, 
-    'endDate:', endDate, 
-    'defaultStart:', defaultStartDate, 
-    'defaultEnd:', defaultEndDate,
-    'isUsingDefaultRange:', isUsingDefaultRange, 
-    'isZoomed:', isZoomed, 
-    'isTooltipFrozen:', isTooltipFrozen,
-    'shouldShow:', !isUsingDefaultRange || isZoomed || isTooltipFrozen
-  );
+  // console.log('🔥 RESET BUTTON CHECK:', 
+  //   'startDate:', startDate, 
+  //   'endDate:', endDate, 
+  //   'defaultStart:', defaultStartDate, 
+  //   'defaultEnd:', defaultEndDate,
+  //   'isUsingDefaultRange:', isUsingDefaultRange, 
+  //   'isZoomed:', isZoomed, 
+  //   'isTooltipFrozen:', isTooltipFrozen,
+  //   'shouldShow:', !isUsingDefaultRange || isZoomed || isTooltipFrozen
+  // );
   
   
   // Forzar re-evaluación del botón de reset después de cambios de zoom
@@ -3353,8 +3494,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           <div style={{
           position: 'absolute',
           top: '0',
-          left: '20px',
-          right: '20px', // Márgenes de 20px en ambos lados
+          left: '60px',
+          right: '60px', // Márgenes aumentados a 60px en ambos lados
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -3404,9 +3545,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? '2px solid rgba(34, 197, 94, 0.7)' 
                     : '2px solid rgba(255, 255, 255, 0.15)',
                   borderRadius: '10px',
-                  padding: '8px 14px',
+                  padding: '6px 10px',
                   color: viewMode === 'both' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '15px',
+                  fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -3446,9 +3587,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? '2px solid rgba(34, 197, 94, 0.7)' 
                     : '2px solid rgba(255, 255, 255, 0.15)',
                   borderRadius: '10px',
-                  padding: '8px 14px',
+                  padding: '6px 10px',
                   color: viewMode === 'balance' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '15px',
+                  fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -3500,9 +3641,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? '1px solid rgba(255, 255, 255, 0.3)' 
                     : '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: '8px',
-                  padding: '7px 12px',
+                  padding: '5px 8px',
                   color: showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)',
-                  fontSize: '15px',
+                  fontSize: '13px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '600',
                   cursor: 'pointer',
@@ -3572,9 +3713,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
                     : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
-                  padding: '6px 12px',
+                  padding: '4px 8px',
                   color: periodMode === 'day' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
+                  fontSize: '11px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -3616,13 +3757,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                       ? '1px solid rgba(255, 255, 255, 0.04)' 
                       : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
-                  padding: '6px 12px',
+                  padding: '4px 8px',
                   color: periodMode === 'week' 
                     ? '#ffffff' 
                     : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
                       ? 'rgba(245, 245, 245, 0.3)' 
                       : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
+                  fontSize: '11px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter)) ? 'not-allowed' : 'pointer',
@@ -3665,13 +3806,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                       ? '1px solid rgba(255, 255, 255, 0.04)' 
                       : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
-                  padding: '6px 12px',
+                  padding: '4px 8px',
                   color: periodMode === 'month' 
                     ? '#ffffff' 
                     : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
                       ? 'rgba(245, 245, 245, 0.3)' 
                       : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
+                  fontSize: '11px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter)) ? 'not-allowed' : 'pointer',
@@ -3714,13 +3855,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                       ? '1px solid rgba(255, 255, 255, 0.04)' 
                       : '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
-                  padding: '6px 12px',
+                  padding: '4px 8px',
                   color: periodMode === 'year' 
                     ? '#ffffff' 
                     : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
                       ? 'rgba(245, 245, 245, 0.3)' 
                       : 'rgba(245, 245, 245, 0.8)',
-                  fontSize: '13px',
+                  fontSize: '11px',
                   fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                   fontWeight: '700',
                   cursor: (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter)) ? 'not-allowed' : 'pointer',
@@ -3765,7 +3906,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 <span style={{ 
                   color: '#f5f5f5', 
                   fontWeight: '600',
-                  fontSize: '18px'
+                  fontSize: '15px'
                 }}>Portfolio Value</span>
               </div>
             )}
@@ -3786,7 +3927,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 <span style={{ 
                   color: '#f5f5f5', 
                   fontWeight: '600',
-                  fontSize: '18px'
+                  fontSize: '15px'
                 }}>Cost Basis</span>
               </div>
             )}
@@ -3808,7 +3949,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 <span style={{ 
                   color: '#f5f5f5', 
                   fontWeight: '600',
-                  fontSize: '18px'
+                  fontSize: '15px'
                 }}>Total P&L</span>
               </div>
             )}
@@ -3818,8 +3959,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           {/* Botones de fechas a la derecha */}
           <div style={{
             position: 'absolute',
-            top: '10px',
-            right: '0px',
+            top: '6px',
+            right: sidebarOpen ? '-30px' : '20px', // Otro pelin más a la derecha
             display: 'flex',
             alignItems: 'center',
             gap: '0px'
@@ -3832,10 +3973,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 borderRadius: '10px',
                 padding: (() => {
                   const { defaultStartDate } = getDefaultDates();
-                  return startDate && startDate !== defaultStartDate ? '12px 36px 12px 16px' : '12px 16px';
+                  return startDate && startDate !== defaultStartDate ? '6px 26px 6px 10px' : '6px 10px';
                 })(),
+                height: '37px',
+                boxSizing: 'border-box',
                 color: '#ffffff',
-                fontSize: '15px',
+                fontSize: '13px',
                 fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -3847,6 +3990,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 justifyContent: 'flex-start',
                 gap: '6px',
                 whiteSpace: 'nowrap',
+                minWidth: '120px',
                 userSelect: 'none',
                 WebkitUserSelect: 'none',
                 MozUserSelect: 'none',
@@ -3952,7 +4096,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                         background: 'transparent',
                         border: 'none',
                         color: '#ff6666',
-                        fontSize: '18px',
+                        fontSize: '15px',
                         cursor: 'pointer',
                         padding: '0',
                         lineHeight: '1',
@@ -4024,7 +4168,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                       style={{ 
                         fontWeight: '600',
                         color: '#ffffff',
-                        fontSize: '15px',
+                        fontSize: '13px',
                         textAlign: 'center',
                         background: '#1a1a1a',
                         border: '1px solid #333333',
@@ -4370,7 +4514,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                         setShowStartCalendar(false);
                       }}
                       style={{
-                        padding: '6px 12px',
+                        padding: '4px 8px',
                         border: '1px solid #444444',
                         borderRadius: '3px',
                         background: 'transparent',
@@ -4414,10 +4558,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 borderRadius: '10px',
                 padding: (() => {
                   const { defaultEndDate } = getDefaultDates();
-                  return endDate && endDate !== defaultEndDate ? '12px 36px 12px 16px' : '12px 16px';
+                  return endDate && endDate !== defaultEndDate ? '6px 26px 6px 10px' : '6px 10px';
                 })(),
+                height: '37px',
+                boxSizing: 'border-box',
                 color: '#ffffff',
-                fontSize: '15px',
+                fontSize: '13px',
                 fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -4429,6 +4575,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 justifyContent: 'flex-start',
                 gap: '6px',
                 whiteSpace: 'nowrap',
+                minWidth: '120px',
                 userSelect: 'none',
                 WebkitUserSelect: 'none',
                 MozUserSelect: 'none',
@@ -4507,7 +4654,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         <div id="tooltip-area" style={{ 
           flex: '1 1 auto',
           position: 'relative',
-          padding: '15px 10px',
+          padding: '10px 8px',
+          paddingLeft: '60px', // Alineado con el margen izquierdo del gráfico
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-start',
@@ -4522,9 +4670,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
 
       <div style={{
         height: '600px',
-        width: 'calc(100% - 40px)',
-        marginLeft: '20px',
-        marginRight: '20px',
+        width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)',
+        marginLeft: '60px',
+        marginRight: sidebarOpen ? '-20px' : '60px', // Margen negativo para extender más allá del borde
         position: 'relative',
       }}>
         <Line 
@@ -4604,13 +4752,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             style={{
               position: 'absolute',
               top: (sidebarOpen && showTotalInvested && viewMode !== 'balance') ? '-5px' : '-65px',
-              right: '30px',
+              right: sidebarOpen ? '-30px' : '20px',
               background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(16, 185, 129, 0.1))',
               border: '2px solid rgba(34, 197, 94, 0.3)',
               borderRadius: '14px',
-              padding: '10px 16px',
+              padding: '8px 12px',
               color: '#00ff88',
-              fontSize: '16px',
+              fontSize: '14px',
               fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
               fontWeight: '700',
               cursor: 'pointer',

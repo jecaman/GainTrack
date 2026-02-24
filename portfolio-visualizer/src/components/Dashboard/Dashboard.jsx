@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import OverviewSection from './Sections/Overview/OverviewSection';
-import AnalyticsSection from './Sections/Analytics/AnalyticsSection';
+import OperationsSection from './Sections/Operations/OperationsSection';
 import PortfolioSection from './Sections/Portfolio/PortfolioSection';
 import Filters from '../Filters';
 import Header from './Header';
 
 
 
-const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, isVisible = true }) => {
+const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, onReprocessCsv, isVisible = true }) => {
   const [filters, setFilters] = useState({
     dateRange: 'all',
     assetType: 'all',
@@ -246,6 +246,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     
     console.log('🎯 APPLY TIMELINE TO ALL - DATES TO USE:', datesToUse);
     console.log('🎯 WINDOW.TIMELINE DATES:', window.timelineDates);
+    console.log('🔍 [DEBUG] onReprocessCsv function available:', typeof onReprocessCsv);
     
     if (datesToUse) {
       // Check if this is a special point-click case
@@ -267,6 +268,14 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             to: clickedDate // Both dates should be the same for point clicks
           }
         }, 'pointClick'); // Special flag for point clicks
+        
+        // Re-process CSV with new date filter if available
+        if (onReprocessCsv) {
+          console.log('🎯 [DASHBOARD] Point click - calling reprocessCsv with:', clickedDate, clickedDate);
+          onReprocessCsv(clickedDate, clickedDate, Array.from(excludedOperations));
+        } else {
+          console.log('❌ [DASHBOARD] No onReprocessCsv function available');
+        }
         
         // Enable point click mode
         setIsInPointClickMode(true);
@@ -300,6 +309,11 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             to: newEndDate
           }
         });
+        
+        // Re-process CSV with new date filter if available
+        if (onReprocessCsv) {
+          onReprocessCsv(newStartDate, newEndDate, Array.from(excludedOperations));
+        }
         
         // Clear the applying flag immediately 
         setIsApplyingFromTimeline(false);
@@ -420,12 +434,33 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             isApplyingFromTimeline={isApplyingFromTimeline}
           />
         );
-      case 'analytics':
+      case 'operations':
         return (
-          <AnalyticsSection
+          <OperationsSection
             portfolioData={portfolioData}
+            isLoading={isLoading}
             theme={theme}
             filters={filters}
+            hiddenAssets={hiddenAssets}
+            excludedOperations={excludedOperations}
+            showApplyPopup={showApplyPopup}
+            setShowApplyPopup={setShowApplyPopup}
+            startDate={startDate}
+            endDate={endDate}
+            buttonStartDate={timelineStartDate || startDate}
+            buttonEndDate={timelineEndDate || endDate}
+            setStartDate={handleTimelineStartDateChange}
+            setEndDate={handleTimelineEndDateChange}
+            onTimelineApplyToAll={handleTimelineApplyToAll}
+            showTimelinePopup={showTimelinePopup}
+            showTimelineClickPopup={showTimelineClickPopup}
+            isInPointClickMode={isInPointClickMode}
+            setIsInPointClickMode={setIsInPointClickMode}
+            sidebarOpen={sidebarOpen}
+            timelineUnfreezeTooltipRef={timelineUnfreezeTooltipRef}
+            filterSelectedPreset={filterSelectedPreset}
+            onFilterReset={handleFilterReset}
+            isApplyingFromTimeline={isApplyingFromTimeline}
           />
         );
       case 'portfolio':

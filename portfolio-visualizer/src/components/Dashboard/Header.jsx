@@ -151,7 +151,7 @@ const Header = ({
               fontWeight: '500', 
               color: theme.textPrimary 
             }}>
-              Real-time Analytics
+              Operations History
             </div>
           </div>
         </div>

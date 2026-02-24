@@ -1,4 +1,5 @@
-from fastapi import FastAPI, UploadFile, File, Request
+from fastapi import FastAPI, UploadFile, File, Request, Form
+from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -455,8 +456,17 @@ def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp, fee=0):
     
     return asset_lots['total_invested']
 
-def create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices):
-    """Crear datos de portfolio usando las nuevas funciones modulares del main2.py"""
+def create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices, calculate_period_gains=False, fecha_inicio=None, fecha_fin=None):
+    """Crear datos de portfolio usando las nuevas funciones modulares del main2.py
+    
+    Args:
+        trades_df: DataFrame con los trades
+        balances: Dict con balances actuales
+        current_prices: Dict con precios actuales
+        calculate_period_gains: Si True, calcula gains del período filtrado
+        fecha_inicio: Fecha inicio para filtro período
+        fecha_fin: Fecha fin para filtro período
+    """
     
     # 1. Calcular Portfolio Value usando nueva función modular
     portfolio_result = calcular_portfolio_value(
@@ -481,13 +491,33 @@ def create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_p
     realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0)
     total_fees = cost_basis_result.get('totales', {}).get('total_fees', 0)
     
-    # 6. Extraer datos por asset
+    # 6. Si está activado el cálculo de período, recalcular gains
+    if calculate_period_gains and fecha_inicio and fecha_fin:
+        print(f"🎯 Recalculando gains para período: {fecha_inicio} a {fecha_fin}")
+        
+        # Calcular el timeline solo para obtener gains del período
+        timeline_result = calcular_holdings_diarios_csv(
+            trades_df, current_prices, fecha_inicio, fecha_fin, True
+        )
+        
+        if timeline_result:
+            # Usar los valores del último día del timeline (que contiene los gains del período)
+            last_day = timeline_result[-1]
+            realized_gains_total = last_day.get('realized_gains', 0)
+            unrealized_gains_total = last_day.get('unrealized_gains', 0)
+            
+            print(f"🎯 Gains período recalculados:")
+            print(f"   Realized: {realized_gains_total:.2f}€")
+            print(f"   Unrealized: {unrealized_gains_total:.2f}€")
+            print(f"   Total: {realized_gains_total + unrealized_gains_total:.2f}€")
+    
+    # 7. Extraer datos por asset
     portfolio_assets = portfolio_result.get('assets', {})
     cost_basis_assets = cost_basis_result.get('assets', {})
     unrealized_assets = unrealized_result.get('assets', {}) 
     realized_assets = realized_result.get('assets', {})
     
-    # 7. Crear portfolio array usando los resultados de las funciones modulares
+    # 8. Crear portfolio array usando los resultados de las funciones modulares
     portfolio_array = []
     
     # Combinar datos de todas las fuentes (portfolio, cost basis, unrealized, realized)
@@ -545,7 +575,7 @@ def create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_p
                 'net_profit_percent': max(-999.99, min(999.99, net_profit_percent))
             })
     
-    # 8. Calcular KPIs consolidados
+    # 9. Calcular KPIs consolidados
     crypto_value = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'crypto')
     liquidity = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'fiat')
     net_profit = realized_gains_total + unrealized_gains_total
@@ -569,16 +599,19 @@ def create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_p
         'data_source': 'csv'
     }
 
-def create_portfolio_data_from_trades(trades_df, balances, current_prices):
+def create_portfolio_data_from_trades(trades_df, balances, current_prices, calculate_period_gains=False, fecha_inicio=None, fecha_fin=None):
     """Wrapper para mantener compatibilidad - usa versión mejorada con funciones modulares"""
-    return create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices)
+    return create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices, calculate_period_gains, fecha_inicio, fecha_fin)
 
-def calcular_holdings_diarios_csv(trades_df, current_prices=None):
+def calcular_holdings_diarios_csv(trades_df, current_prices=None, fecha_inicio=None, fecha_fin=None, calculate_period_gains=False):
     """Calcula los holdings diarios desde el primer trade hasta HOY
     
     Args:
         trades_df: DataFrame con los trades
         current_prices: Dict con precios actuales para usar en el último día
+        fecha_inicio: Fecha de inicio para filtro (YYYY-MM-DD string) - opcional
+        fecha_fin: Fecha de fin para filtro (YYYY-MM-DD string) - opcional
+        calculate_period_gains: Si True, calcula gains solo del período filtrado (solo de operaciones del período)
     """
     start_time = time.time()
     if trades_df.empty:
@@ -588,16 +621,29 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
     prep_start = time.time()
     trades_df = trades_df.sort_values('time').copy()
     
-    # Obtener rango de fechas - SIEMPRE hasta HOY
-    fecha_minima = trades_df['time'].min().date()
+    # Obtener rango de fechas
+    fecha_minima_trades = trades_df['time'].min().date()
     fecha_ultimo_trade = trades_df['time'].max().date()
     today = date.today()
     
+    # Usar fechas de parámetros si se proporcionan, sino usar rango completo
+    if fecha_inicio:
+        fecha_minima = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
+    else:
+        fecha_minima = fecha_minima_trades
+        
+    if fecha_fin:
+        fecha_maxima = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
+    else:
+        fecha_maxima = today
+    
     print(f"🔍 TIMELINE DEBUG:")
-    print(f"   Primer trade: {fecha_minima}")
+    print(f"   Primer trade: {fecha_minima_trades}")
     print(f"   Último trade: {fecha_ultimo_trade}")
-    print(f"   Fecha actual: {today}")
-    print(f"   ¿Debería extenderse? {fecha_ultimo_trade < today}")
+    print(f"   Fecha filtro inicio: {fecha_inicio or 'N/A'}")
+    print(f"   Fecha filtro fin: {fecha_fin or 'N/A'}")
+    print(f"   Rango a calcular: {fecha_minima} a {fecha_maxima}")
+    print(f"   Cálculo de período: {calculate_period_gains}")
     
     # Obtener assets únicos para precios históricos
     assets_unicos = set()
@@ -621,7 +667,7 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
         if i > 0:
             time.sleep(0.5)
         
-        precios = obtener_precios_diarios_cached(asset, fecha_minima, today)
+        precios = obtener_precios_diarios_cached(asset, fecha_minima, fecha_maxima)
         asset_time = time.time() - asset_start
         
         if precios:
@@ -639,11 +685,18 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
     timeline = []
     holdings_por_asset = {}  # {asset: {'buy_lots': [], 'total_invested': 0, 'fees': 0, 'cantidad': 0}}
     
-    days_to_process = (today - fecha_minima).days + 1
+    # Variables para cálculo de gains por período
+    portfolio_value_at_period_start = 0
+    cash_flows_during_period = 0  # Suma de compras (positivo) y ventas (negativo)
+    period_start_calculated = False
+    period_realized_gains_total = 0  # Acumular realized gains del período
+    assets_bought_in_period = set()  # Tracks assets bought during the period
+    
+    days_to_process = (fecha_maxima - fecha_minima).days + 1
     print(f"📅 Procesando {days_to_process} días de timeline...")
     
     day_count = 0
-    while fecha_actual <= today:
+    while fecha_actual <= fecha_maxima:
         fecha_str = fecha_actual.strftime('%Y-%m-%d')
         
         # Procesar trades de este día
@@ -738,6 +791,75 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
         # Total gains = realized + unrealized
         total_gains_dia = realized_gains_dia + unrealized_gains_dia
         
+        # **NUEVA LÓGICA**: Cálculo de gains por período si está activado
+        if calculate_period_gains:
+            # Capturar valor del portfolio al inicio del período (primer día)
+            if not period_start_calculated and fecha_actual == fecha_minima:
+                portfolio_value_at_period_start = valor_mercado_dia
+                period_start_calculated = True
+                print(f"📊 Valor portfolio inicio período ({fecha_str}): {portfolio_value_at_period_start:.2f}€")
+            
+            # Rastrear flujos de caja del día (compras/ventas)
+            day_cash_flows = 0
+            day_period_realized_gains = 0  # Solo realized gains del día para el período
+            
+            for trade in trades_del_dia.iterrows():
+                trade_data = trade[1]
+                trade_cost = float(trade_data.get('cost', 0))
+                trade_fee = float(trade_data.get('fee', 0))
+                trade_type = str(trade_data.get('type', '')).lower()
+                
+                if trade_type == 'buy':
+                    day_cash_flows += (trade_cost + trade_fee)  # Dinero que sale (positivo)
+                elif trade_type == 'sell':
+                    day_cash_flows -= trade_cost  # Dinero que entra (negativo porque es ganancia)
+            
+            # Trackear assets comprados en el período
+            for trade in trades_del_dia.iterrows():
+                trade_data = trade[1]
+                pair = str(trade_data['pair'])
+                asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
+                if asset == pair:
+                    asset = pair
+                
+                trade_type = str(trade_data.get('type', '')).lower()
+                if trade_type == 'buy':
+                    assets_bought_in_period.add(asset)
+            
+            # Solo contar realized gains de ventas de assets que también se compraron en el período
+            day_period_realized_gains = 0
+            for venta in ventas_del_dia:
+                if venta['asset'] in assets_bought_in_period:
+                    day_period_realized_gains += venta['realized_gain']
+                    print(f"🎯 Counting realized gain for {venta['asset']}: {venta['realized_gain']:.2f}€ (bought in period)")
+                else:
+                    print(f"⚠️ Skipping realized gain for {venta['asset']}: {venta['realized_gain']:.2f}€ (NOT bought in period)")
+            
+            period_realized_gains_total += day_period_realized_gains
+            
+            cash_flows_during_period += day_cash_flows
+            
+            # Calcular gains del período hasta este día (progresivo)
+            period_gains_so_far = valor_mercado_dia - portfolio_value_at_period_start - cash_flows_during_period
+            
+            # Calcular unrealized gains del período hasta este día
+            period_unrealized_gains_so_far = period_gains_so_far - period_realized_gains_total
+            
+            # Sobrescribir valores para mostrar solo gains del período (progresivo)
+            total_gains_dia = period_gains_so_far
+            realized_gains_dia = period_realized_gains_total  # Solo del período (acumulado)
+            unrealized_gains_dia = period_unrealized_gains_so_far  # Solo del período (hasta este día)
+            
+            # Debug en el último día
+            if fecha_actual == fecha_maxima:
+                print(f"🎯 GAINS PERÍODO FINAL:")
+                print(f"   Valor final: {valor_mercado_dia:.2f}€")
+                print(f"   Valor inicio: {portfolio_value_at_period_start:.2f}€")
+                print(f"   Flujos caja: {cash_flows_during_period:.2f}€")
+                print(f"   Total gains: {period_gains_so_far:.2f}€")
+                print(f"   Realized gains período: {period_realized_gains_total:.2f}€")
+                print(f"   Unrealized gains período: {period_unrealized_gains_so_far:.2f}€")
+        
         # Calcular total_invested_fifo_dia (solo activos retenidos, homólogo a KPI)
         total_invested_fifo_dia = sum(holding["total_invested"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
         total_gains_percent = (total_gains_dia / total_invested_fifo_dia * 100) if total_invested_fifo_dia > 0 else 0
@@ -815,8 +937,15 @@ def calcular_holdings_diarios_csv(trades_df, current_prices=None):
     
     return timeline
 
-def process_trades_csv(df):
-    """Procesa CSV de Trades History"""
+def process_trades_csv(df, fecha_inicio=None, fecha_fin=None, calculate_period_gains=False):
+    """Procesa CSV de Trades History
+    
+    Args:
+        df: DataFrame con los trades
+        fecha_inicio: Fecha inicio para filtro período (YYYY-MM-DD string) - opcional
+        fecha_fin: Fecha fin para filtro período (YYYY-MM-DD string) - opcional  
+        calculate_period_gains: Si True, calcula gains solo del período filtrado
+    """
     start_time = time.time()
     try:
         # TIMING: Validación de columnas
@@ -863,14 +992,14 @@ def process_trades_csv(df):
         
         # TIMING: Creación de datos de portfolio
         portfolio_start = time.time()
-        portfolio_result = create_portfolio_data_from_trades(trades_df, balances, current_prices)
+        portfolio_result = create_portfolio_data_from_trades(trades_df, balances, current_prices, calculate_period_gains, fecha_inicio, fecha_fin)
         portfolio_time = time.time() - portfolio_start
         print(f"⏱️ TIMING - Creación portfolio: {portfolio_time:.3f}s")
         
         # TIMING: Generación de timeline
         timeline_start = time.time()
         print(f"📈 Generando timeline histórico...")
-        timeline_data = calcular_holdings_diarios_csv(trades_df, current_prices)
+        timeline_data = calcular_holdings_diarios_csv(trades_df, current_prices, fecha_inicio, fecha_fin, calculate_period_gains)
         timeline_time = time.time() - timeline_start
         print(f"⏱️ TIMING - Generación timeline: {timeline_time:.3f}s")
         
@@ -883,8 +1012,15 @@ def process_trades_csv(df):
     except Exception as e:
         return {"error": f"Error processing Trades CSV: {str(e)}"}
 
-def process_csv_data(csv_content):
-    """Procesa los datos del CSV de Kraken"""
+def process_csv_data(csv_content, fecha_inicio=None, fecha_fin=None, calculate_period_gains=False):
+    """Procesa los datos del CSV de Kraken
+    
+    Args:
+        csv_content: Contenido del CSV
+        fecha_inicio: Fecha inicio para filtro período (YYYY-MM-DD string) - opcional
+        fecha_fin: Fecha fin para filtro período (YYYY-MM-DD string) - opcional
+        calculate_period_gains: Si True, calcula gains solo del período filtrado
+    """
     start_time = time.time()
     try:
         # TIMING: Parseo del CSV
@@ -902,7 +1038,7 @@ def process_csv_data(csv_content):
             
             # TIMING: Procesamiento de trades
             trades_start = time.time()
-            result = process_trades_csv(df)
+            result = process_trades_csv(df, fecha_inicio, fecha_fin, calculate_period_gains)
             trades_time = time.time() - trades_start
             print(f"⏱️ TIMING - Procesamiento trades: {trades_time:.3f}s")
             
@@ -983,13 +1119,19 @@ async def upload_csv_debug(request: Request):
         return {"error": str(e)}
 
 @app.post("/api/portfolio/csv")
-async def upload_csv(csv_file: UploadFile = File()):
-    """Endpoint para procesar CSV de Kraken"""
+async def upload_csv(
+    csv_file: UploadFile = File(),
+    fecha_inicio: Optional[str] = Form(None),
+    fecha_fin: Optional[str] = Form(None),
+    calculate_period_gains: Optional[bool] = Form(False)
+):
+    """Endpoint para procesar CSV de Kraken con soporte para filtros de fecha"""
     start_time = time.time()
     try:
         print(f"📤 INICIO - Recibiendo archivo: {csv_file.filename if csv_file else 'None'}")
         print(f"📤 Content-Type: {csv_file.content_type if csv_file else 'None'}")
         print(f"📤 Size: {csv_file.size if hasattr(csv_file, 'size') else 'Unknown'}")
+        print(f"📤 Parámetros de fecha - Inicio: {fecha_inicio}, Fin: {fecha_fin}, Cálculo período: {calculate_period_gains}")
         
         if not csv_file:
             print("❌ No se recibió archivo")
@@ -1022,7 +1164,7 @@ async def upload_csv(csv_file: UploadFile = File()):
         # TIMING: Procesamiento completo
         processing_start = time.time()
         print("📤 Iniciando procesamiento...")
-        result = process_csv_data(csv_content)
+        result = process_csv_data(csv_content, fecha_inicio, fecha_fin, calculate_period_gains)
         processing_time = time.time() - processing_start
         print(f"⏱️ TIMING - Procesamiento total: {processing_time:.3f}s")
         

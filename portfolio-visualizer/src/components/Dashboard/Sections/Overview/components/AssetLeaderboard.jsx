@@ -354,14 +354,17 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
         </div>
       </div>
       
-      {/* Contenedor con scroll horizontal y vertical */}
+      {/* Contenedor con scroll horizontal y vertical - Alineado con timeline */}
       <div style={{
         background: 'transparent',
         border: 'none',
         borderRadius: '0',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        width: '100%',
+        margin: '0',
+        padding: '0'
       }}>
-        {/* Tabla con scroll horizontal solamente */}
+        {/* Tabla con scroll horizontal solamente - Alineada exactamente con timeline */}
         <div style={{
           overflowX: 'auto',
           overflowY: 'visible', // Sin scroll vertical - lo maneja el container padre
@@ -376,6 +379,13 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
           touchAction: 'auto', // Permite todos los gestos táctiles
           // Reducir sensibilidad del scroll
           scrollPadding: '10px',
+          // MISMOS márgenes que el timeline
+          width: 'calc(100% - 120px)',
+          marginLeft: '60px',
+          marginRight: '60px',
+          margin: '0',
+          padding: '0',
+          boxSizing: 'border-box'
         }}>
           <table style={{
             width: '100%',

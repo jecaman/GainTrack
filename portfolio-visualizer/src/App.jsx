@@ -13,6 +13,67 @@ function App() {
   const [timeline, setTimeline] = useState([]);
   const [error, setError] = useState('');
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [csvFile, setCsvFile] = useState(null); // Store CSV file for re-processing
+
+  // Function to re-process CSV with date filters
+  const reprocessCsvWithFilters = async (startDate, endDate, excludedOperations = []) => {
+    if (!csvFile) {
+      console.log('❌ [APP] No CSV file stored for reprocessing');
+      return;
+    }
+    
+    console.log('🔄 [APP] Reprocessing CSV with filters:', { startDate, endDate, excludedOpsCount: excludedOperations.length });
+    
+    setIsLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('csv_file', csvFile);
+      
+      // Add date parameters
+      if (startDate) {
+        formData.append('start_date', startDate);
+        console.log('📅 [APP] Adding start_date to request:', startDate);
+      }
+      if (endDate) {
+        formData.append('end_date', endDate);
+        console.log('📅 [APP] Adding end_date to request:', endDate);
+      }
+      
+      // Add excluded operations
+      if (excludedOperations.length > 0) {
+        formData.append('excluded_operations', JSON.stringify(excludedOperations));
+        console.log('❌ [APP] Adding excluded operations:', excludedOperations.length);
+      }
+      
+      console.log('🚀 [APP] Making request to backend...');
+      const response = await fetch('http://localhost:8001/api/portfolio/csv', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      console.log('✅ [APP] Backend response received:', { hasError: !!data.error, timelineLength: data.timeline?.length });
+      
+      if (data.error) {
+        console.log('❌ [APP] Backend error:', data.error);
+        setError(data.error);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Update portfolio data with filtered results
+      setFullPortfolioData(data);
+      setPortfolioData(data.portfolio_data);
+      setTimeline(data.timeline || []);
+      console.log('🎯 [APP] Portfolio data updated successfully');
+      
+    } catch (err) {
+      console.log('💥 [APP] Request failed:', err);
+      setError('Failed to reprocess CSV data.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleApiSubmit = async (apiData) => {
     setIsLoading(true);
@@ -26,6 +87,10 @@ function App() {
       if (apiData.csvData) {
         // Datos ya procesados del CSV
         data = apiData.csvData;
+        // Store the CSV file for potential re-processing
+        if (apiData.csvFile) {
+          setCsvFile(apiData.csvFile);
+        }
       } else {
         // Llamada a la API normal
         response = await fetch('http://localhost:8001/api/portfolio', {
@@ -159,6 +224,7 @@ function App() {
               cardBackground: '#1a1a1a'
             }}
             onShowGainTrack={handleBackToForm}
+            onReprocessCsv={reprocessCsvWithFilters}
           />
         </ErrorBoundary>
       </div>

@@ -19,7 +19,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     
     // Debug: Log para ver qué está pasando
     if (label?.includes('Gains')) {
-      console.log(`${label}: value="${value}" (${thisValueLength} chars), percent="${changePercent}" (${thisPercentLength} chars), total=${thisContentChars}`);
+      // console.log(`${label}: value="${value}" (${thisValueLength} chars), percent="${changePercent}" (${thisPercentLength} chars), total=${thisContentChars}`);
     }
     
     if (thisContentChars === 0) return '1.8rem'; // Default si no hay contenido
@@ -34,7 +34,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     const finalSize = Math.max(fontSize, minFontSize);
     
     if (label?.includes('Gains')) {
-      console.log(`${label}: fontSize calculated = ${finalSize}rem`);
+      // console.log(`${label}: fontSize calculated = ${finalSize}rem`);
     }
     
     return `${finalSize}rem`;
@@ -74,7 +74,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         overflow: 'hidden', // Contener el contenido dentro del KPI
         border: `1px solid ${isCardHovered ? '#00ff88' : 'transparent'}`, // Borde verde fosforito en hover
         borderRadius: '12px', // Bordes redondeados
-        padding: '6px', // Padding aún más reducido
+        padding: '8px 6px', // Padding simétrico: más arriba/abajo, menos laterales
         transition: 'all 0.3s ease', // Transición suave para efectos hover
         boxShadow: isCardHovered ? '0 0 20px rgba(0, 255, 136, 0.3)' : 'none', // Resplandor verde en hover
         cursor: tooltip ? 'pointer' : 'default' // Cursor pointer si hay tooltip
@@ -125,14 +125,15 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           letterSpacing: '0.5px',
           fontFamily: 'SF Mono, Monaco, monospace',
           textAlign: 'center',
-          marginBottom: '8px', // Menos espacio entre título y contenido
-          minHeight: '20px',
+          marginBottom: '4px', // Espacio reducido para mejor centrado
+          height: '20px', // Altura fija en lugar de minHeight
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           whiteSpace: 'nowrap',
           position: 'relative',
-          width: '100%' // Asegurar que ocupe todo el ancho
+          width: '100%', // Asegurar que ocupe todo el ancho
+          flexShrink: 0 // No permitir que se reduzca
         }}
       >
         {/* Título centrado */}
@@ -181,10 +182,10 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
       <div style={{
         display: 'flex',
         flexDirection: 'row', // Volver a fila
-        alignItems: 'baseline',
+        alignItems: 'center', // Cambio a center para mejor centrado vertical
         justifyContent: 'center',
-        gap: '4px', // Gap entre valor y porcentaje
-        minHeight: '50px',
+        gap: '3px', // Gap reducido entre valor y triángulo
+        flex: 1, // Usar el espacio restante disponible
         width: '100%',
         textAlign: 'center',
         flexWrap: 'nowrap'
@@ -292,12 +293,26 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       const startDateStr = startDate;
       const endDateStr = endDate;
       
-      // ALWAYS use "Portfolio State" view: process all data up to the end date
-      // This shows the accumulated portfolio state as of the end date
-      timelineToProcess = portfolioData.timeline.filter(entry => {
-        const entryDateStr = entry.date.split('T')[0];
-        return entryDateStr <= endDateStr; // All data up to end date
-      });
+      if (isPointClick) {
+        // Point-in-time: Portfolio State view (old behavior)
+        timelineToProcess = portfolioData.timeline.filter(entry => {
+          const entryDateStr = entry.date.split('T')[0];
+          return entryDateStr <= endDateStr; // All data up to end date
+        });
+      } else {
+        // Period range: Calculate period gains (NEW BEHAVIOR)
+        // We need to process all data up to end date for accurate portfolio state,
+        // but calculate gains based on period difference
+        timelineToProcess = portfolioData.timeline.filter(entry => {
+          const entryDateStr = entry.date.split('T')[0];
+          return entryDateStr <= endDateStr; // All data up to end date (for accurate state)
+        });
+        
+        // Mark that we're in period mode for special gain calculation
+        window.periodCalculationMode = true;
+        window.periodStartDate = startDateStr;
+        window.periodEndDate = endDateStr;
+      }
     }
     
     if (timelineToProcess.length === 0) {
@@ -319,6 +334,7 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
     let cost_basis_fifo = {}; // Asset -> FIFO queue for cost basis
     let calculatedTotalInvested = 0;
     let calculatedRealizedGains = 0;
+    let calculatedUnrealizedGains = 0;
     
     // Process all operations up to the end date to get portfolio state
     timelineToProcess.forEach(dayData => {
@@ -409,8 +425,94 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       }
     }
     
-    const profit = currentValue - totalInvested;
-    const profitPercentage = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
+    // **NUEVA LÓGICA**: Cálculo de gains por período 
+    let profit = currentValue - totalInvested;
+    let profitPercentage = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
+    
+    // Determine if we should calculate period gains (when it's a date range, not a single point)
+    const shouldCalculatePeriodGains = !isPointClick && startDate && endDate && startDate !== endDate;
+    
+    if (shouldCalculatePeriodGains) {
+      // Calculate period-specific gains
+      const startDateStr = startDate;
+      const endDateStr = endDate;
+      
+      // Find portfolio values at start and end of period
+      const startEntry = portfolioData.timeline.find(entry => entry.date.split('T')[0] === startDateStr);
+      const endEntry = portfolioData.timeline.find(entry => entry.date.split('T')[0] === endDateStr);
+      
+      if (startEntry && endEntry) {
+        const portfolioValueStart = startEntry.value || 0;
+        const portfolioValueEnd = endEntry.value || 0;
+        
+        // Calculate cash flows during the period (compras/ventas)
+        let cashFlowsDuringPeriod = 0;
+        const periodData = portfolioData.timeline.filter(entry => {
+          const entryDateStr = entry.date.split('T')[0];
+          return entryDateStr >= startDateStr && entryDateStr <= endDateStr;
+        });
+        
+        periodData.forEach(dayData => {
+          const operations = dayData.operations || [];
+          operations.forEach(operation => {
+            if (!hiddenAssetsBackend.has(operation.asset) && !excludedOperations.has(operation.operation_key)) {
+              const cost = parseFloat(operation.cost) || 0;
+              const fee = parseFloat(operation.fee) || 0;
+              const tipo = operation.type;
+              
+              if (tipo === 'buy') {
+                cashFlowsDuringPeriod += (cost + fee); // Money out (positive)
+              } else if (tipo === 'sell') {
+                cashFlowsDuringPeriod -= cost; // Money in (negative)
+              }
+            }
+          });
+        });
+        
+        // Period gains = End Value - Start Value - Cash Flows
+        const periodGains = portfolioValueEnd - portfolioValueStart - cashFlowsDuringPeriod;
+        
+        // console.log('📊 PERIOD GAINS CALCULATION:', {
+        //   startValue: portfolioValueStart,
+        //   endValue: portfolioValueEnd,
+        //   cashFlows: cashFlowsDuringPeriod,
+        //   periodGains: periodGains,
+        //   formula: `${portfolioValueEnd} - ${portfolioValueStart} - ${cashFlowsDuringPeriod} = ${periodGains}`
+        // });
+        
+        profit = periodGains;
+        profitPercentage = portfolioValueStart > 0 ? (profit / portfolioValueStart) * 100 : 0;
+        
+        // Calculate period-specific realized and unrealized gains
+        let periodRealizedGains = 0;
+        periodData.forEach(dayData => {
+          const operations = dayData.operations || [];
+          operations.forEach(operation => {
+            if (!hiddenAssetsBackend.has(operation.asset) && !excludedOperations.has(operation.operation_key)) {
+              if (operation.type === 'sell') {
+                // Add realized gain from sales that occurred in this period
+                const realizedGain = parseFloat(operation.realized_gain) || 0;
+                periodRealizedGains += realizedGain;
+              }
+            }
+          });
+        });
+        
+        // Period unrealized gains = Total period gains - Period realized gains
+        const periodUnrealizedGains = periodGains - periodRealizedGains;
+        
+        // Override the calculated values with period-specific ones
+        calculatedRealizedGains = periodRealizedGains;
+        calculatedUnrealizedGains = periodUnrealizedGains;
+        
+        // console.log('📊 PERIOD BREAKDOWN:', {
+        //   totalPeriodGains: periodGains,
+        //   periodRealizedGains: periodRealizedGains,
+        //   periodUnrealizedGains: periodUnrealizedGains,
+        //   check: `${periodRealizedGains} + ${periodUnrealizedGains} = ${periodRealizedGains + periodUnrealizedGains} (should equal ${periodGains})`
+        // });
+      }
+    }
     
     // Calculate fees for the filtered period, excluding hidden assets and excluded operations
     let calculatedTotalFees = 0;
@@ -424,21 +526,23 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       });
     });
     
-    // Calculate unrealized gains using all realized gains up to end date
-    const calculatedUnrealizedGains = profit - calculatedRealizedGains;
+    // Calculate unrealized gains using all realized gains up to end date (only if not already calculated in period mode)
+    if (!shouldCalculatePeriodGains) {
+      calculatedUnrealizedGains = profit - calculatedRealizedGains;
+    }
     const calculatedUnrealizedPercentage = totalInvested > 0 ? (calculatedUnrealizedGains / totalInvested) * 100 : 0;
     
-    console.log('KPI Calculation:', {
-      dateRange: startDate && endDate ? `${startDate} to ${endDate}` : 'All dates',
-      excludedOps: Array.from(excludedOperations),
-      currentValue,
-      totalInvested,
-      profit,
-      calculatedRealizedGains,
-      calculatedUnrealizedGains,
-      calculatedTotalFees,
-      check: `Realized + Unrealized = ${calculatedRealizedGains + calculatedUnrealizedGains}, should equal profit = ${profit}`
-    });
+    // console.log('KPI Calculation:', {
+    //   dateRange: startDate && endDate ? `${startDate} to ${endDate}` : 'All dates',
+    //   excludedOps: Array.from(excludedOperations),
+    //   currentValue,
+    //   totalInvested,
+    //   profit,
+    //   calculatedRealizedGains,
+    //   calculatedUnrealizedGains,
+    //   calculatedTotalFees,
+    //   check: `Realized + Unrealized = ${calculatedRealizedGains + calculatedUnrealizedGains}, should equal profit = ${profit}`
+    // });
     
     return {
       current_value: currentValue,
@@ -500,9 +604,9 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
 
     // Calcular porcentajes para el tooltip
     const realizedPercentage = kpis.total_invested > 0 ? (realizedGains / kpis.total_invested) * 100 : 0;
-    const realizedPercentText = `${realizedIsPositive ? '+' : ''}${formatEuropeanPercentage(realizedPercentage, 1)}`;
-    const unrealizedPercentText = `${unrealizedIsPositive ? '+' : ''}${formatEuropeanPercentage(unrealizedPercentage, 1)}`;
-    const totalGainsPercentText = `${totalGainsIsPositive ? '+' : ''}${formatEuropeanPercentage(totalGainsPercentage, 1)}`;
+    const realizedPercentText = `${formatEuropeanPercentage(Math.abs(realizedPercentage), 1)}`;
+    const unrealizedPercentText = `${formatEuropeanPercentage(Math.abs(unrealizedPercentage), 1)}`;
+    const totalGainsPercentText = `${formatEuropeanPercentage(Math.abs(totalGainsPercentage), 1)}`;
 
     // Datos estructurados para el hover del Net Profit
     const realizedData = {
@@ -562,26 +666,39 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
     }
   };
 
+  // Calcular márgenes dinámicos exactamente igual que el timeline
+  const getMargins = () => {
+    // El timeline siempre usa márgenes fijos de 60px pero ajusta internamente
+    // el ancho disponible restando 350px cuando sidebarOpen es true
+    return {
+      width: 'calc(100% - 120px)', // Mismo ancho base que el timeline
+      marginLeft: '60px', // Margen fijo igual que timeline
+      marginRight: '60px', // Margen fijo igual que timeline
+      // El ajuste por sidebar se hace internamente, no en los márgenes CSS
+    };
+  };
+
+  const margins = getMargins();
+
   return (
     <div style={{
-      width: '100%',
-      display: 'flex',
-      justifyContent: 'center',
       paddingTop: '40px' // Espacio arriba de los KPIs
     }}>
-      
+      {/* Contenedor con exactamente los mismos márgenes que el timeline */}
       <div style={{
-        display: 'flex',
-        flexDirection: windowWidth < 768 ? 'column' : 'row',
-        alignItems: 'center',
-        justifyContent: 'center', // Centrado en lugar de space-evenly
-        width: '100%',
-        maxWidth: `${windowWidth - (windowWidth < 768 ? 20 : 40)}px`, // Contenedor más ancho
-        padding: windowWidth < 768 ? '0 20px' : '0 40px',
-        flexWrap: 'nowrap', // Siempre en línea para los 5 KPIs
-        margin: '0 auto',
-        gap: `${windowWidth < 768 ? 15 : 20}px` // Gap más pequeño para usar más espacio
+        width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 80px)', // Más conservador cuando sidebar cerrado
+        marginLeft: sidebarOpen ? '-40px' : '20px', // Menos desplazamiento cuando sidebar cerrado
+        marginRight: sidebarOpen ? '-20px' : '60px', // Margen normal cuando sidebar cerrado
+        position: 'relative',
       }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: windowWidth < 768 ? 'column' : 'row',
+          alignItems: 'center',
+          justifyContent: 'space-evenly', // Distribución uniforme del espacio
+          width: '100%',
+          flexWrap: 'nowrap', // Siempre en línea para los 5 KPIs
+        }}>
         <KPICard
           label="Portfolio Value"
           value={kpiData.currentValue}
@@ -635,6 +752,7 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           sidebarOpen={sidebarOpen}
           windowWidth={windowWidth}
         />
+        </div>
       </div>
     </div>
   );

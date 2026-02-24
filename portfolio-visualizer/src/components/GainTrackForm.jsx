@@ -192,10 +192,14 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
     });
   };
 
-  const processCsvFile = async (file) => {
+  const processCsvFile = async (file, startDate = null, endDate = null) => {
     try {
       const formData = new FormData();
       formData.append('csv_file', file);
+      
+      // Add date parameters if provided
+      if (startDate) formData.append('start_date', startDate);
+      if (endDate) formData.append('end_date', endDate);
       
       const response = await fetch('http://localhost:8001/api/portfolio/csv', {
         method: 'POST',
@@ -210,7 +214,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
       }
       
       // Llamar a onSubmit con los datos procesados del CSV
-      onSubmit({ csvData: data });
+      onSubmit({ csvData: data, csvFile: file });
     } catch (error) {
       setValidationError('Error processing CSV file. Please try again.');
     }

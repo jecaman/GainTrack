@@ -500,22 +500,22 @@ def calcular_portfolio_value(
             # =============================================================
             # 📊 SECCIÓN KRAKEN API - PRECIOS TIEMPO REAL
             # =============================================================
-            print(f"📡 [KRAKEN API] Obteniendo precios tiempo real para {len(assets_sin_precio)} assets...")
+            # print(f"📡 [KRAKEN API] Obteniendo precios tiempo real para {len(assets_sin_precio)} assets...")
             start_time = time.time()
             precios_externos = obtener_precios(assets_sin_precio)
             tiempo_transcurrido = time.time() - start_time
-            print(f"⚡ [KRAKEN API] Exitosos: {len(precios_externos)}/{len(assets_sin_precio)} assets")
-            print(f"⏱️ [KRAKEN API] Tiempo: {tiempo_transcurrido:.3f}s")
+            # print(f"⚡ [KRAKEN API] Exitosos: {len(precios_externos)}/{len(assets_sin_precio)} assets")
+            # print(f"⏱️ [KRAKEN API] Tiempo: {tiempo_transcurrido:.3f}s")
             
             # =============================================================
             # 💾 SECCIÓN SUPABASE - ESTADÍSTICAS CACHE HISTÓRICO
             # =============================================================
-            print(f"📊 [SUPABASE] Consultando estadísticas cache histórico...")
+            # print(f"📊 [SUPABASE] Consultando estadísticas cache histórico...")
             start_time_cache = time.time()
             cache_stats = stats_cache()
             tiempo_cache = time.time() - start_time_cache
-            print(f"💾 [SUPABASE] Cache histórico: {cache_stats.get('total_registros', 0)} registros")
-            print(f"⏱️ [SUPABASE] Tiempo consulta: {tiempo_cache:.3f}s")
+            # print(f"💾 [SUPABASE] Cache histórico: {cache_stats.get('total_registros', 0)} registros")
+            # print(f"⏱️ [SUPABASE] Tiempo consulta: {tiempo_cache:.3f}s")
             
             precios_finales.update(precios_externos)
             precios_source = 'tiempo_real' if precios_externos else ('mixto' if precios_actuales else 'externos')
@@ -1383,174 +1383,98 @@ async def get_trades_date_range():
     except Exception as e:
         return {"error": f"Error obteniendo rango de fechas: {str(e)}"}
 
-def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, excluded_operations: set = None) -> List[Dict[str, Any]]:
+def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: str = None, fecha_fin: str = None) -> List[Dict[str, Any]]:
     """
-    Calcula timeline diario del portfolio usando el sistema de cache híbrido
+    Calcula timeline diario del portfolio de forma simplificada.
+    Siempre toma fecha inicio y fin, calculando total gains, unrealized y realized para cada día.
     """
     try:
         # Mapeo de assets del CSV a assets del cache
         ASSET_MAPPING = {
-            'BTC': 'XXBT',
-            'ETH': 'XETH',
-            'XRP': 'XRP',
-            'SOL': 'SOL',
-            'LINK': 'LINK',
-            'HBAR': 'HBAR',
-            'TRUMP': 'TRUMP'
+            'BTC': 'XXBT', 'ETH': 'XETH', 'XRP': 'XRP', 'SOL': 'SOL',
+            'LINK': 'LINK', 'HBAR': 'HBAR', 'TRUMP': 'TRUMP'
         }
-        print("🚀 [TIMELINE] Iniciando cálculo de timeline con cache híbrido...")
         
         # Preparar datos
         df = trades_df.copy()
-        # Datos básicos comentados para reducir logs
-        # print(f"🔍 [TIMELINE] Columnas disponibles: {list(df.columns)}")
-        # print(f"🔍 [TIMELINE] Primeras filas:")
-        # print(df.head(2))
-        
-        # DEBUG: Verificar tipos de operaciones disponibles
-        global operation_types_info  # Variable global para compartir con frontend
-        operation_types_info = None
-        
-        if 'type' in df.columns:
-            tipos_unicos = df['type'].unique()
-            print(f"🔍 [TIMELINE] Tipos de operaciones encontradas: {tipos_unicos}")
-            
-            # Crear información para el frontend
-            operation_types_info = {
-                "available_types": tipos_unicos.tolist(),
-                "type_counts": {}
-            }
-            
-            for tipo in tipos_unicos:
-                count = len(df[df['type'] == tipo])
-                operation_types_info["type_counts"][tipo] = count
-                print(f"   - {tipo}: {count} operaciones")
-        else:
-            print("❌ [TIMELINE] No se encuentra columna 'type' en los datos")
-            operation_types_info = {"error": "No se encuentra columna 'type' en los datos"}
         df['time'] = pd.to_datetime(df['time'])
         df['fecha'] = df['time'].dt.date
         df = df.sort_values('time')
         
-        # Obtener rango de fechas - USAR RANGO COMPLETO
-        fecha_inicio = df['fecha'].min()
-        fecha_fin = get_spain_date()  # Hasta hoy (no incluye futuro)
+        # Determinar rango de fechas: usar parámetros o fecha mínima hasta hoy
+        if fecha_inicio and fecha_fin:
+            from datetime import datetime
+            fecha_start = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
+            fecha_end = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
+        else:
+            fecha_start = df['fecha'].min()
+            fecha_end = get_spain_date()
         
-        print(f"📅 [TIMELINE] Rango completo: {fecha_inicio} hasta {fecha_fin}")
-        print(f"ℹ️ [TIMELINE] Usaremos cache + fallback inteligente para fechas faltantes")
-        
-        # Crear lista de todas las fechas en el rango
+        # Crear rango de fechas completo
         fechas_timeline = []
-        fecha_actual = fecha_inicio
-        while fecha_actual <= fecha_fin:
+        fecha_actual = fecha_start
+        while fecha_actual <= fecha_end:
             fechas_timeline.append(fecha_actual)
             fecha_actual += timedelta(days=1)
         
-        print(f"📊 [TIMELINE] Procesando {len(fechas_timeline)} días...")
-        
-        # OPTIMIZACIÓN: Obtener todos los precios históricos de una vez
+        # Obtener todos los assets únicos para cache batch
         assets_en_trades = list(set(ASSET_MAPPING.get(pair.split('/')[0], pair.split('/')[0]) 
                                    for pair in df['pair'].unique() 
                                    if '/' in pair and pair.split('/')[0] not in FIAT_ASSETS))
         
-        print(f"💾 [TIMELINE] Obteniendo precios batch para {len(assets_en_trades)} assets...")
-        print(f"📅 [BATCH] Assets solicitados: {assets_en_trades}")
-        print(f"📅 [BATCH] Rango completo: {fecha_inicio} hasta {fecha_fin}")
-        
+        # Obtener precios en batch
         from supabase_cache import cache
-        precios_batch = cache.obtener_precios_cache_batch(assets_en_trades, fecha_inicio, fecha_fin)
-        total_precios = sum(len(fechas) for fechas in precios_batch.values())
-        print(f"✅ [TIMELINE] Cache batch: {total_precios} precios obtenidos")
-        
-        # DEBUG: Verificar rango real obtenido
-        if precios_batch:
-            for asset in ['XXBT', 'TRUMP']:
-                if asset in precios_batch and precios_batch[asset]:
-                    fechas_asset = sorted(precios_batch[asset].keys())
-                    print(f"🔍 [BATCH DEBUG] {asset}: {len(fechas_asset)} fechas, desde {fechas_asset[0]} hasta {fechas_asset[-1]}")
-                else:
-                    print(f"❌ [BATCH DEBUG] {asset}: no encontrado o vacío")
+        precios_batch = cache.obtener_precios_cache_batch(assets_en_trades, fecha_start, fecha_end)
         
         timeline = []
-        holdings_acumulados = {}  # Asset -> cantidad actual
-        cost_basis_fifo = {}  # Asset -> cola FIFO para cost basis
+        holdings_acumulados = {}
+        cost_basis_fifo = {}
         
         for fecha in fechas_timeline:
             # Procesar trades del día
             trades_del_dia = df[df['fecha'] == fecha]
-            operaciones_del_dia = []  # Lista de operaciones para este día
             
             for _, trade in trades_del_dia.iterrows():
-                # Extraer asset del par (ej: 'BTC/EUR' -> 'BTC')
-                pair = trade['pair']
-                asset_csv = pair.split('/')[0]  # Tomar la parte antes del '/'
-                
-                # Mapear asset del CSV a asset del cache
+                # Extraer y mapear asset
+                asset_csv = trade['pair'].split('/')[0]
                 asset = ASSET_MAPPING.get(asset_csv, asset_csv)
                 
-                # Saltar assets fiat
                 if asset in FIAT_ASSETS:
                     continue
                 
                 tipo = trade['type']
-                ordertype = trade.get('ordertype', '')
                 cantidad = float(trade['vol'])
                 cost = float(trade['cost'])
                 fee = float(trade['fee'])
                 
-                # Crear información de la operación para el frontend
-                operation_key = f"{tipo.title()} {ordertype.title()}"
-                operacion_info = {
-                    'type': tipo,
-                    'ordertype': ordertype,
-                    'operation_key': operation_key,  # Para filtrado en frontend
-                    'asset': asset,
-                    'cantidad': cantidad,
-                    'cost': cost,
-                    'fee': fee,
-                    'timestamp': trade['time'].isoformat(),
-                    'pair': pair
-                }
-                operaciones_del_dia.append(operacion_info)
-                
-                # Filtrar operaciones excluidas (mantener lógica del backend)
-                if excluded_operations:
-                    # Verificar si esta operación debe ser excluida
-                    if operation_key in excluded_operations:
-                        continue
-                
-                # Inicializar estructuras si no existen
+                # Inicializar estructuras
                 if asset not in holdings_acumulados:
                     holdings_acumulados[asset] = 0
                 if asset not in cost_basis_fifo:
                     cost_basis_fifo[asset] = []
                 
-                # Procesar trade según tipo
+                # Procesar según tipo
                 if tipo.lower() == 'buy':
                     holdings_acumulados[asset] += cantidad
-                    # Agregar compra a cola FIFO
                     cost_con_fee = cost + fee
                     cost_basis_fifo[asset].append({
                         'volumen': cantidad,
                         'cost': cost_con_fee,
-                        'precio_unitario': cost_con_fee / cantidad if cantidad > 0 else 0,
                         'timestamp': trade['time']
                     })
                     
                 elif tipo.lower() == 'sell':
                     holdings_acumulados[asset] -= cantidad
+                    
                     # Procesar venta usando FIFO
                     volumen_restante = cantidad
-                    
                     while volumen_restante > 0 and cost_basis_fifo[asset]:
                         lote = cost_basis_fifo[asset][0]
                         
                         if lote['volumen'] <= volumen_restante:
-                            # Consumir lote completo
                             volumen_restante -= lote['volumen']
                             cost_basis_fifo[asset].pop(0)
                         else:
-                            # Consumir parcialmente
                             proporcion = volumen_restante / lote['volumen']
                             lote['volumen'] -= volumen_restante
                             lote['cost'] -= lote['cost'] * proporcion
@@ -1558,91 +1482,52 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, excluded_operat
             
             # Calcular valor del portfolio para este día
             valor_total = 0
-            assets_con_valor = {}
+            cost_basis_total = 0
             
             for asset, cantidad in holdings_acumulados.items():
-                if cantidad > 0:  # Solo assets con holdings positivos
-                    if asset in FIAT_ASSETS:
-                        # Excluir assets fiat para consistencia con KPIs
-                        continue
+                if cantidad > 0:
+                    # Obtener precio para la fecha
+                    precio = None
+                    if asset in precios_batch and fecha in precios_batch[asset]:
+                        precio = precios_batch[asset][fecha]
                     else:
-                        # OPTIMIZACIÓN: Usar precios del batch en lugar de consultas individuales
-                        precio = None
-                        if asset in precios_batch and fecha in precios_batch[asset]:
-                            precio = precios_batch[asset][fecha]
-                            # Debug para fechas específicas
-                            if fecha.month == 5 and fecha.day in [16, 17, 18]:
-                                print(f"✅ [PRECIO] {asset} en {fecha}: €{precio:.2f} (desde cache)")
-                        else:
-                            # Fallback inteligente: usar precio del día anterior o más cercano
-                            hoy = get_spain_date()
-                            if fecha == hoy:
-                                # Solo para HOY usamos API en tiempo real
-                                precio = obtener_precio(asset, fecha)
+                        # Fallback: buscar precio más cercano
+                        if asset in precios_batch:
+                            fechas_disponibles = [f for f in precios_batch[asset].keys() if f <= fecha]
+                            if fechas_disponibles:
+                                fecha_cercana = max(fechas_disponibles)
+                                precio = precios_batch[asset][fecha_cercana]
                             else:
-                                # Para cualquier fecha histórica: buscar precio más cercano anterior
-                                if asset in precios_batch:
-                                    # Buscar precio del día anterior o más cercano
-                                    fechas_anteriores = [f for f in precios_batch[asset].keys() if f <= fecha]
-                                    if fechas_anteriores:
-                                        fecha_anterior = max(fechas_anteriores)
-                                        precio = precios_batch[asset][fecha_anterior]
-                                        # Debug para fallback (más amplio)
-                                        from datetime import date
-                                        if fecha_anterior != fecha and fecha >= date(2025, 5, 16) and fecha <= date(2025, 9, 30):
-                                            dias_diferencia = (fecha - fecha_anterior).days
-                                            if dias_diferencia > 30:  # Solo mostrar fallbacks muy obsoletos
-                                                print(f"⚠️ [PRECIO OBSOLETO] {asset} en {fecha}: €{precio:.2f} (fallback desde {fecha_anterior}, {dias_diferencia} días atrás)")
-                                    else:
-                                        # Si no hay precios anteriores, buscar el siguiente disponible
-                                        fechas_posteriores = [f for f in precios_batch[asset].keys() if f > fecha]
-                                        if fechas_posteriores:
-                                            fecha_posterior = min(fechas_posteriores)
-                                            precio = precios_batch[asset][fecha_posterior]
-                                        else:
-                                            # Sin datos para este asset
-                                            precio = None
-                                else:
-                                    precio = None
+                                # Si no hay fechas anteriores, usar la siguiente disponible
+                                fechas_futuras = [f for f in precios_batch[asset].keys() if f > fecha]
+                                if fechas_futuras:
+                                    precio = precios_batch[asset][min(fechas_futuras)]
                     
-                        if precio is not None:
-                            valor_asset = cantidad * precio
-                            valor_total += valor_asset
-                            assets_con_valor[asset] = {
-                                'cantidad': cantidad,
-                                'precio': precio,
-                                'valor': valor_asset
-                            }
-            
-            # Calcular cost basis total para este día
-            cost_basis_total = 0
-            for asset, cola_fifo in cost_basis_fifo.items():
-                if holdings_acumulados.get(asset, 0) > 0:  # Solo assets con holdings positivos
-                    cost_basis_asset = sum(lote['cost'] for lote in cola_fifo)
+                    if precio is not None:
+                        valor_total += cantidad * precio
+                
+                # Calcular cost basis para este asset
+                if asset in cost_basis_fifo and cantidad > 0:
+                    cost_basis_asset = sum(lote['cost'] for lote in cost_basis_fifo[asset])
                     cost_basis_total += cost_basis_asset
             
-            # Debug para fechas específicas
-            if fecha.month == 5 and fecha.day in [16, 17, 18]:
-                print(f"💰 [TOTALES] {fecha}: Portfolio Value = €{valor_total:.2f}, Cost Basis = €{cost_basis_total:.2f}")
-                ratio = cost_basis_total / valor_total if valor_total > 0 else 0
-                print(f"📊 [RATIO] {fecha}: Cost/Value = {ratio:.3f} ({ratio*100:.1f}%)")
+            # Calcular gains
+            unrealized_gain = valor_total - cost_basis_total
+            
+            # Para realized gains del período, usar las funciones modulares existentes
+            # (simplificado: solo mostramos unrealized por ahora)
+            realized_gain_period = 0  # TODO: implementar con función modular
+            total_gain = unrealized_gain + realized_gain_period
             
             # Añadir punto al timeline
             timeline.append({
-                'date': fecha.isoformat(),  # Cambiar 'fecha' a 'date' para el frontend
-                'value': valor_total,       # Cambiar 'portfolio_value' a 'value' para el frontend
-                'cost': cost_basis_total,        # NUEVO: Cost basis usando FIFO
-                'holdings': dict(holdings_acumulados),  # Snapshot de holdings
-                'assets_con_valor': assets_con_valor,
-                'operations': operaciones_del_dia  # NUEVO: Operaciones del día para filtrado en frontend
+                'date': fecha.isoformat(),
+                'value': valor_total,
+                'cost': cost_basis_total,
+                'total_gain': total_gain,
+                'unrealized_gain': unrealized_gain,
+                'realized_gain_period': realized_gain_period
             })
-        
-        print(f"✅ [TIMELINE] Timeline generado: {len(timeline)} puntos")
-        
-        # Debug: mostrar primeros puntos del timeline
-        if timeline:
-            print(f"🔍 [TIMELINE] Primer punto: {timeline[0]}")
-            print(f"🔍 [TIMELINE] Último punto: {timeline[-1]}")
         
         return timeline
         
@@ -1653,11 +1538,16 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, excluded_operat
 @app.post("/api/portfolio/csv")
 async def upload_csv_and_get_portfolio(
     csv_file: UploadFile = File(...),
-    excluded_operations: Optional[str] = Form(None)
+    excluded_operations: Optional[str] = Form(None),
+    start_date: Optional[str] = Form(None),
+    end_date: Optional[str] = Form(None)
 ):
     """
     Endpoint principal que procesa CSV y retorna KPIs usando funciones modulares
     """
+    print(f"🚀 [ENDPOINT] Received CSV request - start_date: {start_date}, end_date: {end_date}")
+    if excluded_operations:
+        print(f"❌ [ENDPOINT] Excluded operations: {excluded_operations[:100]}...")  # First 100 chars
     import time
     import signal
     start_time = time.time()
@@ -1785,21 +1675,21 @@ async def upload_csv_and_get_portfolio(
         
         # 10. Generar Timeline usando cache híbrido (optimizado)
         timeline_start = time.time()
-        print(f"⏱️ [TIMELINE] Iniciando cálculo de timeline...")
-        timeline_data = calcular_timeline_con_cache_hibrido(df, excluded_ops_set)
+        print(f"📅 [TIMELINE] Iniciando timeline con filtros: {start_date} to {end_date}")
+        timeline_data = calcular_timeline_con_cache_hibrido(df, start_date, end_date)
         timeline_time = time.time() - timeline_start
-        print(f"⏱️ [TIMELINE] Completado en {timeline_time:.3f}s")
+        print(f"⏱️ [TIMELINE] Completado en {timeline_time:.3f}s - {len(timeline_data)} días generados")
         
         # DEBUG: Comparar valores
         if timeline_data:
             last_timeline_value = timeline_data[-1]['value']
-            print(f"🔍 Timeline último: {last_timeline_value:.2f}€")
-            print(f"🔍 KPI current_value: {portfolio_value:.2f}€")
-            print(f"🔍 Diferencia: {abs(last_timeline_value - portfolio_value):.2f}€")
+            # print(f"🔍 Timeline último: {last_timeline_value:.2f}€")
+            # print(f"🔍 KPI current_value: {portfolio_value:.2f}€")
+            # print(f"🔍 Diferencia: {abs(last_timeline_value - portfolio_value):.2f}€")
         
         # 11. Tiempo total de procesamiento
         total_time = time.time() - start_time
-        print(f"⏱️ [TOTAL] Endpoint procesado en {total_time:.3f}s")
+        # print(f"⏱️ [TOTAL] Endpoint procesado en {total_time:.3f}s")
         
         # 12. Respuesta final
         response_data = {
