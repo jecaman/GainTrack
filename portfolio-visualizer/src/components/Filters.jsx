@@ -731,11 +731,11 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
         background: transparent;
       }
       body ::-webkit-scrollbar-thumb {
-        background: #00ff99;
+        background: rgba(180, 180, 180, 0.4);
         border-radius: 2px;
       }
       body ::-webkit-scrollbar-thumb:hover {
-        background: #00cc7a;
+        background: rgba(180, 180, 180, 0.65);
       }
       /* Filter sidebar scrollbars */
       .filter-sidebar ::-webkit-scrollbar {
@@ -745,11 +745,11 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
         background: transparent;
       }
       .filter-sidebar ::-webkit-scrollbar-thumb {
-        background: #00ff99;
+        background: rgba(180, 180, 180, 0.4);
         border-radius: 2px;
       }
       .filter-sidebar ::-webkit-scrollbar-thumb:hover {
-        background: #00cc7a;
+        background: rgba(180, 180, 180, 0.65);
       }
     `;
     document.head.appendChild(style);
