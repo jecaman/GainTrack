@@ -255,10 +255,8 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       
       {/* Primera línea: KPIs centrados */}
       <div style={{
-        display: 'flex',
-        justifyContent: 'center',
         width: '100%',
-        marginTop: '50px' // Espacio para el ticker absoluto
+        marginTop: '50px'
       }}>
         <KPIGrid 
           portfolioData={portfolioData} 

@@ -1429,31 +1429,35 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
         timeline = []
         holdings_acumulados = {}
         cost_basis_fifo = {}
-        
+
         for fecha in fechas_timeline:
             # Procesar trades del día
             trades_del_dia = df[df['fecha'] == fecha]
-            
+            operations_del_dia = []
+
             for _, trade in trades_del_dia.iterrows():
                 # Extraer y mapear asset
                 asset_csv = trade['pair'].split('/')[0]
                 asset = ASSET_MAPPING.get(asset_csv, asset_csv)
-                
+
                 if asset in FIAT_ASSETS:
                     continue
-                
+
                 tipo = trade['type']
+                ordertype = str(trade.get('ordertype', ''))
                 cantidad = float(trade['vol'])
                 cost = float(trade['cost'])
                 fee = float(trade['fee'])
-                
+                operation_key = f"{tipo.title()} {ordertype.title()}"
+
                 # Inicializar estructuras
                 if asset not in holdings_acumulados:
                     holdings_acumulados[asset] = 0
                 if asset not in cost_basis_fifo:
                     cost_basis_fifo[asset] = []
-                
+
                 # Procesar según tipo
+                operation_extra = {}
                 if tipo.lower() == 'buy':
                     holdings_acumulados[asset] += cantidad
                     cost_con_fee = cost + fee
@@ -1462,28 +1466,48 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
                         'cost': cost_con_fee,
                         'timestamp': trade['time']
                     })
-                    
+
                 elif tipo.lower() == 'sell':
                     holdings_acumulados[asset] -= cantidad
-                    
-                    # Procesar venta usando FIFO
+
+                    # Procesar venta usando FIFO y calcular realized gain
                     volumen_restante = cantidad
+                    cost_vendido = 0.0
                     while volumen_restante > 0 and cost_basis_fifo[asset]:
                         lote = cost_basis_fifo[asset][0]
-                        
+
                         if lote['volumen'] <= volumen_restante:
                             volumen_restante -= lote['volumen']
+                            cost_vendido += lote['cost']
                             cost_basis_fifo[asset].pop(0)
                         else:
                             proporcion = volumen_restante / lote['volumen']
+                            cost_parcial = lote['cost'] * proporcion
+                            cost_vendido += cost_parcial
                             lote['volumen'] -= volumen_restante
-                            lote['cost'] -= lote['cost'] * proporcion
+                            lote['cost'] -= cost_parcial
                             volumen_restante = 0
-            
+
+                    realized_gain = (cost - fee) - cost_vendido
+                    operation_extra = {'realized_gain': realized_gain}
+
+                # Guardar operación del día
+                operations_del_dia.append({
+                    'asset': asset,
+                    'type': tipo.lower(),
+                    'cantidad': cantidad,
+                    'cost': cost,
+                    'fee': fee,
+                    'operation_key': operation_key,
+                    'ordertype': ordertype,
+                    **operation_extra
+                })
+
             # Calcular valor del portfolio para este día
             valor_total = 0
             cost_basis_total = 0
-            
+            assets_con_valor_del_dia = {}
+
             for asset, cantidad in holdings_acumulados.items():
                 if cantidad > 0:
                     # Obtener precio para la fecha
@@ -1502,23 +1526,29 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
                                 fechas_futuras = [f for f in precios_batch[asset].keys() if f > fecha]
                                 if fechas_futuras:
                                     precio = precios_batch[asset][min(fechas_futuras)]
-                    
+
                     if precio is not None:
-                        valor_total += cantidad * precio
-                
+                        valor_asset = cantidad * precio
+                        valor_total += valor_asset
+                        assets_con_valor_del_dia[asset] = {
+                            'precio': precio,
+                            'cantidad': cantidad,
+                            'valor': valor_asset
+                        }
+
                 # Calcular cost basis para este asset
                 if asset in cost_basis_fifo and cantidad > 0:
                     cost_basis_asset = sum(lote['cost'] for lote in cost_basis_fifo[asset])
                     cost_basis_total += cost_basis_asset
-            
+
             # Calcular gains
             unrealized_gain = valor_total - cost_basis_total
-            
+
             # Para realized gains del período, usar las funciones modulares existentes
             # (simplificado: solo mostramos unrealized por ahora)
             realized_gain_period = 0  # TODO: implementar con función modular
             total_gain = unrealized_gain + realized_gain_period
-            
+
             # Añadir punto al timeline
             timeline.append({
                 'date': fecha.isoformat(),
@@ -1526,7 +1556,9 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
                 'cost': cost_basis_total,
                 'total_gain': total_gain,
                 'unrealized_gain': unrealized_gain,
-                'realized_gain_period': realized_gain_period
+                'realized_gain_period': realized_gain_period,
+                'operations': operations_del_dia,
+                'assets_con_valor': assets_con_valor_del_dia
             })
         
         return timeline
@@ -1680,12 +1712,23 @@ async def upload_csv_and_get_portfolio(
         timeline_time = time.time() - timeline_start
         print(f"⏱️ [TIMELINE] Completado en {timeline_time:.3f}s - {len(timeline_data)} días generados")
         
-        # DEBUG: Comparar valores
+        # Sobreescribir el último entry del timeline con precios reales de Kraken
         if timeline_data:
-            last_timeline_value = timeline_data[-1]['value']
-            # print(f"🔍 Timeline último: {last_timeline_value:.2f}€")
-            # print(f"🔍 KPI current_value: {portfolio_value:.2f}€")
-            # print(f"🔍 Diferencia: {abs(last_timeline_value - portfolio_value):.2f}€")
+            last_entry = timeline_data[-1]
+            real_time_assets_con_valor = {}
+            for asset_csv, asset_data in portfolio_assets.items():
+                kraken_name = ASSET_MAPPING_KRAKEN.get(asset_csv, asset_csv)
+                precio = asset_data.get('precio_actual', 0)
+                cantidad = asset_data.get('cantidad_actual', 0)
+                if cantidad > 0 and precio > 0:
+                    real_time_assets_con_valor[kraken_name] = {
+                        'precio': precio,
+                        'cantidad': cantidad,
+                        'valor': asset_data.get('portfolio_value', 0)
+                    }
+            last_entry['assets_con_valor'] = real_time_assets_con_valor
+            last_entry['value'] = portfolio_value
+            last_entry['cost'] = total_invested
         
         # 11. Tiempo total de procesamiento
         total_time = time.time() - start_time

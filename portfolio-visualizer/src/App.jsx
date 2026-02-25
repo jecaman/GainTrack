@@ -162,11 +162,12 @@ function App() {
   };
 
   return (
-    <div style={{ 
-      position: 'relative', 
-      minHeight: '100vh',
-      overflowX: 'hidden', // Solo ocultar scroll horizontal
-      overflowY: 'auto' // Permitir scroll vertical
+    <div style={{
+      position: 'relative',
+      height: '100vh',
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      overscrollBehavior: 'none'
     }}>
       {/* Form Page */}
       <div style={{
@@ -174,10 +175,12 @@ function App() {
         top: 0,
         left: 0,
         width: '100%',
-        minHeight: '100vh',
+        minHeight: showPortfolio ? 0 : '100vh',
+        height: showPortfolio ? 0 : 'auto',
+        overflow: showPortfolio ? 'hidden' : 'visible',
         opacity: (!showPortfolio && !isTransitioning) ? 1 : 0,
         transform: (!showPortfolio && !isTransitioning) ? 'translateX(0)' : 'translateX(-50px)',
-        transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
         pointerEvents: !showPortfolio ? 'auto' : 'none',
         zIndex: !showPortfolio ? 2 : 1
       }}>
@@ -194,10 +197,12 @@ function App() {
         top: 0,
         left: 0,
         width: '100%',
-        minHeight: '100vh',
+        height: !showPortfolio ? 0 : 'auto',
+        minHeight: 0,
+        overflow: !showPortfolio ? 'hidden' : 'visible',
         opacity: (showPortfolio && !isTransitioning) ? 1 : 0,
         transform: (showPortfolio && !isTransitioning) ? 'translateX(0)' : 'translateX(50px)',
-        transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
         pointerEvents: showPortfolio ? 'auto' : 'none',
         zIndex: showPortfolio ? 2 : 1
       }}>

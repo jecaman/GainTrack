@@ -403,8 +403,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   const [showTotalInvested, setShowTotalInvested] = useState(false);
   const [viewMode, setViewMode] = useState('both'); // 'both', 'balance'
   const [periodMode, setPeriodMode] = useState('day'); // 'week', 'month', 'year', 'day'
-  const [startDate, setStartDate] = useState(externalStartDate || '');
-  const [endDate, setEndDate] = useState(externalEndDate || '');
+  const [startDate, setStartDate] = useState(buttonStartDate || externalStartDate || '');
+  const [endDate, setEndDate] = useState(buttonEndDate || externalEndDate || '');
   const [showStartCalendar, setShowStartCalendar] = useState(false);
   const [showEndCalendar, setShowEndCalendar] = useState(false);
   const [showMonthYearSelector, setShowMonthYearSelector] = useState(false);
@@ -871,15 +871,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       // Marcar como cambio de filtro rápido y establecer fechas
       isQuickFilterChange.current = true;
       userClosedPopup.current = false; // Reset popup close flag when quick filter changes dates
+      setActiveQuickFilter(range);
       setStartDate(defaultStartDate);
       setEndDate(defaultEndDate);
-      
-      // Como salimos del modo click, el useEffect debe activarse normalmente
-      
-      // Establecer el filtro ALL al final para que el botón de reset desaparezca
-      setTimeout(() => {
-        setActiveQuickFilter(range);
-      }, 1);
+      // Persist timeline dates in Dashboard so remount restores 'all' correctly
+      setExternalStartDate(defaultStartDate);
+      setExternalEndDate(defaultEndDate);
     } else if (isFilterCompatible(range, periodMode)) {
       // Solo aplicar otros filtros si son compatibles
       const dateRange = getQuickDateRange(range);
@@ -908,15 +905,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   // Detectar cambios manuales en las fechas para actualizar activeQuickFilter
   useEffect(() => {
     if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return;
-    
+
     // Si el cambio es por filtro rápido, no procesarlo aquí
     if (isQuickFilterChange.current) {
       isQuickFilterChange.current = false;
       return;
     }
-    
+
+    // Fechas aún no inicializadas (carga inicial/remount): no modificar el estado del filtro
+    if (!startDate || !endDate) return;
+
     const { defaultStartDate, defaultEndDate } = getDefaultDates();
-    
+
     // Si es el rango completo por defecto
     if (startDate === defaultStartDate && endDate === defaultEndDate) {
       setActiveQuickFilter('all');
@@ -938,7 +938,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     
     // Si no coincide con ningún filtro rápido, no activar ninguno
     if (!foundMatch) {
-      setActiveQuickFilter(null);
+      // Excepción: si ya estábamos en 'all' y portfolioData cambió (nuevas fechas de datos),
+      // las fechas ya no coinciden exactamente con los nuevos defaults, pero el usuario
+      // sigue queriendo ver todo. No sobreescribir con null en ese caso.
+      if (activeQuickFilter !== 'all') {
+        setActiveQuickFilter(null);
+      }
     }
   }, [startDate, endDate, portfolioData]);
   
@@ -1341,12 +1346,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         setIsChartLoading(false);
         
         // Período de estabilización después de cambio de datos
-        if (chartRef.current) {
+        // Solo estabilizar si el usuario ha interactuado activamente (no en carga inicial/remount)
+        if (chartRef.current && hasUserInteractedWithTimeline.current) {
           chartRef.current._stabilizing = true;
           setTimeout(() => {
             if (chartRef.current && chartRef.current.canvas && chartRef.current.canvas.ownerDocument && !chartRef.current._isDestroying) {
               chartRef.current._stabilizing = false;
-              // console.log('🔄 Chart estabilizado después de cambio de datos');
             }
           }, 700);
         }

@@ -46,16 +46,13 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     return `${valueFontSize * 0.85}rem`; // 15% más pequeño que el valor
   };
   
-  // Ancho FIJO con margen constante - la letra se adapta
+  // Ancho dinámico basado en el espacio real disponible
   const getCardWidthPixels = () => {
-    // Ancho aumentado por dispositivo
-    if (windowWidth < 768) return 220; // Móvil +20px
-    if (windowWidth < 1024) return 250; // Tablet +30px
-    return 270; // Desktop +30px
-  };
-  
-  const getCardWidth = () => {
-    return `${getCardWidthPixels()}px`;
+    const dashboardPadding = 128; // 4rem * 2 del Dashboard
+    const containerMargin = sidebarOpen ? 40 : 80; // márgenes del contenedor KPIGrid
+    const sidebarWidth = sidebarOpen ? 350 : 0;
+    const available = windowWidth - dashboardPadding - containerMargin - sidebarWidth;
+    return Math.floor(available / 5);
   };
   
   return (
@@ -67,9 +64,8 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         justifyContent: 'center', // Centrar verticalmente todo el contenido
         textAlign: 'center',
         position: 'relative',
-        width: getCardWidth(),
-        minWidth: getCardWidth(),
-        maxWidth: getCardWidth(),
+        flex: 1,
+        minWidth: '150px',
         height: '110px', // Altura reducida para menos margen inferior
         overflow: 'hidden', // Contener el contenido dentro del KPI
         border: `1px solid ${isCardHovered ? '#00ff88' : 'transparent'}`, // Borde verde fosforito en hover
@@ -526,9 +522,16 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       });
     });
     
-    // Calculate unrealized gains using all realized gains up to end date (only if not already calculated in period mode)
+    // Calculate unrealized gains using FIFO cost basis (only if not already calculated in period mode)
     if (!shouldCalculatePeriodGains) {
-      calculatedUnrealizedGains = profit - calculatedRealizedGains;
+      // Compute cost basis of remaining holdings directly from FIFO queue (excludes hidden + excluded ops already)
+      let costBasisRemaining = 0;
+      for (const asset in cost_basis_fifo) {
+        costBasisRemaining += cost_basis_fifo[asset].reduce((sum, lot) => sum + lot.cost, 0);
+      }
+      calculatedUnrealizedGains = currentValue - costBasisRemaining;
+      profit = calculatedRealizedGains + calculatedUnrealizedGains;
+      profitPercentage = costBasisRemaining > 0 ? (profit / costBasisRemaining) * 100 : 0;
     }
     const calculatedUnrealizedPercentage = totalInvested > 0 ? (calculatedUnrealizedGains / totalInvested) * 100 : 0;
     
@@ -588,8 +591,8 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
     }
 
     // kpis ya está definido arriba por calculateFilteredKPIs()
-    // Total gains should be current_value - total_invested (simple calculation)
-    const totalGains = kpis.current_value - kpis.total_invested;
+    // Total gains = realized + unrealized (stored in kpis.profit)
+    const totalGains = kpis.profit || 0;
     const totalGainsPercentage = kpis.total_invested > 0 ? (totalGains / kpis.total_invested) * 100 : 0;
     const isPositive = totalGains >= 0;
     
@@ -682,22 +685,23 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
 
   return (
     <div style={{
-      paddingTop: '40px' // Espacio arriba de los KPIs
+      paddingTop: '40px',
+      marginLeft: '3rem',
+      marginRight: '3rem',
+      width: 'calc(100% - 6rem)',
     }}>
-      {/* Contenedor con exactamente los mismos márgenes que el timeline */}
       <div style={{
-        width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 80px)', // Más conservador cuando sidebar cerrado
-        marginLeft: sidebarOpen ? '-40px' : '20px', // Menos desplazamiento cuando sidebar cerrado
-        marginRight: sidebarOpen ? '-20px' : '60px', // Margen normal cuando sidebar cerrado
+        width: '100%',
         position: 'relative',
       }}>
         <div style={{
           display: 'flex',
           flexDirection: windowWidth < 768 ? 'column' : 'row',
-          alignItems: 'center',
-          justifyContent: 'space-evenly', // Distribución uniforme del espacio
+          alignItems: 'stretch',
+          justifyContent: 'stretch',
+          gap: '0px',
           width: '100%',
-          flexWrap: 'nowrap', // Siempre en línea para los 5 KPIs
+          flexWrap: 'nowrap',
         }}>
         <KPICard
           label="Portfolio Value"
