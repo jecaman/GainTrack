@@ -183,7 +183,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     if (newFilters.type === 'dateRange' && newFilters.dateRange && !skipTimelineUpdate) {
       // Check if both dates are equal (indicating a point click)
       const isPointClick = newFilters.dateRange.from === newFilters.dateRange.to;
-      
+
       // Always update filter dates
       if (newFilters.dateRange.from) {
         setStartDate(newFilters.dateRange.from);
@@ -191,7 +191,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       if (newFilters.dateRange.to) {
         setEndDate(newFilters.dateRange.to);
       }
-      
+
       // Only update timeline dates if NOT a point click
       if (!isPointClick) {
         if (newFilters.dateRange.from) {
@@ -200,6 +200,12 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         if (newFilters.dateRange.to) {
           setTimelineEndDate(newFilters.dateRange.to);
         }
+        // Filters tab is now driving the date — hide any pending "Apply to All" popup
+        // because filter dates and timeline dates are now in sync.
+        setShowApplyPopup(false);
+        lastShownPopup.current = '';
+        // Tell showTimelinePopup to suppress the next call (avoids popup flash during sync)
+        isFilterChangingDates.current = true;
       }
     }
   };
@@ -218,7 +224,11 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       
       // Exit point click mode on reset
       setIsInPointClickMode(false);
-      
+
+      // Clear any lingering popup-suppression flag so the next zoom shows the popup
+      isFilterChangingDates.current = false;
+      lastShownPopup.current = '';
+
       // Also update filters state
       setFilters(resetData);
       
@@ -285,22 +295,25 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         // Also clear the filter's selected preset
         setFilterSelectedPreset(null);
       } else {
-        // For zoom/range changes: Update both Filter and Timeline dates
+        // For zoom/range changes: Update both Filter and Timeline dates.
+        // Do NOT call onReprocessCsv — the full timeline is already in memory and
+        // KPIGrid computes period gains from it directly. Backend reprocessing
+        // would truncate the FIFO to startDate and produce wrong values.
         const newStartDate = datesToUse.from || datesToUse.startDate;
         const newEndDate = datesToUse.to || datesToUse.endDate;
-        
-        // Update all state immediately 
+
+        // Update all state immediately
         setStartDate(newStartDate);
         setEndDate(newEndDate);
         setTimelineStartDate(newStartDate);
         setTimelineEndDate(newEndDate);
         setIsInPointClickMode(false);
-        
+
         // Set the timeline quick filter if available
         if (datesToUse.quickFilter) {
           setTimelineQuickFilter(datesToUse.quickFilter);
         }
-        
+
         // Call handleFiltersChange
         handleFiltersChange({
           type: 'dateRange',
@@ -309,15 +322,16 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             to: newEndDate
           }
         });
-        
-        // Re-process CSV with new date filter if available
-        if (onReprocessCsv) {
-          onReprocessCsv(newStartDate, newEndDate, Array.from(excludedOperations));
-        }
-        
-        // Clear the applying flag immediately 
+
+        // handleFiltersChange sets isFilterChangingDates=true to suppress the popup flash
+        // during a Filters-tab-initiated sync. But here the change comes from the Timeline
+        // itself, so we must reset the flag — otherwise it survives and blocks the next
+        // legitimate popup (e.g. user zooms again after a reset).
+        isFilterChangingDates.current = false;
+
+        // Clear the applying flag immediately
         setIsApplyingFromTimeline(false);
-        
+
         // Reset popup tracking when applying
         lastShownPopup.current = '';
       }
@@ -332,9 +346,18 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
 
   // Track the last popup we showed to prevent duplicates
   const lastShownPopup = useRef('');
-  
+
+  // Suppresses popup flash when the Filters tab is the one changing dates
+  const isFilterChangingDates = useRef(false);
+
   // Function to show popup from Timeline changes
   const showTimelinePopup = (timelineDates) => {
+    // Don't show popup if dates just changed because of a Filters tab preset/range action
+    if (isFilterChangingDates.current) {
+      isFilterChangingDates.current = false;
+      return;
+    }
+
     // Don't show popup if we're currently in point click mode (startDate === endDate)
     if (startDate === endDate) {
       return;

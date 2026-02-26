@@ -169,7 +169,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
             onMouseEnter={() => setIsTooltipHovered(true)}
             onMouseLeave={() => setIsTooltipHovered(false)}
           >
-            <span style={{marginTop: '-1px'}}>?</span>
+            <span style={{marginTop: '-1px'}}>i</span>
           </div>
         )}
       </div>
@@ -421,110 +421,25 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       }
     }
     
-    // **NUEVA LÓGICA**: Cálculo de gains por período 
+    // Gains are always computed from the beginning of history up to endDate.
+    // startDate only affects the chart zoom — not the KPI calculations.
+    // (Future option: period delta = total_gain[endDate] - total_gain[startDate])
     let profit = currentValue - totalInvested;
     let profitPercentage = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
-    
-    // Determine if we should calculate period gains (when it's a date range, not a single point)
-    const shouldCalculatePeriodGains = !isPointClick && startDate && endDate && startDate !== endDate;
-    
-    if (shouldCalculatePeriodGains) {
-      // Calculate period-specific gains
-      const startDateStr = startDate;
-      const endDateStr = endDate;
-      
-      // Find portfolio values at start and end of period
-      const startEntry = portfolioData.timeline.find(entry => entry.date.split('T')[0] === startDateStr);
-      const endEntry = portfolioData.timeline.find(entry => entry.date.split('T')[0] === endDateStr);
-      
-      if (startEntry && endEntry) {
-        const portfolioValueStart = startEntry.value || 0;
-        const portfolioValueEnd = endEntry.value || 0;
-        
-        // Calculate cash flows during the period (compras/ventas)
-        let cashFlowsDuringPeriod = 0;
-        const periodData = portfolioData.timeline.filter(entry => {
-          const entryDateStr = entry.date.split('T')[0];
-          return entryDateStr >= startDateStr && entryDateStr <= endDateStr;
-        });
-        
-        periodData.forEach(dayData => {
-          const operations = dayData.operations || [];
-          operations.forEach(operation => {
-            if (!hiddenAssetsBackend.has(operation.asset) && !excludedOperations.has(operation.operation_key)) {
-              const cost = parseFloat(operation.cost) || 0;
-              const fee = parseFloat(operation.fee) || 0;
-              const tipo = operation.type;
-              
-              if (tipo === 'buy') {
-                cashFlowsDuringPeriod += (cost + fee); // Money out (positive)
-              } else if (tipo === 'sell') {
-                cashFlowsDuringPeriod -= cost; // Money in (negative)
-              }
-            }
-          });
-        });
-        
-        // Period gains = End Value - Start Value - Cash Flows
-        const periodGains = portfolioValueEnd - portfolioValueStart - cashFlowsDuringPeriod;
-        
-        // console.log('📊 PERIOD GAINS CALCULATION:', {
-        //   startValue: portfolioValueStart,
-        //   endValue: portfolioValueEnd,
-        //   cashFlows: cashFlowsDuringPeriod,
-        //   periodGains: periodGains,
-        //   formula: `${portfolioValueEnd} - ${portfolioValueStart} - ${cashFlowsDuringPeriod} = ${periodGains}`
-        // });
-        
-        profit = periodGains;
-        profitPercentage = portfolioValueStart > 0 ? (profit / portfolioValueStart) * 100 : 0;
-        
-        // Calculate period-specific realized and unrealized gains
-        let periodRealizedGains = 0;
-        periodData.forEach(dayData => {
-          const operations = dayData.operations || [];
-          operations.forEach(operation => {
-            if (!hiddenAssetsBackend.has(operation.asset) && !excludedOperations.has(operation.operation_key)) {
-              if (operation.type === 'sell') {
-                // Add realized gain from sales that occurred in this period
-                const realizedGain = parseFloat(operation.realized_gain) || 0;
-                periodRealizedGains += realizedGain;
-              }
-            }
-          });
-        });
-        
-        // Period unrealized gains = Total period gains - Period realized gains
-        const periodUnrealizedGains = periodGains - periodRealizedGains;
-        
-        // Override the calculated values with period-specific ones
-        calculatedRealizedGains = periodRealizedGains;
-        calculatedUnrealizedGains = periodUnrealizedGains;
-        
-        // console.log('📊 PERIOD BREAKDOWN:', {
-        //   totalPeriodGains: periodGains,
-        //   periodRealizedGains: periodRealizedGains,
-        //   periodUnrealizedGains: periodUnrealizedGains,
-        //   check: `${periodRealizedGains} + ${periodUnrealizedGains} = ${periodRealizedGains + periodUnrealizedGains} (should equal ${periodGains})`
-        // });
-      }
-    }
-    
-    // Calculate fees for the filtered period, excluding hidden assets and excluded operations
+
+    // Calculate fees from the beginning of history up to endDate
     let calculatedTotalFees = 0;
     timelineToProcess.forEach(dayData => {
       const operations = dayData.operations || [];
       operations.forEach(operation => {
-        // Only count fees for operations of visible assets and non-excluded operations
         if (!hiddenAssetsBackend.has(operation.asset) && !excludedOperations.has(operation.operation_key)) {
           calculatedTotalFees += parseFloat(operation.fee) || 0;
         }
       });
     });
-    
-    // Calculate unrealized gains using FIFO cost basis (only if not already calculated in period mode)
-    if (!shouldCalculatePeriodGains) {
-      // Compute cost basis of remaining holdings directly from FIFO queue (excludes hidden + excluded ops already)
+
+    // Calculate unrealized gains using FIFO cost basis
+    {
       let costBasisRemaining = 0;
       for (const asset in cost_basis_fifo) {
         costBasisRemaining += cost_basis_fifo[asset].reduce((sum, lot) => sum + lot.cost, 0);
@@ -534,7 +449,7 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       profitPercentage = costBasisRemaining > 0 ? (profit / costBasisRemaining) * 100 : 0;
     }
     const calculatedUnrealizedPercentage = totalInvested > 0 ? (calculatedUnrealizedGains / totalInvested) * 100 : 0;
-    
+
     // console.log('KPI Calculation:', {
     //   dateRange: startDate && endDate ? `${startDate} to ${endDate}` : 'All dates',
     //   excludedOps: Array.from(excludedOperations),

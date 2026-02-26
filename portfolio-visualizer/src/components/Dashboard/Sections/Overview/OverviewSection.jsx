@@ -316,13 +316,14 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           marginBottom: '0', // Sin margen extra al final
           paddingBottom: '0.5rem' // Padding mínimo
         }}>
-          <AssetLeaderboard 
-            portfolioData={portfolioData} 
-            theme={theme} 
+          <AssetLeaderboard
+            portfolioData={portfolioData}
+            theme={theme}
             startDate={startDate}
             endDate={endDate}
             hiddenAssets={hiddenAssets}
             excludedOperations={excludedOperations}
+            sidebarOpen={sidebarOpen}
           />
         </div>
       </div>

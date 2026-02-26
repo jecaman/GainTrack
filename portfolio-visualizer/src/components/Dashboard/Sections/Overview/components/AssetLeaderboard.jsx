@@ -3,7 +3,7 @@ import { assetLabelMap } from '../../../../../utils/chartUtils';
 import { formatEuropeanNumber, formatEuropeanCurrency, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
 import { getAssetLogo, KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 
-const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set() }) => {
+const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), sidebarOpen = false }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'portfolioPercent', direction: 'desc' });
   const getFiatSymbol = () => '€';
@@ -237,27 +237,23 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
     setSortConfig({ key, direction });
   };
 
-  // Render sort arrow
+  // Color for column header — active sort column gets green accent, others white
+  const thColor = (key) => sortConfig.key === key ? '#00ff99' : '#ffffff';
+
+  // Render sort arrow — only shown for the active column
   const renderSortArrow = (columnKey) => {
-    if (sortConfig.key !== columnKey) {
-      return (
-        <span style={{ 
-          color: '#666666', 
-          fontSize: '12px', 
-          marginLeft: '4px',
-          opacity: 0.5
-        }}>
-          ↕
-        </span>
-      );
-    }
+    if (sortConfig.key !== columnKey) return null;
     return (
-      <span style={{ 
-        color: theme.accentPrimary, 
-        fontSize: '12px', 
-        marginLeft: '4px'
+      <span style={{
+        color: '#00ff99',
+        fontSize: '18px',
+        marginLeft: '6px',
+        fontWeight: '900',
+        textShadow: '0 0 8px rgba(0,255,153,0.8)',
+        verticalAlign: 'middle',
+        lineHeight: '1'
       }}>
-        {sortConfig.direction === 'asc' ? '↑' : '↓'}
+        {sortConfig.direction === 'asc' ? '▲' : '▼'}
       </span>
     );
   };
@@ -287,11 +283,11 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
         zIndex: 10000,
         overflow: 'visible'
       }}>
-      {/* Botón de información */}
+      {/* Botón de información — alineado con el borde derecho de la tabla */}
       <div style={{
         position: 'absolute',
         top: '-2px',
-        right: '2px',
+        right: sidebarOpen ? '-16px' : '62px',
         zIndex: 1000
       }}>
         <div 
@@ -354,36 +350,20 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
         </div>
       </div>
       
-      {/* Contenedor con scroll horizontal y vertical - Alineado con timeline */}
+      {/* Contenedor tabla — sin scroll, altura auto */}
       <div style={{
         background: 'transparent',
         border: 'none',
-        borderRadius: '0',
-        overflow: 'hidden',
         width: '100%',
         margin: '0',
         padding: '0'
       }}>
-        {/* Tabla con scroll horizontal solamente - Alineada exactamente con timeline */}
+        {/* Mismos márgenes que el timeline (responsive a sidebarOpen) */}
         <div style={{
-          overflowX: 'auto',
-          overflowY: 'visible', // Sin scroll vertical - lo maneja el container padre
-          maxHeight: 'none', // Sin límite de altura
-          scrollBehavior: 'auto', // Scroll normal para mejor control
-          WebkitOverflowScrolling: 'touch', // Scroll suave en dispositivos táctiles
-          // Propiedades específicas para efecto rebote
-          overscrollBehaviorY: 'auto', // Permite rebote vertical
-          overscrollBehaviorX: 'auto', // Permite rebote horizontal
-          // Asegurar que siempre se pueda hacer scroll
-          scrollSnapType: 'none', // Desactiva snap scrolling para permitir scroll libre
-          touchAction: 'auto', // Permite todos los gestos táctiles
-          // Reducir sensibilidad del scroll
-          scrollPadding: '10px',
-          // MISMOS márgenes que el timeline
-          width: 'calc(100% - 120px)',
+          overflow: 'visible',
+          width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)',
           marginLeft: '60px',
-          marginRight: '60px',
-          margin: '0',
+          marginRight: sidebarOpen ? '-20px' : '60px',
           padding: '0',
           boxSizing: 'border-box'
         }}>
@@ -404,16 +384,19 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
               zIndex: 10
             }}>
               <tr>
-                <th 
-                  style={{ 
-                    padding: '20px 12px', 
-                    textAlign: 'left', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '17px', 
+                <th
+                  style={{
+                    padding: '20px 12px',
+                    textAlign: 'left',
+                    color: thColor('asset'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '180px',
-                    cursor: 'pointer', 
+                    cursor: 'pointer',
                     userSelect: 'none',
                     borderTopLeftRadius: '0'
                   }}
@@ -421,129 +404,153 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                 >
                   Asset{renderSortArrow('asset')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'left', // Alineado a la izquierda para coincidir con el inicio de la barra
-                    paddingLeft: '5px', // Reducido para mover el header un poco más a la derecha
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
+                <th
+                  style={{
+                    padding: '20px 6px',
+                    textAlign: 'left',
+                    paddingLeft: '5px',
+                    color: thColor('portfolioPercent'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '100px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
+                    cursor: 'pointer',
+                    userSelect: 'none'
                   }}
                   onClick={() => handleSort('portfolioPercent')}
                 >
                   Portfolio Allocation{renderSortArrow('portfolioPercent')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
+                <th
+                  style={{
+                    padding: '20px 6px',
+                    textAlign: 'right',
+                    color: thColor('fiatValue'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '110px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
+                    cursor: 'pointer',
+                    userSelect: 'none'
                   }}
                   onClick={() => handleSort('fiatValue')}
                 >
                   Value{renderSortArrow('fiatValue')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
+                <th
+                  style={{
+                    padding: '20px 6px',
+                    textAlign: 'right',
+                    color: thColor('nativeValue'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '100px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
+                    cursor: 'pointer',
+                    userSelect: 'none'
                   }}
                   onClick={() => handleSort('nativeValue')}
                 >
                   Holdings{renderSortArrow('nativeValue')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
+                <th
+                  style={{
+                    padding: '20px 6px',
+                    textAlign: 'right',
+                    color: thColor('marketPrice'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '110px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
+                    cursor: 'pointer',
+                    userSelect: 'none'
                   }}
                   onClick={() => handleSort('marketPrice')}
                 >
                   Price{renderSortArrow('marketPrice')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
+                <th
+                  style={{
+                    padding: '20px 6px',
+                    textAlign: 'right',
+                    color: thColor('avgCost'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '100px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
+                    cursor: 'pointer',
+                    userSelect: 'none'
                   }}
                   onClick={() => handleSort('avgCost')}
                 >
                   Average Cost{renderSortArrow('avgCost')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
+                <th
+                  style={{
+                    padding: '20px 6px',
+                    textAlign: 'right',
+                    color: thColor('costBasis'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '100px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
+                    cursor: 'pointer',
+                    userSelect: 'none'
                   }}
                   onClick={() => handleSort('costBasis')}
                 >
                   Cost Basis{renderSortArrow('costBasis')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 6px', 
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
+                <th
+                  style={{
+                    padding: '20px 6px',
+                    textAlign: 'right',
+                    color: thColor('netProfit'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
                     minWidth: '200px',
-                    cursor: 'pointer', 
-                    userSelect: 'none' 
+                    cursor: 'pointer',
+                    userSelect: 'none'
                   }}
                   onClick={() => handleSort('netProfit')}
                 >
                   P&L{renderSortArrow('netProfit')}
                 </th>
-                <th 
-                  style={{ 
-                    padding: '20px 35px 20px 20px', // Más padding derecho para separar de scrollbar
-                    textAlign: 'right', 
-                    color: '#e5e5e5', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid #d0d0d0`, 
-                    fontSize: '16px', 
-                    minWidth: '120px', // Un poco más ancho
-                    cursor: 'pointer', 
+                <th
+                  style={{
+                    padding: '20px 35px 20px 20px',
+                    textAlign: 'right',
+                    color: thColor('netProfitPercent'),
+                    fontWeight: '700',
+                    borderBottom: `1px solid #d0d0d0`,
+                    fontSize: '14px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    minWidth: '120px',
+                    cursor: 'pointer',
                     userSelect: 'none',
                     borderTopRightRadius: '0'
                   }}

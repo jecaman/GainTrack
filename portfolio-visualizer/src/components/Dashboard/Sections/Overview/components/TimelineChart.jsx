@@ -830,73 +830,71 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
 
   // Función para manejar clicks en filtros rápidos
   const handleQuickFilter = (range) => {
-    // Activar bloqueo de hover durante transición
-    setIsChartStabilizing(true);
-    
     if (range === 'all') {
-      // ALL siempre ejecuta reset completo, independientemente del estado actual
+      // Guard: verify we have valid data
       const { defaultStartDate, defaultEndDate } = getDefaultDates();
-      
-      if (!defaultStartDate || !defaultEndDate) {
-        // Limpiar bloqueo si hay error
-        setTimeout(() => setIsChartStabilizing(false), 100);
-        return;
-      }
-      
-      // Primero resetear zoom y estado
+      if (!defaultStartDate || !defaultEndDate) return;
+
+      // Execute identical logic to handleCompleteReset (defined below)
+      // so behavior is guaranteed to be the same as clicking the reset button
+
       if (chartRef.current) {
         chartRef.current.resetZoom();
-        chartRef.current._isDragZoom = false; // Limpiar flag de drag zoom
+        chartRef.current._isDragZoom = false;
       }
-      setIsZoomed(false);
-      
-      // Descongelar tooltip si está congelado
+
       unfreezeTooltip();
-      
-      // Activar flag interno del chart para estabilización
+
+      isQuickFilterChange.current = true;
+      userClosedPopup.current = false;
+      setStartDate(defaultStartDate);
+      setEndDate(defaultEndDate);
+
+      // Stabilization: explicitly clear _stabilizing at 700ms (mirrors handleCompleteReset)
+      setIsChartStabilizing(true);
       if (chartRef.current) {
         chartRef.current._stabilizing = true;
       }
-      
-      // Limpiar completamente el estado de click para volver al modo normal
+      setTimeout(() => {
+        setIsChartStabilizing(false);
+        if (chartRef.current) {
+          chartRef.current._stabilizing = false;
+        }
+      }, 700);
+
+      setIsZoomed(false);
+      setActiveQuickFilter('all');
+
       if (typeof window !== 'undefined') {
         window.timelineDates = null;
+        window.justShowedPopupFromPointClickExit = false;
       }
       isPopupFromDirectClick.current = false;
-      
-      // Marcar que el usuario ha interactuado
       hasUserInteractedWithTimeline.current = true;
-      
-      
-      // Marcar como cambio de filtro rápido y establecer fechas
-      isQuickFilterChange.current = true;
-      userClosedPopup.current = false; // Reset popup close flag when quick filter changes dates
-      setActiveQuickFilter(range);
-      setStartDate(defaultStartDate);
-      setEndDate(defaultEndDate);
-      // Persist timeline dates in Dashboard so remount restores 'all' correctly
+
+      // Also persist to Dashboard's timeline dates so navigation back restores 'all'
       setExternalStartDate(defaultStartDate);
       setExternalEndDate(defaultEndDate);
-    } else if (isFilterCompatible(range, periodMode)) {
+      return; // stabilization managed above
+    }
+
+    if (isFilterCompatible(range, periodMode)) {
       // Solo aplicar otros filtros si son compatibles
       const dateRange = getQuickDateRange(range);
       if (dateRange) {
-        // Marcar que el cambio de fecha es por filtro rápido ANTES de cambiar las fechas
+        setIsChartStabilizing(true);
         isQuickFilterChange.current = true;
-        userClosedPopup.current = false; // Reset popup close flag when quick filter changes dates
-        
+        userClosedPopup.current = false;
+
         setStartDate(dateRange.startDate);
         setEndDate(dateRange.endDate);
         setActiveQuickFilter(range);
-        
-        // El popup se controlará automáticamente por el useEffect que compara fechas
+
+        setTimeout(() => {
+          setIsChartStabilizing(false);
+        }, 700);
       }
     }
-    
-    // Desbloquear hover después de la transición (700ms)
-    setTimeout(() => {
-      setIsChartStabilizing(false);
-    }, 700);
   };
 
   // Ref para trackear si el cambio de fecha es por filtro rápido
@@ -936,14 +934,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       }
     }
     
-    // Si no coincide con ningún filtro rápido, no activar ninguno
+    // Si no coincide con ningún filtro rápido, desactivar cualquier filtro activo
     if (!foundMatch) {
-      // Excepción: si ya estábamos en 'all' y portfolioData cambió (nuevas fechas de datos),
-      // las fechas ya no coinciden exactamente con los nuevos defaults, pero el usuario
-      // sigue queriendo ver todo. No sobreescribir con null en ese caso.
-      if (activeQuickFilter !== 'all') {
-        setActiveQuickFilter(null);
-      }
+      setActiveQuickFilter(null);
     }
   }, [startDate, endDate, portfolioData]);
   
@@ -1009,20 +1002,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     }
     
     if (externalStartDate && externalStartDate !== startDate) {
-      // Sync timeline dates if not zoomed OR if we're applying from timeline
-      if (!isZoomed || isApplyingFromTimeline) {
-        // console.log('📋 SYNCING TIMELINE startDate with external:', { external: externalStartDate, current: startDate, isZoomed, isApplyingFromTimeline });
-        setStartDate(externalStartDate);
-        // Reset interaction flag when dates are updated from external source (Filter)
-        hasUserInteractedWithTimeline.current = false;
-        // Reset popup flags when external dates change (new date state)
-        userClosedPopup.current = false;
-        lastProcessedDates.current = { startDate: '', endDate: '' }; // Reset to allow new popup for new state
-      }
-      
-      // Check if external dates are back to default range - reset zoom state only if timeline was not manually zoomed
+      // Always sync when external dates change — this covers both "Apply to All" from
+      // the timeline and date changes initiated from the Filters tab (presets / manual).
+      // Safe because the effect only fires when externalStartDate !== internal startDate,
+      // so an "Apply to All" echo (external === internal) won't cause a loop.
+      setStartDate(externalStartDate);
+      hasUserInteractedWithTimeline.current = false;
+      userClosedPopup.current = false;
+      lastProcessedDates.current = { startDate: '', endDate: '' };
+
+      // Reset zoom flag when returning to the full default range
       const { defaultStartDate, defaultEndDate } = getDefaultDates();
-      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate && !hasUserInteractedWithTimeline.current) {
+      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate) {
         setIsZoomed(false);
       }
     }
@@ -1042,20 +1033,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     }
     
     if (externalEndDate && externalEndDate !== endDate) {
-      // Sync timeline dates if not zoomed OR if we're applying from timeline
-      if (!isZoomed || isApplyingFromTimeline) {
-        // console.log('📋 SYNCING TIMELINE endDate with external:', { external: externalEndDate, current: endDate, isZoomed, isApplyingFromTimeline });
-        setEndDate(externalEndDate);
-        // Reset interaction flag when dates are updated from external source (Filter)
-        hasUserInteractedWithTimeline.current = false;
-        // Reset popup flags when external dates change (new date state)
-        userClosedPopup.current = false;
-        lastProcessedDates.current = { startDate: '', endDate: '' }; // Reset to allow new popup for new state
-      }
-      
-      // Check if external dates are back to default range - reset zoom state only if timeline was not manually zoomed
+      // Always sync — same reasoning as the startDate effect above.
+      setEndDate(externalEndDate);
+      hasUserInteractedWithTimeline.current = false;
+      userClosedPopup.current = false;
+      lastProcessedDates.current = { startDate: '', endDate: '' };
+
       const { defaultStartDate, defaultEndDate } = getDefaultDates();
-      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate && !hasUserInteractedWithTimeline.current) {
+      if (externalStartDate === defaultStartDate && externalEndDate === defaultEndDate) {
         setIsZoomed(false);
       }
     }
@@ -1877,43 +1862,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     //   viewMode
     // });
     
-    // Calcular ganancias del período filtrado
+    // Tooltip always shows absolute cumulative gain from the very first trade up to this point.
+    // startDate only zooms the visible chart range — it does not affect gain calculations.
+    // (Future option: period delta mode — gain since start of visible window)
     let profit;
     let profitPct;
-    
-    // Obtener total_gain actual
-    const currentTotalGain = entry.total_gain !== undefined ? entry.total_gain :
-                           entry.net_profit !== undefined ? entry.net_profit :
-                           (marketValue - investedValue);
-    
-    // Si tenemos datos filtrados y más de un punto, calcular ganancias relativas al período
-    if (dataSource.length > 1) {
-      const firstEntry = dataSource[0];
-      const firstTotalGain = firstEntry.total_gain !== undefined ? firstEntry.total_gain :
-                            firstEntry.net_profit !== undefined ? firstEntry.net_profit :
-                            ((firstEntry.value || 0) - (firstEntry.cost || 0));
-      
-      // Ganancias del período = ganancias actuales - ganancias del primer punto del período
-      profit = currentTotalGain - firstTotalGain;
-      
-      // DEBUG: Log del cálculo
-      console.log('DEBUG period calculation:', {
-        currentTotalGain,
-        firstTotalGain,
-        periodProfit: profit
-      });
-      
-      // Porcentaje basado en el cost basis del primer punto del período para mejor contexto
-      const firstCostBasis = firstEntry.cost || 0;
-      profitPct = firstCostBasis > 0 ? ((profit / firstCostBasis) * 100) : 0;
-    } else {
-      // Si solo hay un punto, usar las ganancias totales
-      profit = currentTotalGain;
-      profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
-    }
-    
+
+    profit = entry.total_gain !== undefined ? entry.total_gain :
+             entry.net_profit !== undefined ? entry.net_profit :
+             (marketValue - investedValue);
+    profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
+
     // En Full View (sin cost basis), usar el cálculo directo para consistencia visual
-    // En Both View (con cost basis), mantener el cálculo del período
     if (viewMode !== 'balance' && !showTotalInvested) {
       profit = marketValue - investedValue;
       profitPct = investedValue > 0 ? ((profit / investedValue) * 100) : 0;
@@ -1982,23 +1942,11 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       
       content = `<span style="color: #ffffff; font-size: ${mainFontSize}; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${labelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
       
-      // Añadir desglose de realized y unrealized gains en P&L View
-      const realizedGainPeriod = entry.realized_gain_period || 0;
-      const unrealizedGainPeriod = entry.unrealized_gain || 0;
-      
-      // Calcular ganancias del período
-      let periodRealizedGain = realizedGainPeriod;
-      let periodUnrealizedGain = unrealizedGainPeriod;
-      
-      // Si tenemos datos filtrados y más de un punto, calcular ganancias relativas al período
-      if (dataSource.length > 1) {
-        const firstEntry = dataSource[0];
-        const firstRealizedGain = firstEntry.realized_gain_period || 0;
-        const firstUnrealizedGain = firstEntry.unrealized_gain || 0;
-        
-        // Ganancias del período
-        periodRealizedGain = realizedGainPeriod - firstRealizedGain;
-        periodUnrealizedGain = unrealizedGainPeriod - firstUnrealizedGain;
+      // Desglose realized / unrealized — siempre acumulado desde el inicio
+      let periodRealizedGain, periodUnrealizedGain;
+      {
+        periodRealizedGain  = entry.realized_gain_period || 0;
+        periodUnrealizedGain = entry.unrealized_gain || 0;
       }
       
       // Colores para cada tipo de ganancia

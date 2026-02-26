@@ -1429,6 +1429,7 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
         timeline = []
         holdings_acumulados = {}
         cost_basis_fifo = {}
+        realized_gain_acumulado = 0.0  # Running total of realized gains
 
         for fecha in fechas_timeline:
             # Procesar trades del día
@@ -1489,6 +1490,7 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
                             volumen_restante = 0
 
                     realized_gain = (cost - fee) - cost_vendido
+                    realized_gain_acumulado += realized_gain
                     operation_extra = {'realized_gain': realized_gain}
 
                 # Guardar operación del día
@@ -1544,10 +1546,9 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
             # Calcular gains
             unrealized_gain = valor_total - cost_basis_total
 
-            # Para realized gains del período, usar las funciones modulares existentes
-            # (simplificado: solo mostramos unrealized por ahora)
-            realized_gain_period = 0  # TODO: implementar con función modular
-            total_gain = unrealized_gain + realized_gain_period
+            # Cumulative realized gains up to this date (FIFO, same logic as operations)
+            realized_gain_period = realized_gain_acumulado
+            total_gain = unrealized_gain + realized_gain_acumulado
 
             # Añadir punto al timeline
             timeline.append({
@@ -1639,7 +1640,7 @@ async def upload_csv_and_get_portfolio(
         unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0)
         realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0)
         total_fees = cost_basis_result.get('totales', {}).get('total_fees', 0)
-        
+
         # 7. Extraer datos por asset
         portfolio_assets = portfolio_result.get('assets', {})
         cost_basis_assets = cost_basis_result.get('assets', {})
@@ -1728,8 +1729,15 @@ async def upload_csv_and_get_portfolio(
                     }
             last_entry['assets_con_valor'] = real_time_assets_con_valor
             last_entry['value'] = portfolio_value
-            last_entry['cost'] = total_invested
-        
+            # Keep last_entry['cost'] as the timeline's own FIFO cost basis (same as what KPIGrid uses)
+            # Compute unrealized using real-time value minus the timeline's FIFO cost basis
+            # This ensures the tooltip matches the KPIGrid which also uses the timeline FIFO
+            timeline_cost_basis = last_entry['cost']
+            timeline_realized = last_entry['realized_gain_period']  # from realized_gain_acumulado
+            timeline_unrealized = portfolio_value - timeline_cost_basis
+            last_entry['unrealized_gain'] = timeline_unrealized
+            last_entry['total_gain'] = timeline_unrealized + timeline_realized
+
         # 11. Tiempo total de procesamiento
         total_time = time.time() - start_time
         # print(f"⏱️ [TOTAL] Endpoint procesado en {total_time:.3f}s")

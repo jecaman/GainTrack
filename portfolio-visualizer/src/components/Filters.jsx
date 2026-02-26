@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import './Filters.css';
 
@@ -576,10 +576,50 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
   }, [minAllocation, balanceThreshold, portfolioData]);
 
   // Get available assets from portfolio data (show all assets, disabled ones will be styled differently)
-  const availableAssets = portfolioData?.portfolio_data ? 
+  const availableAssets = portfolioData?.portfolio_data ?
     portfolioData.portfolio_data
       .filter(asset => (asset.current_value || 0) > 0)
       .map(asset => asset.asset) : [];
+
+  // When a date range is active, restrict asset and operation lists to only what
+  // exists in the selected period, so the user doesn't see irrelevant options.
+  const periodFilteredLists = useMemo(() => {
+    const firstTimelineDate = portfolioData?.timeline?.[0]?.date?.split('T')[0] || '';
+    const lastTimelineDate  = portfolioData?.timeline?.[portfolioData?.timeline?.length - 1]?.date?.split('T')[0] || '';
+    const isDateFiltered = startDate && endDate &&
+      (startDate > firstTimelineDate || endDate < lastTimelineDate);
+
+    if (!isDateFiltered || !portfolioData?.timeline) {
+      return { assets: null, operationTypes: null };
+    }
+
+    // Reverse mapping: Kraken name → display name (e.g. 'XXBT' → 'BTC')
+    const reverseMapping = portfolioData?.asset_mapping
+      ? Object.fromEntries(Object.entries(portfolioData.asset_mapping).map(([k, v]) => [v, k]))
+      : {};
+
+    const assetSet   = new Set();
+    const opTypeSet  = new Set();
+
+    portfolioData.timeline.forEach(entry => {
+      const entryDate = entry.date.split('T')[0];
+      if (entryDate >= startDate && entryDate <= endDate) {
+        (entry.operations || []).forEach(op => {
+          if (op.asset) assetSet.add(reverseMapping[op.asset] || op.asset);
+          if (op.operation_key) opTypeSet.add(op.operation_key);
+        });
+      }
+    });
+
+    return {
+      assets: Array.from(assetSet).filter(a => availableAssets.includes(a)),
+      operationTypes: Array.from(opTypeSet)
+    };
+  }, [startDate, endDate, portfolioData?.timeline, portfolioData?.asset_mapping, availableAssets]);
+
+  // Use period-restricted lists when a date filter is active
+  const displayAssets         = periodFilteredLists.assets         ?? availableAssets;
+  const displayOperationTypes = periodFilteredLists.operationTypes ?? ['Buy Limit', 'Buy Market', 'Sell Limit'];
 
   // Helper function to get max portfolio value from timeline
   const getMaxTimelineValue = () => {
@@ -597,62 +637,97 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     return Math.max(100, Math.ceil(maxValue)); // At least 100 as minimum
   };
 
-  // Helper function to update active filters count
+  // Helper function to update active filters count — max 1 per section (4 sections total)
   const updateActiveFiltersCount = (hiddenAssets, dateRng, timePreset, minAlloc, balThreshold, excludedOps) => {
     let count = 0;
-    if (hiddenAssets.size > 0) count++;
-    
-    // Count date filter as active if either start or end date is modified from default
-    // Use the passed dateRng parameter instead of the current state
+
+    // Date Range section: date modified OR non-All preset counts as one filter
+    let dateRangeActive = false;
     if (portfolioData?.timeline && portfolioData.timeline.length > 0) {
       const defaultStartDate = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
       const defaultEndDate = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
-      
-      const isStartModified = dateRng.from !== defaultStartDate;
-      const isEndModified = dateRng.to !== defaultEndDate;
-      
-      if (isStartModified || isEndModified) count++;
+      dateRangeActive = dateRng.from !== defaultStartDate || dateRng.to !== defaultEndDate;
     }
-    
-    if (timePreset) count++;
-    if (minAlloc && parseFloat(minAlloc) > 0) count++;
-    if (balThreshold && parseFloat(balThreshold) > 0) count++;
+    if (dateRangeActive || (timePreset && timePreset !== 'All')) count++;
+
+    // Assets section
+    if (hiddenAssets.size > 0) count++;
+
+    // Threshold Filters section: min alloc OR balance threshold count as one filter
+    if ((minAlloc && parseFloat(minAlloc) > 0) || (balThreshold && parseFloat(balThreshold) > 0)) count++;
+
+    // Operations section
     if (excludedOps && excludedOps.size > 0) count++;
+
     setActiveFilters(count);
   };
+
+  // Per-section active state for green indicator dots
+  const sectionActive = useMemo(() => {
+    let dateRangeActive = false;
+    if (portfolioData?.timeline?.length > 0) {
+      const defaultStart = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
+      const defaultEnd = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
+      dateRangeActive = dateRange.from !== defaultStart || dateRange.to !== defaultEnd;
+    }
+    return {
+      dateRange: dateRangeActive || (selectedTimePreset && selectedTimePreset !== 'All'),
+      assets: hiddenAssets.size > 0,
+      thresholds: (parseFloat(minAllocation) > 0) || (parseFloat(balanceThreshold) > 0),
+      operations: excludedOperations.size > 0,
+    };
+  }, [dateRange, selectedTimePreset, hiddenAssets, minAllocation, balanceThreshold, excludedOperations, portfolioData?.timeline]);
 
   // Helper function to set time preset dates
   const setTimePresetDates = (preset) => {
     let newRange;
-    
+
+    // Local-time date formatter — matches TimelineChart's formatDate to avoid timezone mismatches
+    const fmtLocal = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
     if (preset === 'All') {
       // Para 'All', usar el rango completo disponible
       newRange = getDefaultDateRange();
     } else {
       const now = new Date();
-      let endDate = now.toISOString().split('T')[0];
+      const endDate = fmtLocal(now);
       let startDate;
-      
+
       switch(preset) {
-        case '1W':
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        case '1W': {
+          const d = new Date(now); d.setDate(d.getDate() - 7);
+          startDate = fmtLocal(d);
           break;
-        case '1M':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+        }
+        case '1M': {
+          const d = new Date(now); d.setMonth(d.getMonth() - 1);
+          startDate = fmtLocal(d);
           break;
-        case '3M':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()).toISOString().split('T')[0];
+        }
+        case '3M': {
+          const d = new Date(now); d.setMonth(d.getMonth() - 3);
+          startDate = fmtLocal(d);
           break;
-        case '6M':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()).toISOString().split('T')[0];
+        }
+        case '6M': {
+          const d = new Date(now); d.setMonth(d.getMonth() - 6);
+          startDate = fmtLocal(d);
           break;
-        case '1Y':
-          startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+        }
+        case '1Y': {
+          const d = new Date(now); d.setFullYear(d.getFullYear() - 1);
+          startDate = fmtLocal(d);
           break;
+        }
         default:
           return;
       }
-      
+
       newRange = { from: startDate, to: endDate };
     }
     
@@ -862,7 +937,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             borderRight: 'none',
             borderRadius: '12px 0 0 12px',
             padding: '0px 10px',
-            color: theme.textSecondary,
+            color: '#ffffff',
             fontSize: '14px',
             cursor: 'pointer',
             transition: 'background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.3s ease',
@@ -902,7 +977,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
           onMouseLeave={(e) => {
             e.target.style.background = theme.bgElevated;
             e.target.style.borderColor = theme.borderColor;
-            e.target.style.color = theme.textSecondary;
+            e.target.style.color = '#ffffff';
             e.target.style.transform = 'translateX(0)';
             e.target.style.boxShadow = 'none';
           }}
@@ -922,15 +997,17 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             pointerEvents: 'none',
             transform: 'rotate(-90deg)',
             whiteSpace: 'nowrap',
-            marginLeft: '-10px'
+            marginLeft: '-10px',
+            color: '#ffffff',
+            textShadow: '0 0 8px rgba(255,255,255,0.45)'
           }}>FILTERS</div>
-          
+
           {/* Active filters badge */}
           {activeFilters > 0 && (
             <div style={{
               position: 'absolute',
               top: '-6px',
-              right: '-6px',
+              left: '-6px',
               background: '#00ff99',
               color: theme.bg,
               borderRadius: '50%',
@@ -1029,7 +1106,9 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   {/* Date Range */}
                   <div style={{ marginBottom: '16px', marginTop: '20px' }}>
                     <label style={{
-                      display: 'block',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
                       marginBottom: '8px',
                       color: '#ffffff',
                       fontSize: '14px',
@@ -1037,7 +1116,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                       letterSpacing: '0.5px',
                       textTransform: 'uppercase'
-                    }}>Date Range</label>
+                    }}>Date Range{sectionActive.dateRange && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {/* Start Date */}
@@ -1380,7 +1459,9 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                 }}>
                   <label style={{
-                    display: 'block',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                     marginBottom: '8px',
                     color: '#ffffff',
                     fontSize: '14px',
@@ -1388,7 +1469,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
-                  }}>ASSETS</label>
+                  }}>ASSETS{sectionActive.assets && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
                   
                   <div style={{ 
                     display: 'flex', 
@@ -1401,7 +1482,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     padding: '8px',
                     marginBottom: '8px'
                   }}>
-                    {availableAssets.map(asset => {
+                    {displayAssets.map(asset => {
                       const isDisabled = disabledAssets.has(asset);
                       return (
                       <label key={asset} style={{
@@ -1470,8 +1551,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     borderRadius: '4px'
                   }}>
                     <span style={{
-                      color: theme.textSecondary,
-                      fontSize: '10px',
+                      color: theme.textPrimary,
+                      fontSize: '13px',
                       fontWeight: '600',
                       fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                       letterSpacing: '0.1px',
@@ -1479,16 +1560,9 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     }}>SELECT ALL</span>
                     <input
                       type="checkbox"
-                      checked={availableAssets.filter(asset => !disabledAssets.has(asset) && !hiddenAssets.has(asset)).length === availableAssets.filter(asset => !disabledAssets.has(asset)).length && availableAssets.filter(asset => !disabledAssets.has(asset)).length > 0}
-                      ref={(input) => {
-                        if (input) {
-                          const enabledAssets = availableAssets.filter(asset => !disabledAssets.has(asset));
-                          const selectedEnabledAssets = enabledAssets.filter(asset => !hiddenAssets.has(asset));
-                          input.indeterminate = selectedEnabledAssets.length > 0 && selectedEnabledAssets.length < enabledAssets.length;
-                        }
-                      }}
+                      checked={displayAssets.filter(asset => !disabledAssets.has(asset) && !hiddenAssets.has(asset)).length === displayAssets.filter(asset => !disabledAssets.has(asset)).length && displayAssets.filter(asset => !disabledAssets.has(asset)).length > 0}
                       onChange={() => {
-                        const enabledAssets = availableAssets.filter(asset => !disabledAssets.has(asset));
+                        const enabledAssets = displayAssets.filter(asset => !disabledAssets.has(asset));
                         const selectedEnabledAssets = enabledAssets.filter(asset => !hiddenAssets.has(asset));
                         
                         if (selectedEnabledAssets.length === enabledAssets.length) {
@@ -1541,7 +1615,9 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                 }}>
                   <label style={{
-                    display: 'block',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                     marginBottom: '12px',
                     color: '#ffffff',
                     fontSize: '14px',
@@ -1549,7 +1625,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
-                  }}>THRESHOLD FILTERS</label>
+                  }}>THRESHOLD FILTERS{sectionActive.thresholds && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     {/* Min Allocation % - Compact Design */}
@@ -1995,7 +2071,9 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
                 }}>
                   <label style={{
-                    display: 'block',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                     marginBottom: '8px',
                     color: '#ffffff',
                     fontSize: '14px',
@@ -2003,10 +2081,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
-                  }}>Operations</label>
+                  }}>Operations{sectionActive.operations && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    {['Buy Limit', 'Buy Market', 'Sell Limit'].map(operation => (
+                    {displayOperationTypes.map(operation => (
                       <label key={operation} style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -2050,8 +2128,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       marginTop: '6px'
                     }}>
                       <span style={{
-                        color: theme.textSecondary,
-                        fontSize: '10px',
+                        color: theme.textPrimary,
+                        fontSize: '13px',
                         fontWeight: '600',
                         fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
                         letterSpacing: '0.1px',
@@ -2060,20 +2138,12 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       <input
                         type="checkbox"
                         checked={excludedOperations.size === 0}
-                        ref={(input) => {
-                          if (input) {
-                            const operations = ['Buy Limit', 'Buy Market', 'Sell Limit'];
-                            const selectedOperations = operations.filter(op => !excludedOperations.has(op));
-                            input.indeterminate = selectedOperations.length > 0 && selectedOperations.length < operations.length;
-                          }
-                        }}
                         onChange={() => {
-                          const operations = ['Buy Limit', 'Buy Market', 'Sell Limit'];
-                          const selectedOperations = operations.filter(op => !excludedOperations.has(op));
-                          
-                          if (selectedOperations.length === operations.length) {
+                          const selectedOperations = displayOperationTypes.filter(op => !excludedOperations.has(op));
+
+                          if (selectedOperations.length === displayOperationTypes.length) {
                             // If all are selected, deselect all
-                            const newExcluded = new Set(operations);
+                            const newExcluded = new Set(displayOperationTypes);
                             setExcludedOperations(newExcluded);
                             updateActiveFiltersCount(hiddenAssets, dateRange, selectedTimePreset, minAllocation, balanceThreshold, newExcluded);
                             if (onFiltersChange) {
