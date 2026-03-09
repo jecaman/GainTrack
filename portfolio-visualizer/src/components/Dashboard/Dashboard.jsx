@@ -103,48 +103,10 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
 
   // Track when we exit point click mode and show popup if needed
   const prevIsInPointClickMode = useRef(isInPointClickMode);
-  const popupTimeoutRef = useRef(null);
-  
+
   useEffect(() => {
-    // If we just exited point click mode (was true, now false)
-    if (prevIsInPointClickMode.current && !isInPointClickMode) {
-      
-      // Clear any existing timeout to avoid multiple popups
-      if (popupTimeoutRef.current) {
-        clearTimeout(popupTimeoutRef.current);
-      }
-      
-      // Add a small delay to let all state changes settle
-      popupTimeoutRef.current = setTimeout(() => {
-        // Check if timeline and filter dates differ and show popup
-        if (timelineStartDate && timelineEndDate && 
-            (timelineStartDate !== startDate || timelineEndDate !== endDate)) {
-          // Show popup directly
-          console.log('Timeline dates differ from filter dates - showing popup');
-          console.log('Timeline:', timelineStartDate, timelineEndDate);
-          console.log('Filter:', startDate, endDate);
-          
-          // Set a flag to prevent Timeline useEffect from immediately hiding this popup
-          window.justShowedPopupFromPointClickExit = true;
-          setTimeout(() => {
-            window.justShowedPopupFromPointClickExit = false;
-          }, 1000); // Give 1 second for the popup to be stable
-          
-          setPopupSource('timeline');
-          window.timelineDates = {
-            startDate: timelineStartDate,
-            endDate: timelineEndDate
-          };
-          setShowApplyPopup(true);
-        } else {
-          console.log('Timeline dates same as filter dates - no popup needed');
-        }
-        popupTimeoutRef.current = null;
-      }, 200); // Small delay to let states settle
-    }
-    
     prevIsInPointClickMode.current = isInPointClickMode;
-  }, [isInPointClickMode, timelineStartDate, timelineEndDate, startDate, endDate]);
+  }, [isInPointClickMode]);
 
 
   const handleFiltersChange = (newFilters, skipTimelineUpdate = false) => {

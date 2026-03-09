@@ -43,6 +43,26 @@ export const formatEuropeanPercentage = (number, decimals = 1) => {
 };
 
 /**
+ * Formats an asset price with adaptive decimal places based on magnitude.
+ * Use this for unit prices (market price, avg cost), NOT for portfolio values.
+ * @param {number} number - The price to format
+ * @param {string} currency - Currency symbol (default: '€')
+ * @returns {string} Formatted price string
+ */
+export const formatEuropeanPrice = (number, currency = '€') => {
+  if (isNaN(number) || number === null || number === undefined || number === 0) {
+    return `0${currency}`;
+  }
+  const abs = Math.abs(number);
+  let decimals;
+  if (abs >= 10000) decimals = 0;       // €85.234
+  else if (abs >= 1)  decimals = 2;     // €4,52 / €2.400,50
+  else if (abs >= 0.001) decimals = 4;  // €0,0820
+  else decimals = 6;                    // €0,000021
+  return `${formatEuropeanNumber(number, decimals)}${currency}`;
+};
+
+/**
  * Formats large numbers with appropriate scaling (K, M, B)
  * @param {number} number - The number to format
  * @param {number} decimals - Number of decimal places (default: 1)

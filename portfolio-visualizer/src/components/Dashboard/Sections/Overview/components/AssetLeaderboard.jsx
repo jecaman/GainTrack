@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useLayoutEffect, useEffect } from 'react';
 import { assetLabelMap } from '../../../../../utils/chartUtils';
-import { formatEuropeanNumber, formatEuropeanCurrency, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
+import { formatEuropeanNumber, formatEuropeanCurrency, formatEuropeanPercentage, formatEuropeanPrice } from '../../../../../utils/numberFormatter';
 import { getAssetLogo, KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 
 const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), sidebarOpen = false }) => {
@@ -75,22 +75,12 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
     
     // Apply date filtering if specified
     if (startDate && endDate) {
-      const startDateObj = new Date(startDate);
-      const endDateObj = new Date(endDate);
-      
-      if (isPointClick) {
-        // Point click mode: process all data up to that date (same as KPIGrid for consistency)
-        timelineToProcess = portfolioData.timeline.filter(entry => {
-          const entryDate = new Date(entry.date);
-          return entryDate <= endDateObj; // All data up to selected date (inclusive)
-        });
-      } else {
-        // Range mode: process only data within the range
-        timelineToProcess = portfolioData.timeline.filter(entry => {
-          const entryDate = new Date(entry.date);
-          return entryDate >= startDateObj && entryDate <= endDateObj;
-        });
-      }
+      const endDateStr = endDate; // YYYY-MM-DD — use string comparison like KPIGrid to avoid timezone issues
+      // Always process all data up to endDate (same as KPIGrid).
+      // startDate only controls the timeline zoom — not which operations are included.
+      timelineToProcess = portfolioData.timeline.filter(entry => {
+        return entry.date.split('T')[0] <= endDateStr;
+      });
     }
     
     if (timelineToProcess.length === 0) {
@@ -100,7 +90,8 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
     // Calculate per-asset holdings using FIFO cost basis
     let assetHoldings = {}; // Asset -> current quantity
     let assetCostBasis = {}; // Asset -> FIFO queue for cost basis
-    let assetTotalInvested = {}; // Asset -> total invested
+    let assetTotalInvested = {}; // Asset -> cost basis of current holdings (decreases on sell)
+    let assetTotalEverInvested = {}; // Asset -> total ever invested (never decreases, for ROI%)
     let assetRealizedGains = {}; // Asset -> realized gains
     
     timelineToProcess.forEach(dayData => {
@@ -117,14 +108,15 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
         const cost = parseFloat(operation.cost) || 0;
         const fee = parseFloat(operation.fee) || 0;
         
-        // Initialize asset tracking if not exists
-        if (!assetHoldings[asset]) {
+        // Initialize asset tracking if not exists (use 'in' to avoid reinit when holdings reach 0)
+        if (!(asset in assetHoldings)) {
           assetHoldings[asset] = 0;
           assetCostBasis[asset] = [];
           assetTotalInvested[asset] = 0;
+          assetTotalEverInvested[asset] = 0;
           assetRealizedGains[asset] = 0;
         }
-        
+
         if (tipo === 'buy') {
           assetHoldings[asset] += cantidad;
           const costConFee = cost + fee;
@@ -133,15 +125,16 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
             cost: costConFee
           });
           assetTotalInvested[asset] += costConFee;
+          assetTotalEverInvested[asset] += costConFee;
         } else if (tipo === 'sell') {
           assetHoldings[asset] -= cantidad;
           // Process sale using FIFO
           let volumenRestante = cantidad;
           let totalCostVendido = 0;
-          
+
           while (volumenRestante > 0 && assetCostBasis[asset].length > 0) {
             const lote = assetCostBasis[asset][0];
-            
+
             if (lote.volumen <= volumenRestante) {
               volumenRestante -= lote.volumen;
               totalCostVendido += lote.cost;
@@ -154,7 +147,11 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
               volumenRestante = 0;
             }
           }
-          
+
+          // Remove the cost basis of sold units so totalInvested always reflects
+          // only current holdings, not all-time purchases.
+          assetTotalInvested[asset] = Math.max(0, assetTotalInvested[asset] - totalCostVendido);
+
           const saleProceeds = cost - fee;
           assetRealizedGains[asset] += (saleProceeds - totalCostVendido);
         }
@@ -165,68 +162,130 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
     const latestData = timelineToProcess[timelineToProcess.length - 1];
     const assetsData = [];
     let totalPortfolioValue = 0;
-    
-    // Process each asset with current holdings
+    let closedPositionsTotalGains = 0; // realized gains from fully-sold assets
+
+    // Process each asset
     Object.keys(assetHoldings).forEach(asset => {
       const holdings = assetHoldings[asset];
-      if (holdings <= 0) return; // Skip assets with no current holdings
-      
+      const realizedGains = assetRealizedGains[asset] || 0;
+      const totalEverInvested = assetTotalEverInvested[asset] || 0;
+
+      if (holdings <= 0) {
+        // Asset fully sold — accumulate its realized gains for the closed-positions row
+        closedPositionsTotalGains += realizedGains;
+        return;
+      }
+
       const assetData = latestData.assets_con_valor?.[asset];
       if (!assetData) return;
-      
+
       const currentPrice = assetData.precio || 0;
       const currentValue = holdings * currentPrice;
       const totalInvested = assetTotalInvested[asset] || 0;
-      const realizedGains = assetRealizedGains[asset] || 0;
       const unrealizedGains = currentValue - totalInvested;
       const netProfit = realizedGains + unrealizedGains;
-      const netProfitPercent = totalInvested > 0 ? (netProfit / totalInvested) * 100 : 0;
-      const avgCost = holdings > 0 ? totalInvested / holdings : 0;
-      
+      const netProfitPercent = totalEverInvested > 0 ? (netProfit / totalEverInvested) * 100 : 0;
+      const avgCost = totalInvested / holdings;
+
       totalPortfolioValue += currentValue;
-      
+
       assetsData.push({
         asset: assetLabelMap[asset] || asset,
-        portfolioPercent: 0, // Will be calculated after we know total
+        portfolioPercent: 0,
         fiatValue: currentValue,
         marketPrice: currentPrice,
         avgCost: avgCost,
         nativeValue: holdings,
-        nativeSymbol: assetLabelMap[asset] || asset, // Use mapped name for logo compatibility
+        nativeSymbol: assetLabelMap[asset] || asset,
         netProfit: netProfit,
         netProfitPercent: netProfitPercent,
         realizedGains: realizedGains,
         unrealizedGains: unrealizedGains,
+        isClosed: false,
         originalAsset: { asset, current_value: currentValue, current_price: currentPrice, amount: holdings }
       });
     });
+
+    // Add a summary row for fully-closed positions if there are any
+    if (closedPositionsTotalGains !== 0) {
+      assetsData.push({
+        asset: 'Closed Positions',
+        portfolioPercent: 0,
+        fiatValue: 0,
+        marketPrice: null,
+        avgCost: null,
+        nativeValue: null,
+        nativeSymbol: null,
+        netProfit: closedPositionsTotalGains,
+        netProfitPercent: null,
+        realizedGains: closedPositionsTotalGains,
+        unrealizedGains: 0,
+        isClosed: true,
+        originalAsset: null
+      });
+    }
     
     // Calculate portfolio percentages
     assetsData.forEach(assetData => {
       assetData.portfolioPercent = totalPortfolioValue > 0 ? (assetData.fiatValue / totalPortfolioValue * 100) : 0;
     });
     
-    // Apply sorting
-    return assetsData.sort((a, b) => {
+    // Debug: log per-asset breakdown
+    const totalTablePnL = assetsData.reduce((sum, r) => sum + r.netProfit, 0);
+    console.log('[AssetLeaderboard] P&L breakdown:', {
+      totalTablePnL: totalTablePnL.toFixed(4),
+      perAsset: assetsData.map(r => ({
+        asset: r.asset,
+        isClosed: r.isClosed,
+        netProfit: r.netProfit?.toFixed(4),
+        realizedGains: r.realizedGains?.toFixed(4),
+        unrealizedGains: r.unrealizedGains?.toFixed(4),
+        currentValue: r.fiatValue?.toFixed(4),
+      })),
+      closedPositionsTotalGains: closedPositionsTotalGains.toFixed(4),
+    });
+
+    // Apply sorting — closed positions row always stays last
+    const openRows = assetsData.filter(r => !r.isClosed);
+    const closedRows = assetsData.filter(r => r.isClosed);
+
+    openRows.sort((a, b) => {
       const { key, direction } = sortConfig;
       let aValue = a[key];
       let bValue = b[key];
-      
+
       if (key === 'asset') {
         aValue = aValue.toLowerCase();
         bValue = bValue.toLowerCase();
       }
-      
+
       if (direction === 'asc') {
         return aValue > bValue ? 1 : -1;
       } else {
         return aValue < bValue ? 1 : -1;
       }
     });
+
+    return [...openRows, ...closedRows];
   };
 
   const processedData = processPortfolioData();
   const symbol = getFiatSymbol();
+
+  // Fix: when visible assets change, the table shrinks but the browser can keep a stale
+  // scroll position beyond the new content bounds. Force layout recalc + clamp scroll.
+  useLayoutEffect(() => {
+    void document.documentElement.getBoundingClientRect();
+  }, [processedData.length]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      const maxScrollY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      if (window.scrollY > maxScrollY) {
+        window.scrollTo({ top: maxScrollY });
+      }
+    });
+  }, [processedData.length]);
 
   // Handle column sorting
   const handleSort = (key) => {
@@ -561,28 +620,77 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
               </tr>
             </thead>
             <tbody>
-              {processedData.map((row, index) => (
-                <tr key={`${row.asset}-${sortConfig.key}-${sortConfig.direction}`} style={{
-                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                  backgroundColor: 'transparent',
-                  transform: 'translateY(0px)',
-                  opacity: 1,
-                  animation: `slideInRow 0.3s ease-out ${index * 0.05}s both`
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(252, 252, 252, 0.1)'; // Blanco más visible
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.transform = 'translateY(0px)';
-                }}
-                >
-                  <td style={{ 
-                    padding: '24px 12px', 
-                    color: theme.accentPrimary, 
-                    fontWeight: '700', 
-                    fontSize: '17px', 
+              {processedData.map((row, index) => {
+                // ── Closed positions summary row ──────────────────────────────
+                if (row.isClosed) {
+                  const plColor = row.netProfit >= 0 ? '#00FF99' : '#ef4444';
+                  return (
+                    <tr key="closed-positions" style={{ opacity: 0.55 }}>
+                      <td style={{ padding: '16px 12px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ width: '38px', height: '38px', flexShrink: 0,
+                            borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.08)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '16px' }}>✕</div>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontSize: '15px', fontWeight: '600', color: 'rgba(255,255,255,0.7)', fontStyle: 'italic' }}>
+                              Closed Positions
+                            </span>
+                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
+                              Fully sold assets
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      {/* Portfolio % — empty */}
+                      <td style={{ borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }} />
+                      {/* Value — €0 */}
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>
+                        —
+                      </td>
+                      {/* Holdings */}
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      {/* Price */}
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      {/* Avg Cost */}
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      {/* Cost Basis */}
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      {/* P&L */}
+                      <td style={{ padding: '16px 10px', textAlign: 'right', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>
+                        <span style={{ color: plColor, fontSize: '17px', fontWeight: '700' }}>
+                          {row.netProfit >= 0 ? '+' : ''}{formatEuropeanCurrency(row.netProfit)}
+                        </span>
+                      </td>
+                      {/* ROI% */}
+                      <td style={{ padding: '16px 35px 16px 8px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                    </tr>
+                  );
+                }
+
+                // ── Normal asset row ──────────────────────────────────────────
+                return (
+                  <tr key={`${row.asset}-${sortConfig.key}-${sortConfig.direction}`} style={{
+                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                    backgroundColor: 'transparent',
+                    transform: 'translateY(0px)',
+                    opacity: 1,
+                    animation: `slideInRow 0.3s ease-out ${index * 0.05}s both`
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(252, 252, 252, 0.1)';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.transform = 'translateY(0px)';
+                  }}
+                  >
+                  <td style={{
+                    padding: '24px 12px',
+                    color: theme.accentPrimary,
+                    fontWeight: '700',
+                    fontSize: '17px',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
                     <div style={{
@@ -591,8 +699,8 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                       gap: '12px'
                     }}>
                     {getAssetLogo(row.nativeSymbol) ? (
-                      <img 
-                        src={getAssetLogo(row.nativeSymbol, 'small')} 
+                      <img
+                        src={getAssetLogo(row.nativeSymbol, 'small')}
                         alt={row.asset}
                         style={{
                           width: '38px',
@@ -605,22 +713,15 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                           console.log(`❌ Error loading logo for ${row.nativeSymbol}:`, e.target.src);
                           e.target.style.display = 'none';
                         }}
-                        onLoad={(e) => {
-                          // console.log(`✅ Logo loaded for ${row.nativeSymbol}`);
-                        }}
                       />
                     ) : (
-                      <div style={{
-                        width: '38px',
-                        height: '38px',
-                        flexShrink: 0
-                      }} />
+                      <div style={{ width: '38px', height: '38px', flexShrink: 0 }} />
                     )}
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <span style={{ fontSize: '18px', fontWeight: '700' }}>{row.asset}</span>
-                        <span style={{ 
-                          fontSize: '17px', 
-                          fontWeight: '500', 
+                        <span style={{
+                          fontSize: '17px',
+                          fontWeight: '500',
                           color: 'rgba(255, 255, 255, 0.8)',
                           marginTop: '2px'
                         }}>
@@ -629,29 +730,26 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                       </div>
                     </div>
                   </td>
-                  <td style={{ 
-                    padding: '24px 2px 24px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '18px', 
-                    fontWeight: '400', 
+                  <td style={{
+                    padding: '24px 2px 24px 4px',
+                    textAlign: 'right',
+                    color: theme.textPrimary,
+                    fontSize: '18px',
+                    fontWeight: '400',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`,
                     position: 'relative',
                     minWidth: '120px'
                   }}>
-                    {/* Barra de progreso integrada con el porcentaje - todas empiezan a la misma altura */}
                     <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                      {/* Contenedor de la barra más largo */}
                       <div style={{
                         position: 'relative',
-                        width: '120px', // Barra más larga
-                        height: '12px', // Un poco más alta
+                        width: '120px',
+                        height: '12px',
                         backgroundColor: 'rgba(255, 255, 255, 0.1)',
                         borderRadius: '6px',
                         overflow: 'hidden',
-                        marginRight: '12px' // Separación del porcentaje
+                        marginRight: '12px'
                       }}>
-                        {/* Barra de progreso */}
                         <div style={{
                           width: `${Math.min(row.portfolioPercent, 100)}%`,
                           height: '100%',
@@ -660,93 +758,92 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                           opacity: 0.9
                         }} />
                       </div>
-                      {/* Porcentaje pegado a la barra */}
-                      <span style={{ 
+                      <span style={{
                         fontSize: '18px',
                         fontWeight: '400',
                         minWidth: '55px',
                         textAlign: 'left',
-                        flexShrink: 0 // No se encoge
+                        flexShrink: 0
                       }}>
                         {formatEuropeanPercentage(row.portfolioPercent)}
                       </span>
                     </div>
                   </td>
-                  <td style={{ 
-                    padding: '24px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '19px', 
-                    fontWeight: '700', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  <td style={{
+                    padding: '24px 4px',
+                    textAlign: 'right',
+                    color: theme.textPrimary,
+                    fontSize: '19px',
+                    fontWeight: '700',
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
                     {formatEuropeanCurrency(row.fiatValue)}
                   </td>
-                  <td style={{ 
-                    padding: '24px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '18px', 
-                    fontWeight: '400', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  <td style={{
+                    padding: '24px 4px',
+                    textAlign: 'right',
+                    color: theme.textPrimary,
+                    fontSize: '18px',
+                    fontWeight: '400',
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
                     {formatEuropeanNumber(row.nativeValue, 6)}
                   </td>
-                  <td style={{ 
-                    padding: '24px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '18px', 
-                    fontWeight: '400', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  <td style={{
+                    padding: '24px 4px',
+                    textAlign: 'right',
+                    color: theme.textPrimary,
+                    fontSize: '18px',
+                    fontWeight: '400',
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
-                    {formatEuropeanCurrency(row.marketPrice)}
+                    {row.marketPrice != null ? formatEuropeanPrice(row.marketPrice) : '—'}
                   </td>
-                  <td style={{ 
-                    padding: '24px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '18px', 
-                    fontWeight: '400', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  <td style={{
+                    padding: '24px 4px',
+                    textAlign: 'right',
+                    color: theme.textPrimary,
+                    fontSize: '18px',
+                    fontWeight: '400',
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
-                    {formatEuropeanCurrency(row.avgCost)}
+                    {row.avgCost != null ? formatEuropeanPrice(row.avgCost) : '—'}
                   </td>
-                  <td style={{ 
-                    padding: '24px 4px', 
-                    textAlign: 'right', 
-                    color: theme.textPrimary, 
-                    fontSize: '18px', 
-                    fontWeight: '400', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  <td style={{
+                    padding: '24px 4px',
+                    textAlign: 'right',
+                    color: theme.textPrimary,
+                    fontSize: '18px',
+                    fontWeight: '400',
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
                     {formatEuropeanCurrency(row.avgCost * row.nativeValue)}
                   </td>
-                  <td style={{ 
-                    padding: '20px 10px', 
-                    textAlign: 'right', 
+                  <td style={{
+                    padding: '20px 10px',
+                    textAlign: 'right',
                     color: theme.textPrimary,
-                    fontSize: '14px', 
-                    fontWeight: '400', 
+                    fontSize: '14px',
+                    fontWeight: '400',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`,
                     lineHeight: '1.5'
                   }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div style={{ 
+                      <div style={{
                         color: row.netProfit >= 0 ? '#00FF99' : '#ef4444',
-                        fontSize: '19px', // Aumentado de 17px a 19px
+                        fontSize: '19px',
                         fontWeight: '700'
                       }}>
                         {row.netProfit >= 0 ? '+' : ''}{formatEuropeanCurrency(row.netProfit)}
                       </div>
-                      <div style={{ 
+                      <div style={{
                         color: row.realizedGains >= 0 ? '#00FF99' : '#ef4444',
                         fontSize: '14px',
                         opacity: 0.9
                       }}>
                         R: {row.realizedGains >= 0 ? '+' : ''}{formatEuropeanCurrency(row.realizedGains)}
                       </div>
-                      <div style={{ 
+                      <div style={{
                         color: row.unrealizedGains >= 0 ? '#00FF99' : '#ef4444',
                         fontSize: '14px',
                         opacity: 0.9
@@ -755,13 +852,13 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                       </div>
                     </div>
                   </td>
-                  <td style={{ 
-                    padding: '24px 35px 24px 8px', // Más padding derecho para separar de scrollbar
-                    textAlign: 'right', 
-                    color: row.netProfit >= 0 ? '#00FF99' : '#ef4444', 
-                    fontSize: '18px', // Mismo tamaño que el resto de números
-                    fontWeight: '700', 
-                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)` 
+                  <td style={{
+                    padding: '24px 35px 24px 8px',
+                    textAlign: 'right',
+                    color: row.netProfit >= 0 ? '#00FF99' : '#ef4444',
+                    fontSize: '18px',
+                    fontWeight: '700',
+                    borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
                       <span style={{
@@ -773,7 +870,8 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

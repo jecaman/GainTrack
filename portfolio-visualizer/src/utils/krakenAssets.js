@@ -23,7 +23,7 @@ export const ASSET_LOGO_COLORS = {
   DOGE: '#C2A633', // Dogecoin Yellow
   SHIB: '#FFA409', // Shiba Orange
   TRUMP: '#C41E3A', // Trump Red
-  HBAR: '#000000', // Hedera Black
+  HBAR: '#5DBECD', // Hedera Teal
   EUR: '#003399', // Euro Blue
   USD: '#228B22', // Dollar Green
   GBP: '#012169', // Pound Blue

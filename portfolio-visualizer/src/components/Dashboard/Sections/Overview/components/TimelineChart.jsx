@@ -1002,6 +1002,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     }
     
     if (externalStartDate && externalStartDate !== startDate) {
+      // If tooltip is frozen, unfreeze it when dates change externally
+      if (chartRef.current?.frozenTooltip?.isFrozen) {
+        chartRef.current.hoveredDataIndex = undefined;
+        chartRef.current.frozenTooltip.isFrozen = false;
+        chartRef.current.frozenTooltip.frozenIndex = -1;
+        chartRef.current.data?.datasets?.forEach(dataset => {
+          if (dataset.originalData && !dataset.skipDuringMouseMove) {
+            dataset.data = [...dataset.originalData];
+          }
+        });
+        setIsTooltipFrozen(false);
+      }
       // Always sync when external dates change — this covers both "Apply to All" from
       // the timeline and date changes initiated from the Filters tab (presets / manual).
       // Safe because the effect only fires when externalStartDate !== internal startDate,
@@ -1033,6 +1045,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     }
     
     if (externalEndDate && externalEndDate !== endDate) {
+      // If tooltip is frozen, unfreeze it when dates change externally
+      if (chartRef.current?.frozenTooltip?.isFrozen) {
+        chartRef.current.hoveredDataIndex = undefined;
+        chartRef.current.frozenTooltip.isFrozen = false;
+        chartRef.current.frozenTooltip.frozenIndex = -1;
+        chartRef.current.data?.datasets?.forEach(dataset => {
+          if (dataset.originalData && !dataset.skipDuringMouseMove) {
+            dataset.data = [...dataset.originalData];
+          }
+        });
+        setIsTooltipFrozen(false);
+      }
       // Always sync — same reasoning as the startDate effect above.
       setEndDate(externalEndDate);
       hasUserInteractedWithTimeline.current = false;
@@ -3143,23 +3167,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             });
             
             setIsTooltipFrozen(false);
-            
-            // Exit point click mode and hide popup
-            if (setIsInPointClickMode) {
-              setIsInPointClickMode(false);
-            }
-            
-            // Hide popup when clicking another point (acting as reset)
-            if (setShowApplyPopup) {
-              setShowApplyPopup(false);
-            }
-            
-            // Reset to default dates like the reset button would do
-            const { defaultStartDate, defaultEndDate } = getDefaultDates();
-            userClosedPopup.current = false; // Reset popup close flag when timeline changes dates
-            setStartDate(defaultStartDate);
-            setEndDate(defaultEndDate);
-            
+
+            // Do NOT reset dates — unfreeze stays at current zoom level
+            // Do NOT hide zoom popup — it may still be valid if chart is zoomed
+
             // No llamar forceHidePopup() aquí para permitir que el popup funcione correctamente
             if (chart && chart.canvas && chart.canvas.ownerDocument) {
             try {
@@ -3188,26 +3199,6 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             
             // Marcar que el usuario ha interactuado con el timeline
             hasUserInteractedWithTimeline.current = true;
-            
-            // Get the specific date from the clicked point
-            const clickedDate = chart.data.labels && chart.data.labels[indexToFreeze] 
-              ? chart.data.labels[indexToFreeze] 
-              : startDate;
-            
-            // For clicked points, set both dates to the clicked date for filter update
-            // Mark this as a special point-click case
-            if (typeof window !== 'undefined') {
-              window.timelineDates = {
-                startDate: clickedDate,
-                endDate: clickedDate,
-                isPointClick: true  // Special flag for point clicks
-              };
-            }
-            
-            // Mark this popup as coming from direct click
-            isPopupFromDirectClick.current = true;
-            
-            showTimelineClickPopup && showTimelineClickPopup();
             
             // Cortar líneas principales
             chart.data.datasets.forEach((dataset, idx) => {
@@ -3263,7 +3254,15 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               borderColor: 'rgba(34, 197, 94, 0.8)',
               borderWidth: 2,
               onDragStart: function({chart}) {
-                
+
+                // Si el tooltip está congelado, descongelarlo antes de hacer zoom
+                if (chart.frozenTooltip && chart.frozenTooltip.isFrozen) {
+                  chart.hoveredDataIndex = undefined;
+                  chart.frozenTooltip.isFrozen = false;
+                  chart.frozenTooltip.frozenIndex = -1;
+                }
+                setIsTooltipFrozen(false);
+
                 // Restaurar todas las líneas completas para el drag/zoom
                 chart.data.datasets.forEach(dataset => {
                   if (dataset.originalData && !dataset.skipDuringMouseMove) {
@@ -3293,7 +3292,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             },
             mode: 'x',
             onZoomComplete: function({chart}) {
-              
+
+              // Descongelar tooltip si estaba congelado
+              setIsTooltipFrozen(false);
+
               // Limpiar flag de drag zoom
               chart._isDragZoom = false;
               

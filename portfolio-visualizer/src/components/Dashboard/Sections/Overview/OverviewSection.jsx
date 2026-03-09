@@ -7,6 +7,7 @@ import AssetLeaderboard from './components/AssetLeaderboard';
 import DonutChart from './components/DonutChart';
 import TimelineChart from './components/TimelineChart';
 import PriceTicker from './components/PriceTicker';
+import PortfolioBar from './components/PortfolioBar';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Filler);
@@ -256,7 +257,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       {/* Primera línea: KPIs centrados */}
       <div style={{
         width: '100%',
-        marginTop: '50px'
+        marginTop: '40px'
       }}>
         <KPIGrid 
           portfolioData={portfolioData} 
@@ -309,12 +310,22 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         flex: 1
       }}>
 
+        {/* Barra de allocación proporcional por asset */}
+        <PortfolioBar
+          portfolioData={portfolioData}
+          startDate={startDate}
+          endDate={endDate}
+          hiddenAssets={hiddenAssets}
+          excludedOperations={excludedOperations}
+          sidebarOpen={sidebarOpen}
+        />
+
         {/* Tercera línea: Tabla ocupando todo el ancho */}
         <div style={{
           width: '100%',
-          marginTop: '2rem', // Separación del timeline
-          marginBottom: '0', // Sin margen extra al final
-          paddingBottom: '0.5rem' // Padding mínimo
+          marginTop: '1rem',
+          marginBottom: '0',
+          paddingBottom: '0.5rem'
         }}>
           <AssetLeaderboard
             portfolioData={portfolioData}

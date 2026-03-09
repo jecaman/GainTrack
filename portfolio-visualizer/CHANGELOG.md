@@ -5,6 +5,200 @@ Este documento explica los cambios funcionales realizados en la aplicación, des
 
 ---
 
+## Sesión — 2026-03-08
+
+### 7. Bug: `assetRealizedGains` se resetea al revender un asset completamente vendido
+
+**Contexto / Problema:**
+Total Gains del KPI Grid seguía sin cuadrar con la suma de P&L de la tabla. Persiste
+incluso con el fix de la fila "Closed Positions" (punto 6).
+
+**Causa raíz:**
+La condición de inicialización usaba `!assetHoldings[asset]` (negación truthy).
+Esta condición se cumple tanto cuando el asset no existe aún (`undefined`, falsy) como
+cuando sus holdings llegan exactamente a **0** (después de vender todo). Si el usuario
+vende completamente un asset y luego lo vuelve a comprar, la condición dispara una
+reinicialización que incluye `assetRealizedGains[asset] = 0`, borrando las ganancias
+realizadas de la primera ronda de ventas.
+
+KPIGrid no tenía este problema porque `calculatedRealizedGains` es una variable global
+acumuladora que nunca se reinicializa. En AssetLeaderboard, al ser por-asset, sí se perdía.
+
+**Fix:**
+Cambiar `!assetHoldings[asset]` por `!(asset in assetHoldings)` en ambos componentes.
+`in` detecta si la clave existe en el objeto, sin importar si su valor es 0 o falsy.
+Así la inicialización solo ocurre una vez por asset, aunque sus holdings lleguen a 0.
+
+**Cambios en código:**
+- `AssetLeaderboard.jsx`: condición `if (!assetHoldings[asset])` → `if (!(asset in assetHoldings))`.
+- `KPIGrid.jsx`: condición `if (!holdings_acumulados[asset])` → `if (!(asset in holdings_acumulados))` (mismo bug latente, aunque no manifestaba porque las ganancias son globales).
+
+---
+
+### 6. Bug: suma P&L de la tabla no coincide con KPI Total Gains
+
+**Contexto:**
+La suma del P&L de todos los assets de la tabla no igualaba el "Total Gains" del KPI.
+
+**Causa raíz — dos divergencias:**
+
+**A) Posiciones cerradas (principal):**
+La tabla solo mostraba assets con `holdings > 0`. Si un asset fue completamente vendido
+(holdings = 0), sus realized gains existían en `assetRealizedGains` pero la fila era
+descartada con `return`. El KPIGrid sí los incluía en `calculatedRealizedGains`.
+Discrepancia = suma de realized gains de todos los assets completamente vendidos.
+
+**B) Comparación de fechas inconsistente:**
+AssetLeaderboard usaba `new Date(entry.date) <= new Date(endDate)` (comparación de
+objetos Date). KPIGrid usaba `entry.date.split('T')[0] <= endDateStr` (comparación
+de strings). Con entradas de timeline en hora local sin `Z`, la conversión a Date
+podría excluir el último día del periodo en zonas horarias UTC+X.
+
+**Fix A — fila "Closed Positions":**
+En lugar de descartar completamente los assets con `holdings ≤ 0`, se acumulan sus
+realized gains en `closedPositionsTotalGains`. Si este valor es distinto de 0, se
+añade una fila especial al final de la tabla (estilo diferenciado, opacidad reducida)
+con el total de las ganancias/pérdidas de posiciones cerradas. Esto hace que la suma
+visual de la tabla iguale exactamente el Total Gains del KPI.
+
+**Fix B — alineación de comparación de fechas:**
+AssetLeaderboard ahora usa `entry.date.split('T')[0] <= endDateStr`, idéntico a KPIGrid.
+
+**Cambios en código:**
+- `AssetLeaderboard.jsx`: lógica de fecha cambiada a string comparison.
+- `AssetLeaderboard.jsx`: loop `Object.keys(assetHoldings)` acumula `closedPositionsTotalGains` para holdings ≤ 0 en vez de hacer `return`.
+- `AssetLeaderboard.jsx`: se añade fila `isClosed: true` al array si `closedPositionsTotalGains !== 0`.
+- `AssetLeaderboard.jsx`: sort separa filas normales de filas closed (siempre al final).
+- `AssetLeaderboard.jsx`: render bifurca entre fila normal y fila closed con diseño propio.
+
+---
+
+### 5. Bug: ROI% absurdo (23.348%) en assets con ventas parciales
+
+**Contexto:**
+Tras corregir el bug anterior (punto 2), el TRUMP pasó de mostrar -158€ a mostrar
+un ROI% de 23.348,6%, lo cual también es incorrecto.
+
+**Causa raíz:**
+El denominador del ROI% era `totalInvested` (coste de las posiciones actuales, que
+tras el fix del punto 2 es pequeño porque se descuentan los lotes vendidos). Si
+compraste €5 de TRUMP y vendiste casi todo, el coste restante puede ser €0,30.
+Cualquier ganancia (realizadas + no realizadas) dividida entre €0,30 da un % enorme.
+
+**Fix:**
+Se añade `assetTotalEverInvested` (suma de todas las compras, nunca decrece) como
+denominador del ROI%:
+
+```js
+const netProfitPercent = totalEverInvested > 0 ? (netProfit / totalEverInvested) * 100 : 0;
+```
+
+Esto responde a "de todo lo que invertí alguna vez en TRUMP, ¿cuánto gané?", que
+es la pregunta natural. El `totalInvested` (coste base actual) se sigue usando para
+`unrealizedGains` y `avgCost`.
+
+**Cambios en código:**
+- `AssetLeaderboard.jsx`: añadido `assetTotalEverInvested` (se incrementa en buy, nunca decrece). Usado como denominador de `netProfitPercent`.
+
+---
+
+### 3. Bug: P&L de la tabla inconsistente con el KPI en modo rango de fechas
+
+**Contexto:**
+Al aplicar un rango de fechas (ej. últimos 3 meses), la suma del P&L de todos los
+assets en la tabla no coincidía con el P&L total del KPI.
+
+**Causa raíz:**
+`AssetLeaderboard.jsx` filtraba el timeline a `startDate <= entry <= endDate` en modo
+rango, mientras que `KPIGrid.jsx` filtraba `entry <= endDate` (todo el histórico hasta
+la fecha fin). El FIFO de la tabla empezaba desde cero en `startDate`, perdiendo todas
+las compras anteriores a esa fecha → coste base y holdings incorrectos.
+
+**Fix:**
+AssetLeaderboard ahora usa la misma lógica que KPIGrid: siempre procesa todo el
+histórico hasta `endDate`, independientemente de `startDate`:
+
+```js
+timelineToProcess = portfolioData.timeline.filter(entry => entryDate <= endDateObj);
+```
+
+`startDate` solo afecta al zoom visual del timeline, nunca al rango de operaciones
+procesadas. Esto es consistente con la arquitectura documentada en el CHANGELOG de
+2026-02-26 (punto 5) y en `CLAUDE.md`.
+
+**Cambios en código:**
+- `AssetLeaderboard.jsx`: eliminado el caso `else` de rango que filtraba `>= startDate`. Ahora un único filtro `<= endDate` cubre todos los modos (point click y rango).
+
+---
+
+### 2. Bug: P&L imposible en assets con ventas parciales (e.g. TRUMP -158€)
+
+**Contexto:**
+La tabla de assets mostraba pérdidas totales imposibles en assets de los que se había
+vendido parte de la posición (e.g. TRUMP aparecía con -158€ de pérdida cuando la
+inversión total era mucho menor).
+
+**Causa raíz:**
+En el FIFO de `AssetLeaderboard.jsx`, `assetTotalInvested` se incrementa correctamente
+al comprar, pero **nunca se reduce al vender**. Al calcular las ganancias no realizadas:
+
+```js
+const unrealizedGains = currentValue - totalInvested;
+```
+
+`totalInvested` incluía el coste de TODOS los lotes históricos, incluyendo los ya vendidos.
+Con posiciones parcialmente vendidas, `unrealizedGains` era enormemente negativo, haciendo
+que `netProfit = realizedGains + unrealizedGains` mostrase pérdidas imposibles.
+
+**Fix:**
+Al procesar una venta en el FIFO, restar `totalCostVendido` de `assetTotalInvested`
+inmediatamente después de calcular el coste de los lotes vendidos:
+
+```js
+assetTotalInvested[asset] = Math.max(0, assetTotalInvested[asset] - totalCostVendido);
+```
+
+Esto asegura que `assetTotalInvested` siempre representa solo el coste base de las
+posiciones abiertas actuales. También corrige el `avgCost` (coste medio por unidad)
+y el `netProfitPercent` (ROI%), que dependían del mismo valor.
+
+**Afecta a:**
+Cualquier asset del que se haya vendido alguna parte. Assets nunca vendidos no se ven
+afectados porque la rama de sell nunca se ejecuta para ellos.
+
+**Cambios en código:**
+- `AssetLeaderboard.jsx`: añadida línea `assetTotalInvested[asset] = Math.max(0, ...)` en la rama `sell` del FIFO.
+
+---
+
+### 1. Bug: scroll excesivo tras filtrar y restaurar assets en la tabla
+
+**Contexto:**
+Al quitar todos los assets del filtro (tabla vacía) y volver a añadir uno, el usuario
+podía hacer scroll mucho más allá del final del contenido real de la página.
+
+**Causa raíz:**
+Dos mecanismos combinados:
+1. El browser (especialmente Chrome) mantiene el scroll position aunque éste supere
+   el nuevo `scrollHeight` tras encoger el contenido. La `position: sticky` del `<thead>`
+   puede agravar esto al crear compositor layers que el browser no invalida inmediatamente.
+2. Al reducirse la tabla de N filas a 1, el scroll position previo (que apuntaba al final
+   de la tabla grande) quedaba "flotando" en vacío, y el browser lo respetaba.
+
+**Fix:**
+En `AssetLeaderboard.jsx`, se añaden dos efectos que se disparan cuando cambia
+`processedData.length` (número de assets visibles):
+
+- `useLayoutEffect`: fuerza un recálculo síncrono del layout antes de pintar, lo que
+  obliga al browser a actualizar el `scrollHeight` al valor correcto.
+- `useEffect`: tras el pintado, comprueba si `window.scrollY > scrollHeight - innerHeight`
+  y corrige el scroll position al máximo válido si es necesario.
+
+**Cambios en código:**
+- `AssetLeaderboard.jsx`: añadido `useLayoutEffect` y `useEffect` (import actualizado).
+
+---
+
 ## Sesión — 2026-02-26
 
 ### 5. Semántica de filtrado temporal: snapshot en endDate (no delta de periodo)

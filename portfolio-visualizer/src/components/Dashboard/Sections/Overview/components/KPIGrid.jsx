@@ -348,8 +348,8 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
         const cost = parseFloat(operation.cost) || 0;
         const fee = parseFloat(operation.fee) || 0;
         
-        // Initialize asset tracking if not exists
-        if (!holdings_acumulados[asset]) {
+        // Initialize asset tracking if not exists (use 'in' to avoid reinit when holdings reach 0)
+        if (!(asset in holdings_acumulados)) {
           holdings_acumulados[asset] = 0;
           cost_basis_fifo[asset] = [];
         }
@@ -450,17 +450,27 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
     }
     const calculatedUnrealizedPercentage = totalInvested > 0 ? (calculatedUnrealizedGains / totalInvested) * 100 : 0;
 
-    // console.log('KPI Calculation:', {
-    //   dateRange: startDate && endDate ? `${startDate} to ${endDate}` : 'All dates',
-    //   excludedOps: Array.from(excludedOperations),
-    //   currentValue,
-    //   totalInvested,
-    //   profit,
-    //   calculatedRealizedGains,
-    //   calculatedUnrealizedGains,
-    //   calculatedTotalFees,
-    //   check: `Realized + Unrealized = ${calculatedRealizedGains + calculatedUnrealizedGains}, should equal profit = ${profit}`
-    // });
+    // Per-asset breakdown for debug comparison with AssetLeaderboard
+    const perAssetDebug = {};
+    Object.keys(holdings_acumulados).forEach(asset => {
+      const h = holdings_acumulados[asset];
+      const price = latestData.assets_con_valor?.[asset]?.precio || 0;
+      const val = h * price;
+      const costBasis = cost_basis_fifo[asset]?.reduce((s, l) => s + l.cost, 0) || 0;
+      perAssetDebug[asset] = {
+        holdings: h?.toFixed(6),
+        currentValue: val?.toFixed(4),
+        costBasisRemaining: costBasis?.toFixed(4),
+      };
+    });
+    console.log('[KPIGrid] P&L breakdown:', {
+      profit: profit?.toFixed(4),
+      calculatedRealizedGains: calculatedRealizedGains?.toFixed(4),
+      calculatedUnrealizedGains: calculatedUnrealizedGains?.toFixed(4),
+      currentValue: currentValue?.toFixed(4),
+      costBasisRemaining: Object.values(cost_basis_fifo).flat().reduce((s, l) => s + l.cost, 0)?.toFixed(4),
+      perAsset: perAssetDebug,
+    });
     
     return {
       current_value: currentValue,
