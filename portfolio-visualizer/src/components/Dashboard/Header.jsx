@@ -1,290 +1,228 @@
-import { RotateCcw } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import GainTrackBrand from '../GainTrackBrand';
+import { useState } from 'react';
 import SectionTabs from './Navigation/SectionTabs';
 
-const Header = ({ 
-  theme, 
-  activeSection, 
-  onSectionChange, 
-  onBackToForm, 
-  onToggleTheme, 
-  sidebarOpen 
+const Header = ({
+  theme,
+  activeSection,
+  onSectionChange,
+  onBackToForm,
+  onToggleTheme,
+  sidebarOpen,
+  onRefreshPrices,
+  priceTimestamp,
+  disabledOpsCount = 0
 }) => {
-  const [dateRange, setDateRange] = useState(null);
+  const [refreshState, setRefreshState] = useState('idle');
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
-  // Función para formatear fechas de manera más legible
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 
-                   'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const day = date.getDate();
-    const month = months[date.getMonth()];
-    const year = date.getFullYear();
-    return `${day} ${month} ${year}`;
+  const handleRefresh = async () => {
+    if (refreshState === 'loading' || !onRefreshPrices) return;
+    setRefreshState('loading');
+    const result = await onRefreshPrices();
+    const isLimited = result?.fromCache;
+    setRefreshState(isLimited ? 'limited' : 'success');
+
+    // Toast message
+    setToastMessage(isLimited ? 'Rate limited — cached prices' : 'Prices updated');
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2200);
+
+    setTimeout(() => setRefreshState('idle'), 1800);
   };
 
-  // Obtener fechas de trades al montar el componente
-  useEffect(() => {
-    const fetchTradesDateRange = async () => {
-      try {
-        const response = await fetch('http://localhost:8001/api/trades/date-range');
-        const data = await response.json();
-        if (data.start_date && data.end_date) {
-          setDateRange(data);
-        }
-      } catch (error) {
-        console.error('Error fetching trades date range:', error);
-      }
-    };
+  const priceTime = priceTimestamp
+    ? new Date(priceTimestamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+    : null;
 
-    fetchTradesDateRange();
-  }, []);
-  // Componente separador reutilizable
-  const Separator = () => (
-    <div style={{
-      width: '1px',
-      height: '16px',
-      background: theme.borderColor,
-      opacity: 1
-    }} />
-  );
-
-  // Función para manejar hover del botón refresh
-  const handleRefreshHover = (isHover) => (e) => {
-    const button = e.currentTarget.querySelector('button');
-    const svg = e.currentTarget.querySelector('svg');
-    
-    if (isHover) {
-      button.style.borderColor = '#00FF99';
-      button.style.background = 'rgba(0,255,153,0.05)';
-      button.style.transform = 'translateY(18px) rotate(-90deg)';
-      svg.style.color = '#00FF99';
-    } else {
-      button.style.borderColor = theme.borderColor + '60';
-      button.style.background = 'transparent';
-      button.style.transform = 'translateY(18px) rotate(0deg)';
-      svg.style.color = '#e5e5e5';
-    }
-  };
+  const refreshColor = { idle: '#ffffff', loading: '#00ff88', success: '#00ff88', limited: '#f59e0b' }[refreshState];
+  const refreshAnim  = { idle: 'none', loading: 'spin-refresh 0.7s linear infinite', success: 'spin-once 0.6s ease-out forwards', limited: 'shake-icon 0.5s ease-out forwards' }[refreshState];
 
   return (
-    <div style={{
-      padding: 'clamp(4rem, 8vw, 6rem) clamp(1rem, 4vw, 2rem) 0',
-      background: `linear-gradient(180deg, ${theme.bg}00 0%, ${theme.bg}05 100%)`,
-      marginBottom: '0'
-    }}>
-      {/* Navegación centrada */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center'
+    <>
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        height: '130px',
+        background: 'rgba(0,0,0,0.92)',
+        backdropFilter: 'blur(24px)',
+        borderBottom: `1px solid ${theme.borderColor}`,
+        /* El menú se posiciona con paddingTop para tener margen arriba.
+           Los botones se anclan al fondo con position:absolute bottom */
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        paddingTop: '68px',   /* margen visible encima del menú */
+        paddingRight: sidebarOpen ? '350px' : '0',
+        transition: 'padding-right 0.45s cubic-bezier(0.4,0,0.2,1)',
+        boxSizing: 'border-box',
       }}>
+
+        {/* ← Back — anclado al fondo del header */}
+        <button
+          onClick={onBackToForm}
+          style={{
+            position: 'absolute',
+            left: '2.5rem',
+            bottom: '16px',
+            background: 'none',
+            border: 'none',
+            borderBottom: '2px solid transparent',
+            padding: '4px 0 3px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '20px',
+            fontFamily: 'monospace',
+            fontWeight: '600',
+            color: '#ffffff',
+            letterSpacing: '0.4px',
+            transition: 'border-color 0.18s ease',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'rgba(255,255,255,0.7)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+          </svg>
+          Back
+        </button>
+
+        {/* Tabs — centro, se posicionan con paddingTop del padre */}
         <SectionTabs
           activeSection={activeSection}
           onSectionChange={onSectionChange}
           theme={theme}
-          onBackToForm={onBackToForm}
-          onToggleTheme={onToggleTheme}
-          sidebarOpen={sidebarOpen}
+          disabledOpsCount={disabledOpsCount}
         />
-      </div>
 
-      {/* Línea inferior: Logo + Subtítulo + Status */}
-      <div style={{
-        transform: 'translateY(-150px)',
-        position: 'relative',
-        height: '220px'
-      }}>
-        {/* Logo con subtítulo a la izquierda */}
-        <div style={{ 
-          position: 'absolute',
-          left: '0',
-          bottom: '40%',
-          display: 'flex', 
-          alignItems: 'flex-end', 
-          gap: 'clamp(0.8rem, 2vw, 1.5rem)',
-          flexWrap: 'wrap'
-        }}>
-          <div style={{ 
-            alignSelf: 'flex-end',
-            transform: 'translateY(8px)'
-          }}>
-            <GainTrackBrand
-              logoSize={42}
-              titleSize="clamp(20px, 4vw, 26px)"
-              color="#00FF99"
-              titleColor={theme.textPrimary}
-              sloganGlow={false}
-              isDarkMode={theme.bg === '#000000'}
-              layout="horizontal"
-              logoRotation={4}
-              spacing="6px"
-              style={{
-                fontFamily: "'Space Grotesk', sans-serif",
-                letterSpacing: '-0.005em'
-              }}
-            />
-          </div>
-          
-          {/* Subtítulo a la derecha del branding */}
-          <div style={{
-            fontSize: 'clamp(12px, 2vw, 14px)',
-            color: theme.textSecondary,
-            opacity: 0.8,
-            fontFamily: "'Inter', sans-serif",
-            letterSpacing: '0.3px',
-            paddingLeft: 'clamp(0.5rem, 2vw, 1rem)',
-            borderLeft: `1px solid ${theme.borderColor}`,
-            minWidth: '120px'
-          }}>
-            <div style={{ 
-              fontSize: 'clamp(9px, 1.5vw, 11px)', 
-              opacity: 0.6, 
-              textTransform: 'uppercase', 
-              letterSpacing: '0.5px',
-              marginBottom: '2px'
-            }}>
-              Portfolio Dashboard
-            </div>
-            <div style={{ 
-              fontSize: 'clamp(11px, 2vw, 13px)', 
-              fontWeight: '500', 
-              color: theme.textPrimary 
-            }}>
-              Operations History
-            </div>
-          </div>
-        </div>
-
-        {/* Status line a la derecha */}
+        {/* Derecha — anclado al fondo del header */}
         <div style={{
           position: 'absolute',
-          right: '0px',
-          bottom: '40%',
+          right: sidebarOpen ? '370px' : '2.5rem',
+          bottom: '16px',
           display: 'flex',
-          alignItems: 'flex-end',
-          gap: 'clamp(0.3rem, 1vw, 0.5rem)',
-          fontSize: 'clamp(10px, 1.5vw, 12px)',
-          color: theme.textSecondary,
-          flexWrap: 'wrap',
-          justifyContent: 'flex-end'
+          alignItems: 'center',
+          gap: '22px',
+          transition: 'right 0.45s cubic-bezier(0.4,0,0.2,1)',
         }}>
-          {/* Trades Date Range */}
-          <div style={{ 
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-end',
-            gap: '4px'
-          }}>
-            <span style={{ 
-              fontSize: 'clamp(10px, 1.8vw, 12px)', 
-              opacity: 0.8, 
-              textTransform: 'uppercase', 
-              letterSpacing: '0.5px',
-              color: theme.textSecondary,
-              fontWeight: '500'
-            }}>
-              Trading Period
-            </span>
-            <span style={{ 
-              fontWeight: '600', 
-              color: theme.textPrimary,
-              letterSpacing: '0.2px',
-              whiteSpace: 'nowrap',
-              fontSize: 'clamp(13px, 2.5vw, 15px)',
-              textShadow: '0 1px 2px rgba(0,0,0,0.1)'
-            }}>
-              {dateRange ? `${formatDate(dateRange.start_date)} → ${formatDate(dateRange.end_date)}` : 'Cargando...'}
-            </span>
-          </div>
 
-          <Separator />
-
-          {/* Last Sync */}
-          <span style={{ 
-            color: theme.textSecondary,
-            whiteSpace: 'nowrap'
-          }}>
-            LAST SYNC: {new Date().toLocaleTimeString('en-US', { 
-              hour12: false, 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            })}
-          </span>
-
-          <Separator />
-
-          {/* Kraken Status */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem',
-            whiteSpace: 'nowrap'
-          }}>
-            <div style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: '#00FF99',
-              boxShadow: '0 0 6px rgba(0,255,153,0.6)'
-            }} />
-            <span style={{ 
-              fontWeight: '500', 
-              color: '#00FF99',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px'
-            }}>
-              KRAKEN
-            </span>
-          </div>
-
-          <Separator />
-
-          {/* Refresh Button */}
-          <div 
+          {/* ↺ HH:MM */}
+          <button
+            onClick={handleRefresh}
+            title={refreshState === 'limited' ? 'Límite — espera un momento' : 'Actualizar precios desde Kraken'}
             style={{
-              padding: '15px',
-              cursor: 'pointer'
+              background: 'none',
+              border: 'none',
+              padding: '4px 0',
+              cursor: refreshState === 'loading' ? 'default' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              color: refreshState === 'idle' ? '#ffffff' : refreshColor,
+              transition: 'color 0.2s ease',
             }}
-            onClick={() => console.log('Refresh clicked')}
-            onMouseEnter={handleRefreshHover(true)}
-            onMouseLeave={handleRefreshHover(false)}
           >
-            <button
-              style={{
-                background: 'transparent',
-                border: `1px solid ${theme.borderColor}60`,
-                borderRadius: '50%',
-                width: '24px',
-                height: '24px',
-                cursor: 'pointer',
-                color: theme.textSecondary,
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transform: 'translateY(18px)',
-                marginLeft: '-12px',
-                padding: '0'
-              }}
+            <svg
+              width="20" height="20" viewBox="0 0 24 24"
+              fill="none" stroke={refreshColor}
+              strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ animation: refreshAnim, flexShrink: 0, transition: 'stroke 0.2s ease' }}
             >
-              <RotateCcw size={12} color="#e5e5e5" />
-            </button>
-          </div>
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+            <span style={{ fontSize: '18px', fontFamily: 'monospace', fontWeight: '600', letterSpacing: '0.5px', color: 'inherit' }}>
+              {refreshState === 'loading' ? '···' : (priceTime || '--:--')}
+            </span>
+          </button>
+
+          {/* Separador */}
+          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.18)' }} />
+
+          {/* Theme Toggle */}
+          <button
+            onClick={onToggleTheme}
+            style={{
+              width: '62px',
+              height: '32px',
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '20px',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s ease',
+              padding: '3px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+          >
+            <div style={{
+              width: '24px',
+              height: '24px',
+              background: '#4b5563',
+              borderRadius: '50%',
+              transition: 'transform 0.3s ease',
+              transform: theme.bg === '#000000' ? 'translateX(0)' : 'translateX(28px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '13px',
+            }}>
+              {theme.bg === '#000000' ? '🌙' : '☀️'}
+            </div>
+          </button>
+
         </div>
       </div>
 
-      {/* Línea divisora */}
-      <div style={{
-        borderBottom: `1px solid ${theme.borderColor}`,
-        transform: 'translateY(-230px)',
-        position: 'fixed',
-        left: '0',
-        right: '0',
-        zIndex: '1',
-        marginBottom: '0'
-      }} />
-    </div>
+      {/* Toast "Prices updated" — fixed bottom-right */}
+      {showToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: 'rgba(0, 0, 0, 0.92)',
+          border: `1px solid ${toastMessage.includes('limited') ? '#f59e0b' : '#00ff88'}`,
+          borderRadius: '8px',
+          padding: '10px 18px',
+          fontSize: '13px',
+          fontFamily: 'monospace',
+          fontWeight: '600',
+          color: toastMessage.includes('limited') ? '#f59e0b' : '#00ff88',
+          whiteSpace: 'nowrap',
+          animation: 'toast-slide 2.2s ease-out forwards',
+          pointerEvents: 'none',
+          backdropFilter: 'blur(12px)',
+          boxShadow: `0 0 20px ${toastMessage.includes('limited') ? 'rgba(245,158,11,0.3)' : 'rgba(0,255,136,0.3)'}`,
+          zIndex: 99999,
+        }}>
+          {toastMessage}
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin-refresh { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+        @keyframes spin-once    { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+        @keyframes shake-icon {
+          0%   { transform: translateX(0) rotate(0deg); }
+          20%  { transform: translateX(-5px) rotate(-15deg); }
+          40%  { transform: translateX(5px) rotate(15deg); }
+          60%  { transform: translateX(-4px) rotate(-10deg); }
+          80%  { transform: translateX(4px) rotate(10deg); }
+          100% { transform: translateX(0) rotate(0deg); }
+        }
+        @keyframes toast-slide {
+          0%   { opacity: 0; transform: translateY(-6px); }
+          15%  { opacity: 1; transform: translateY(0); }
+          75%  { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(4px); }
+        }
+      `}</style>
+    </>
   );
 };
 

@@ -1,9 +1,9 @@
 import { useState, useLayoutEffect, useEffect } from 'react';
-import { assetLabelMap } from '../../../../../utils/chartUtils';
+import { assetLabelMap, makeOpId } from '../../../../../utils/chartUtils';
 import { formatEuropeanNumber, formatEuropeanCurrency, formatEuropeanPercentage, formatEuropeanPrice } from '../../../../../utils/numberFormatter';
 import { getAssetLogo, KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 
-const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), sidebarOpen = false }) => {
+const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'portfolioPercent', direction: 'desc' });
   const getFiatSymbol = () => '€';
@@ -98,7 +98,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
       const operations = dayData.operations || [];
       operations.forEach(operation => {
         // Skip operations for hidden assets or excluded operations
-        if (hiddenAssetsBackend.has(operation.asset) || excludedOperations.has(operation.operation_key)) {
+        if (hiddenAssetsBackend.has(operation.asset) || excludedOperations.has(operation.operation_key) || disabledOps.has(makeOpId(operation, dayData.date))) {
           return;
         }
         
@@ -230,20 +230,6 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
       assetData.portfolioPercent = totalPortfolioValue > 0 ? (assetData.fiatValue / totalPortfolioValue * 100) : 0;
     });
     
-    // Debug: log per-asset breakdown
-    const totalTablePnL = assetsData.reduce((sum, r) => sum + r.netProfit, 0);
-    console.log('[AssetLeaderboard] P&L breakdown:', {
-      totalTablePnL: totalTablePnL.toFixed(4),
-      perAsset: assetsData.map(r => ({
-        asset: r.asset,
-        isClosed: r.isClosed,
-        netProfit: r.netProfit?.toFixed(4),
-        realizedGains: r.realizedGains?.toFixed(4),
-        unrealizedGains: r.unrealizedGains?.toFixed(4),
-        currentValue: r.fiatValue?.toFixed(4),
-      })),
-      closedPositionsTotalGains: closedPositionsTotalGains.toFixed(4),
-    });
 
     // Apply sorting — closed positions row always stays last
     const openRows = assetsData.filter(r => !r.isClosed);
@@ -362,7 +348,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
             fontSize: '12px',
             fontWeight: '600',
             color: '#ffffff',
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: 'monospace',
             transition: 'all 0.2s ease',
             position: 'relative'
           }}
@@ -393,7 +379,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
               fontSize: '0.85rem',
               lineHeight: '1.4',
               color: '#ffffff',
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: 'monospace',
               backdropFilter: 'blur(10px)',
               zIndex: 10000,
               whiteSpace: 'normal'
@@ -433,7 +419,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
             margin: 0,
             padding: 0,
             fontSize: '15px',
-            fontFamily: "'Inter', sans-serif"
+            fontFamily: 'monospace'
           }}>
             <thead style={{
               position: 'sticky',
@@ -453,7 +439,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '180px',
                     cursor: 'pointer',
                     userSelect: 'none',
@@ -474,7 +460,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '100px',
                     cursor: 'pointer',
                     userSelect: 'none'
@@ -493,7 +479,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '110px',
                     cursor: 'pointer',
                     userSelect: 'none'
@@ -512,7 +498,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '100px',
                     cursor: 'pointer',
                     userSelect: 'none'
@@ -531,7 +517,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '110px',
                     cursor: 'pointer',
                     userSelect: 'none'
@@ -550,7 +536,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '100px',
                     cursor: 'pointer',
                     userSelect: 'none'
@@ -569,7 +555,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '100px',
                     cursor: 'pointer',
                     userSelect: 'none'
@@ -588,7 +574,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '200px',
                     cursor: 'pointer',
                     userSelect: 'none'
@@ -607,7 +593,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', monospace",
+                    fontFamily: 'monospace',
                     minWidth: '120px',
                     cursor: 'pointer',
                     userSelect: 'none',
@@ -710,8 +696,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                           flexShrink: 0
                         }}
                         onError={(e) => {
-                          console.log(`❌ Error loading logo for ${row.nativeSymbol}:`, e.target.src);
-                          e.target.style.display = 'none';
+                          e.currentTarget.style.display = 'none';
                         }}
                       />
                     ) : (

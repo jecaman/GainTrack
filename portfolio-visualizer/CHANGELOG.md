@@ -3,6 +3,22 @@
 Este documento explica los cambios funcionales realizados en la aplicación, describiendo
 **qué se pretendía hacer**, **qué estaba mal** y **qué se corrigió**.
 
+## Sesión — 2026-03-09
+
+### 1. Popup "Apply to All" no aparecía en el primer zoom del timeline
+
+**Contexto / Problema:**
+Al hacer zoom por primera vez en el TimelineChart, el popup "Apply to All" no aparecía. Los zooms posteriores sí funcionaban correctamente.
+
+**Causa raíz:**
+Al inicializarse Filters, llama a `onFiltersChange` con las fechas default, lo que setea `isFilterChangingDates.current = true` en Dashboard.jsx (línea 170). Este flag está diseñado para suprimir el popup flash durante la sincronización de Filters. Pero como al montar las fechas internas del Timeline coinciden con las externas, el useEffect del popup nunca se dispara y el flag nunca se consume (la función `showTimelinePopup` nunca lo pone a `false`). Queda `true` indefinidamente y bloquea el primer zoom legítimo del usuario.
+
+**Fix / Decisión:**
+Auto-resetear `isFilterChangingDates` con un `setTimeout` de 500ms después de setearlo. Así el flag cumple su función de suprimir el popup flash, pero no sobrevive para bloquear interacciones futuras.
+
+**Cambios en código:**
+- `Dashboard.jsx`: añadido `setTimeout(() => { isFilterChangingDates.current = false; }, 500)` después de `isFilterChangingDates.current = true`.
+
 ---
 
 ## Sesión — 2026-03-08

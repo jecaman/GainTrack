@@ -1,30 +1,35 @@
 import OperationsTable from './components/OperationsTable';
 
-const OperationsSection = ({ 
-  portfolioData, 
-  isLoading, 
-  theme, 
-  filters = {}, 
-  hiddenAssets = new Set(), 
-  excludedOperations = new Set(), 
-  showApplyPopup, 
-  setShowApplyPopup, 
-  startDate, 
-  endDate, 
-  buttonStartDate, 
-  buttonEndDate, 
-  setStartDate, 
-  setEndDate, 
-  onTimelineApplyToAll, 
-  showTimelinePopup, 
-  showTimelineClickPopup, 
-  isInPointClickMode, 
-  setIsInPointClickMode, 
-  sidebarOpen = false, 
-  timelineUnfreezeTooltipRef, 
-  filterSelectedPreset, 
-  onFilterReset, 
-  isApplyingFromTimeline 
+const OperationsSection = ({
+  portfolioData,
+  isLoading,
+  theme,
+  filters = {},
+  hiddenAssets = new Set(),
+  excludedOperations = new Set(),
+  disabledOps = new Set(),
+  showApplyPopup,
+  setShowApplyPopup,
+  startDate,
+  endDate,
+  buttonStartDate,
+  buttonEndDate,
+  setStartDate,
+  setEndDate,
+  onTimelineApplyToAll,
+  showTimelinePopup,
+  showTimelineClickPopup,
+  isInPointClickMode,
+  setIsInPointClickMode,
+  sidebarOpen = false,
+  timelineUnfreezeTooltipRef,
+  filterSelectedPreset,
+  onFilterReset,
+  isApplyingFromTimeline,
+  onToggleAsset,
+  onToggleAllAssets,
+  onToggleOperation,
+  onToggleAllOperations,
 }) => {
 
   if (isLoading) {
@@ -40,7 +45,7 @@ const OperationsSection = ({
         <div style={{
           fontSize: '18px',
           fontWeight: '600',
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: 'monospace'
         }}>
           Loading Operations Data...
         </div>
@@ -53,7 +58,7 @@ const OperationsSection = ({
       minHeight: 'auto',
       background: theme.bg,
       color: theme.textPrimary,
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: 'monospace',
       position: 'relative',
       display: 'flex',
       flexDirection: 'column',
@@ -76,6 +81,7 @@ const OperationsSection = ({
           filters={filters}
           hiddenAssets={hiddenAssets}
           excludedOperations={excludedOperations}
+          disabledOps={disabledOps}
           showApplyPopup={showApplyPopup}
           setShowApplyPopup={setShowApplyPopup}
           startDate={startDate}
@@ -94,6 +100,10 @@ const OperationsSection = ({
           filterSelectedPreset={filterSelectedPreset}
           onFilterReset={onFilterReset}
           isApplyingFromTimeline={isApplyingFromTimeline}
+          onToggleAsset={onToggleAsset}
+          onToggleAllAssets={onToggleAllAssets}
+          onToggleOperation={onToggleOperation}
+          onToggleAllOperations={onToggleAllOperations}
         />
       </div>
     </section>

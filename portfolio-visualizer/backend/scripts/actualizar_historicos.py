@@ -5,7 +5,11 @@ Debe ejecutarse diariamente a primera hora (ej: 01:00 AM)
 SOLO actualiza el día anterior, diseñado para cron job
 """
 import logging
+import sys
+import os
 from datetime import date, timedelta
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from supabase_cache import cache, get_spain_date
 
 # Configurar logging

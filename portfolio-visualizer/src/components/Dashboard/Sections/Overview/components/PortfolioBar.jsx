@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { assetLabelMap } from '../../../../../utils/chartUtils';
+import { assetLabelMap, makeOpId } from '../../../../../utils/chartUtils';
 import { KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 import { formatEuropeanCurrency, formatEuropeanNumber, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
 
@@ -24,6 +24,7 @@ const PortfolioBar = ({
   endDate,
   hiddenAssets = new Set(),
   excludedOperations = new Set(),
+  disabledOps = new Set(),
   sidebarOpen = false,
 }) => {
   const [hovered, setHovered] = useState(null);
@@ -47,7 +48,7 @@ const PortfolioBar = ({
     const holdings = {};
     timelineToProcess.forEach((dayData) => {
       (dayData.operations || []).forEach((op) => {
-        if (hiddenBackend.has(op.asset) || excludedOperations.has(op.operation_key)) return;
+        if (hiddenBackend.has(op.asset) || excludedOperations.has(op.operation_key) || disabledOps.has(makeOpId(op, dayData.date))) return;
         const asset = op.asset;
         if (!(asset in holdings)) holdings[asset] = 0;
         const qty = parseFloat(op.cantidad) || 0;
@@ -166,7 +167,7 @@ const PortfolioBar = ({
               pointerEvents: 'none',
               zIndex: 99999,
               minWidth: '200px',
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: 'monospace',
               boxShadow: `0 12px 32px rgba(0,0,0,0.7), 0 0 0 1px ${color}33`,
               whiteSpace: 'nowrap',
             }}

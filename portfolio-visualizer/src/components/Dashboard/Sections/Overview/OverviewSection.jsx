@@ -156,7 +156,7 @@ const ZigzagLogo = ({
             textShadow: `0 0 4px ${color}40`,
             opacity: fade ? 0 : 0.9,
             transition: fade ? 'opacity 0.4s ease-out' : 'none',
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: 'monospace',
             letterSpacing: '0.5px',
             whiteSpace: 'nowrap'
           }}
@@ -168,7 +168,7 @@ const ZigzagLogo = ({
   );
 };
 
-const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, hiddenAssets, excludedOperations, showApplyPopup, setShowApplyPopup, startDate, endDate, buttonStartDate, buttonEndDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, isInPointClickMode, setIsInPointClickMode, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, onFilterReset, isApplyingFromTimeline }) => {
+const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, hiddenAssets, excludedOperations, disabledOps = new Set(), showApplyPopup, setShowApplyPopup, startDate, endDate, buttonStartDate, buttonEndDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, isInPointClickMode, setIsInPointClickMode, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, onFilterReset, isApplyingFromTimeline, timelineViewMode, setTimelineViewMode, timelineShowCostBasis, setTimelineShowCostBasis, timelinePeriodMode, setTimelinePeriodMode, priceTimestamp }) => {
   const [sloganGlow, setSloganGlow] = useState(false);
   const lastProfitRef = useRef(null);
 
@@ -210,7 +210,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           <div style={{
             fontSize: '18px',
             fontWeight: '600',
-            fontFamily: "'Inter', sans-serif"
+            fontFamily: 'monospace'
           }}>
             Loading Portfolio Data...
           </div>
@@ -227,7 +227,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         alignItems: 'center',
         justifyContent: 'center',
         color: theme.textSecondary,
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: 'monospace',
         fontSize: '16px'
       }}>
         No portfolio data available
@@ -240,7 +240,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       minHeight: 'auto',
       background: theme.bg,
       color: theme.textPrimary,
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: 'monospace',
       position: 'relative',
       display: 'flex',
       flexDirection: 'column',
@@ -252,7 +252,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       marginBottom: '0'
     }}>
       {/* Price Ticker */}
-      <PriceTicker portfolioData={portfolioData} theme={theme} />
+      <PriceTicker portfolioData={portfolioData} theme={theme} priceTimestamp={priceTimestamp} />
       
       {/* Primera línea: KPIs centrados */}
       <div style={{
@@ -266,6 +266,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           endDate={endDate}
           hiddenAssets={hiddenAssets}
           excludedOperations={excludedOperations}
+          disabledOps={disabledOps}
           sidebarOpen={sidebarOpen}
         />
       </div>
@@ -275,11 +276,12 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
         width: '100%',
         marginTop: '3.5rem'
       }}>
-        <TimelineChart 
-          portfolioData={portfolioData} 
+        <TimelineChart
+          portfolioData={portfolioData}
           theme={theme}
           hiddenAssets={hiddenAssets}
           excludedOperations={excludedOperations}
+          disabledOps={disabledOps}
           showApplyPopup={showApplyPopup}
           setShowApplyPopup={setShowApplyPopup}
           startDate={startDate}
@@ -298,6 +300,12 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           filterSelectedPreset={filterSelectedPreset}
           onFilterReset={onFilterReset}
           isApplyingFromTimeline={isApplyingFromTimeline}
+          viewMode={timelineViewMode}
+          onViewModeChange={setTimelineViewMode}
+          showTotalInvested={timelineShowCostBasis}
+          onShowTotalInvestedChange={setTimelineShowCostBasis}
+          periodMode={timelinePeriodMode}
+          onPeriodModeChange={setTimelinePeriodMode}
         />
       </div>
 
@@ -317,6 +325,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           endDate={endDate}
           hiddenAssets={hiddenAssets}
           excludedOperations={excludedOperations}
+          disabledOps={disabledOps}
           sidebarOpen={sidebarOpen}
         />
 
@@ -334,6 +343,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
             endDate={endDate}
             hiddenAssets={hiddenAssets}
             excludedOperations={excludedOperations}
+            disabledOps={disabledOps}
             sidebarOpen={sidebarOpen}
           />
         </div>

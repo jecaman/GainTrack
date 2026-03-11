@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatEuropeanCurrency, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
+import { makeOpId } from '../../../../../utils/chartUtils';
 
 // KPI Card Component - Diseño limpio sin rectangulos
-const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false, tooltip = null, sidebarOpen = false, windowWidth = 1200, isSmaller = false, isVerySmall = false }) => {
+const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false, tooltip = null, sidebarOpen = false, windowWidth = 1200 }) => {
   const [isTooltipHovered, setIsTooltipHovered] = useState(false);
   const [isCardHovered, setIsCardHovered] = useState(false);
   
@@ -17,11 +18,6 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     const thisPercentLength = changePercent ? changePercent.toString().length : 0;
     const thisContentChars = thisValueLength + thisPercentLength + (showChange ? 2 : 0); // +2 solo si hay porcentaje
     
-    // Debug: Log para ver qué está pasando
-    if (label?.includes('Gains')) {
-      // console.log(`${label}: value="${value}" (${thisValueLength} chars), percent="${changePercent}" (${thisPercentLength} chars), total=${thisContentChars}`);
-    }
-    
     if (thisContentChars === 0) return '1.8rem'; // Default si no hay contenido
     
     // Calcular tamaño de fuente para que EL CONTENIDO DE ESTE KPI quepa
@@ -32,10 +28,6 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     const minFontSize = windowWidth < 768 ? 0.9 : 1.0;
     
     const finalSize = Math.max(fontSize, minFontSize);
-    
-    if (label?.includes('Gains')) {
-      // console.log(`${label}: fontSize calculated = ${finalSize}rem`);
-    }
     
     return `${finalSize}rem`;
   };
@@ -98,7 +90,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
             color: '#ffffff',
             fontSize: '0.8rem', // Letra más grande
             lineHeight: '1.3',
-            fontFamily: 'SF Mono, Monaco, monospace', // Misma fuente que el título
+            fontFamily: 'monospace',
             pointerEvents: 'none',
             textAlign: 'center', // Centrado como el resto del contenido
             whiteSpace: 'pre-line',
@@ -119,7 +111,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
           fontWeight: '600',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
-          fontFamily: 'SF Mono, Monaco, monospace',
+          fontFamily: 'monospace',
           textAlign: 'center',
           marginBottom: '4px', // Espacio reducido para mejor centrado
           height: '20px', // Altura fija en lugar de minHeight
@@ -157,7 +149,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
               fontSize: '10px',
               fontWeight: '700',
               color: isTooltipHovered ? '#000000' : '#ffffff',
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: 'monospace',
               transition: 'all 0.2s ease',
               opacity: isTooltipHovered ? 1 : 0.7,
               transform: isTooltipHovered ? 'scale(1.1)' : 'scale(1)',
@@ -180,7 +172,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         flexDirection: 'row', // Volver a fila
         alignItems: 'center', // Cambio a center para mejor centrado vertical
         justifyContent: 'center',
-        gap: '3px', // Gap reducido entre valor y triángulo
+        gap: '8px', // Gap entre valor y triángulo/porcentaje
         flex: 1, // Usar el espacio restante disponible
         width: '100%',
         textAlign: 'center',
@@ -192,7 +184,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
             fontSize: getValueFontSize(),
             fontWeight: '700',
             color: (label === 'Portfolio Value' || label === 'Cost Basis') ? '#ffffff' : (isPositive ? '#00FF99' : '#ef4444'),
-            fontFamily: 'SF Mono, Monaco, monospace',
+            fontFamily: 'monospace',
             lineHeight: '1',
             maxWidth: showChange && changePercent ? '65%' : '100%', // Espacio compartido con porcentaje
             flexShrink: 1, // Permitir reducirse si es necesario
@@ -226,7 +218,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
               fontSize: getPercentageFontSize(),
               fontWeight: '600',
               color: isPositive ? '#00FF99' : '#ef4444',
-              fontFamily: 'SF Mono, Monaco, monospace',
+              fontFamily: 'monospace',
               lineHeight: '1',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -243,7 +235,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
 };
 
 // Main KPI Grid Component (LIMPIO)
-const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), sidebarOpen = false }) => {
+const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false }) => {
   
   // Estado para controlar el tamaño de la ventana
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -337,8 +329,8 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       const operations = dayData.operations || [];
       
       operations.forEach(operation => {
-        // Skip operations for hidden assets or excluded operations (use operation_key like TimelineChart)
-        if (hiddenAssetsBackend.has(operation.asset) || excludedOperations.has(operation.operation_key)) {
+        // Skip operations for hidden assets, excluded operations, or individually disabled ops
+        if (hiddenAssetsBackend.has(operation.asset) || excludedOperations.has(operation.operation_key) || disabledOps.has(makeOpId(operation, dayData.date))) {
           return;
         }
         
@@ -432,7 +424,7 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
     timelineToProcess.forEach(dayData => {
       const operations = dayData.operations || [];
       operations.forEach(operation => {
-        if (!hiddenAssetsBackend.has(operation.asset) && !excludedOperations.has(operation.operation_key)) {
+        if (!hiddenAssetsBackend.has(operation.asset) && !excludedOperations.has(operation.operation_key) && !disabledOps.has(makeOpId(operation, dayData.date))) {
           calculatedTotalFees += parseFloat(operation.fee) || 0;
         }
       });
@@ -463,15 +455,6 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
         costBasisRemaining: costBasis?.toFixed(4),
       };
     });
-    console.log('[KPIGrid] P&L breakdown:', {
-      profit: profit?.toFixed(4),
-      calculatedRealizedGains: calculatedRealizedGains?.toFixed(4),
-      calculatedUnrealizedGains: calculatedUnrealizedGains?.toFixed(4),
-      currentValue: currentValue?.toFixed(4),
-      costBasisRemaining: Object.values(cost_basis_fifo).flat().reduce((s, l) => s + l.cost, 0)?.toFixed(4),
-      perAsset: perAssetDebug,
-    });
-    
     return {
       current_value: currentValue,
       total_invested: totalInvested,
@@ -483,7 +466,7 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       unrealized_gains: calculatedUnrealizedGains, // Always use calculated unrealized gains
       unrealized_percentage: calculatedUnrealizedPercentage // Always use calculated unrealized percentage
     };
-  }, [portfolioData, startDate, endDate, hiddenAssetsBackend, excludedOperations]);
+  }, [portfolioData, startDate, endDate, hiddenAssetsBackend, excludedOperations, disabledOps]);
 
   // Process KPI data
   const getKPIData = () => {
@@ -647,19 +630,19 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
         />
         
         <KPICard
-          label="Total Gains"
+          label="Total P&L"
           value={kpiData.profit}
           changePercent={kpiData.profitPercent}
           isPositive={kpiData.isPositive}
           theme={theme}
           showChange={true}
-          tooltip="Combined realized and unrealized gains/losses - your total profit or loss"
+          tooltip="Combined realized and unrealized P&L - your total profit or loss"
           sidebarOpen={sidebarOpen}
           windowWidth={windowWidth}
         />
-        
+
         <KPICard
-          label="Realized Gains"
+          label="Realized P&L"
           value={kpiData.realizedData?.value || '0,00€'}
           changePercent={kpiData.realizedData?.percent || '0.00%'}
           isPositive={kpiData.realizedData?.isPositive || false}
@@ -669,9 +652,9 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           sidebarOpen={sidebarOpen}
           windowWidth={windowWidth}
         />
-        
+
         <KPICard
-          label="Unrealized Gains"
+          label="Unrealized P&L"
           value={kpiData.unrealizedData?.value || '0,00€'}
           changePercent={kpiData.unrealizedData?.percent || '0.00%'}
           isPositive={kpiData.unrealizedData?.isPositive || false}

@@ -1,7 +1,7 @@
 // KRAKEN ASSETS DATABASE
 // Colores basados en los colores principales de los logos + datos estáticos
 
-export const ASSET_LOGO_COLORS = {
+const ASSET_LOGO_COLORS = {
   // Colores extraídos de los logos oficiales
   BTC: '#F7931A', // Bitcoin Orange
   ETH: '#627EEA', // Ethereum Blue
@@ -265,12 +265,6 @@ export const KRAKEN_ASSETS = {
   }
 };
 
-// Helper functions
-export const getAssetInfo = (symbol) => {
-  return KRAKEN_ASSETS[symbol?.toUpperCase()] || KRAKEN_ASSETS.DEFAULT;
-};
-
-
 export const getAssetLogo = (symbol, size = 'small') => {
   const normalizedSymbol = symbol?.toUpperCase();
   
@@ -305,28 +299,4 @@ export const getAssetLogo = (symbol, size = 'small') => {
   };
   
   return logoUrls[normalizedSymbol] || null; // Retorna null si no existe
-};
-
-
-
-export const getAssetColor = (symbol) => {
-  return getAssetInfo(symbol).color;
-};
-
-export const getAssetsByCategory = (category) => {
-  return Object.entries(KRAKEN_ASSETS)
-    .filter(([key, asset]) => asset.category === category)
-    .map(([symbol, asset]) => ({ symbol, ...asset }));
-};
-
-// Static asset data - no continuous API calls for performance
-// This data can be updated periodically through a maintenance script if needed
-
-export const getAllAssets = () => {
-  return Object.entries(KRAKEN_ASSETS)
-    .map(([symbol, asset]) => ({ symbol, ...asset }));
-};
-
-export const getAssetCount = () => {
-  return Object.keys(KRAKEN_ASSETS).length - 1; // Exclude DEFAULT
 };

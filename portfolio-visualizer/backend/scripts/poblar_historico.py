@@ -4,9 +4,13 @@ Script para poblar datos históricos en Supabase
 Obtiene precios históricos de Kraken API para los últimos N días
 """
 import logging
+import sys
+import os
 import time
 from datetime import date, timedelta
 from typing import List, Dict
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from supabase_cache import cache, get_spain_date
 import requests
 
