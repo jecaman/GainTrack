@@ -1,8 +1,6 @@
 #!/bin/bash
-"""
-Script para configurar cron job que actualice precios históricos diariamente
-Ejecuta a las 01:00 AM todos los días
-"""
+# Script para configurar cron job que actualice precios históricos diariamente
+# Ejecuta a las 01:00 AM todos los días
 
 # Obtener directorio actual
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import GainTrackFormPage from './components/GainTrackFormPage';
+import GainTrackForm from './components/GainTrackForm';
 import Dashboard from './components/Dashboard/Dashboard';
-import GainTrackKPIs from './components/GainTrackKPIs';
 import ErrorBoundary from './components/ErrorBoundary';
+import { assetLabelMap } from './utils/chartUtils';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
@@ -14,61 +14,46 @@ function App() {
   const [error, setError] = useState('');
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [csvFile, setCsvFile] = useState(null); // Store CSV file for re-processing
+  const [priceTimestamp, setPriceTimestamp] = useState(null);
 
   // Function to re-process CSV with date filters
   const reprocessCsvWithFilters = async (startDate, endDate, excludedOperations = []) => {
-    if (!csvFile) {
-      console.log('❌ [APP] No CSV file stored for reprocessing');
-      return;
-    }
-    
-    console.log('🔄 [APP] Reprocessing CSV with filters:', { startDate, endDate, excludedOpsCount: excludedOperations.length });
-    
+    if (!csvFile) return;
+
     setIsLoading(true);
     try {
       const formData = new FormData();
       formData.append('csv_file', csvFile);
-      
-      // Add date parameters
+
       if (startDate) {
         formData.append('start_date', startDate);
-        console.log('📅 [APP] Adding start_date to request:', startDate);
       }
       if (endDate) {
         formData.append('end_date', endDate);
-        console.log('📅 [APP] Adding end_date to request:', endDate);
       }
-      
-      // Add excluded operations
+
       if (excludedOperations.length > 0) {
         formData.append('excluded_operations', JSON.stringify(excludedOperations));
-        console.log('❌ [APP] Adding excluded operations:', excludedOperations.length);
       }
-      
-      console.log('🚀 [APP] Making request to backend...');
+
       const response = await fetch('http://localhost:8001/api/portfolio/csv', {
         method: 'POST',
         body: formData
       });
-      
+
       const data = await response.json();
-      console.log('✅ [APP] Backend response received:', { hasError: !!data.error, timelineLength: data.timeline?.length });
-      
+
       if (data.error) {
-        console.log('❌ [APP] Backend error:', data.error);
         setError(data.error);
         setIsLoading(false);
         return;
       }
-      
-      // Update portfolio data with filtered results
+
       setFullPortfolioData(data);
       setPortfolioData(data.portfolio_data);
       setTimeline(data.timeline || []);
-      console.log('🎯 [APP] Portfolio data updated successfully');
-      
+
     } catch (err) {
-      console.log('💥 [APP] Request failed:', err);
       setError('Failed to reprocess CSV data.');
     } finally {
       setIsLoading(false);
@@ -146,6 +131,109 @@ function App() {
     }
   };
 
+  const refreshPrices = async () => {
+    if (!fullPortfolioData?.portfolio_data) return;
+    // Backend keys (XXBT, XETH) → display keys (BTC, ETH) for the API
+    const backendAssets = fullPortfolioData.portfolio_data
+      .filter(a => a.asset_type !== 'fiat' && (a.amount || 0) > 0)
+      .map(a => a.asset);
+    if (backendAssets.length === 0) return;
+
+    // Build mapping: display → backend (e.g. BTC → XXBT)
+    const displayToBackend = {};
+    const displayAssets = backendAssets.map(bk => {
+      const display = assetLabelMap[bk] || bk;
+      displayToBackend[display] = bk;
+      return display;
+    });
+
+    try {
+      const res = await fetch(`http://localhost:8001/api/prices/current?assets=${displayAssets.join(',')}`);
+      const data = await res.json();
+      if (data.from_cache) {
+        const ttlLeft = 60 - (data.cache_age_seconds || 0);
+        console.warn(`[Prices] ⚠️ Rate limit — caché de ${data.cache_age_seconds}s. Próximo refresh en ~${ttlLeft}s.`);
+      }
+      if (data.prices) {
+        // Convert display keys back to backend keys: {BTC: 60000} → {XXBT: 60000}
+        const pricesByBackendKey = {};
+        for (const [displayKey, price] of Object.entries(data.prices)) {
+          const backendKey = displayToBackend[displayKey] || displayKey;
+          if (price != null && price > 0) {
+            pricesByBackendKey[backendKey] = price;
+          }
+        }
+
+        setFullPortfolioData(prev => {
+          // Actualizar portfolio_data
+          const updatedPortfolioData = prev.portfolio_data.map(asset => {
+            const newPrice = pricesByBackendKey[asset.asset];
+            if (newPrice != null) {
+              return { ...asset, current_price: newPrice, current_value: newPrice * (asset.amount || 0) };
+            }
+            return asset;
+          });
+
+          // Actualizar último punto del timeline con los nuevos precios
+          let updatedTimeline = prev.timeline;
+          if (prev.timeline && prev.timeline.length > 0) {
+            updatedTimeline = [...prev.timeline];
+            const lastDay = { ...updatedTimeline[updatedTimeline.length - 1] };
+            const updatedAssets = { ...lastDay.assets_con_valor };
+            let newValue = 0;
+
+            for (const [backendKey, price] of Object.entries(pricesByBackendKey)) {
+              if (updatedAssets[backendKey]) {
+                updatedAssets[backendKey] = {
+                  ...updatedAssets[backendKey],
+                  precio: price,
+                  valor: price * updatedAssets[backendKey].cantidad
+                };
+              }
+            }
+
+            // Recalcular valor total del día
+            for (const assetData of Object.values(updatedAssets)) {
+              newValue += assetData.valor || 0;
+            }
+
+            lastDay.assets_con_valor = updatedAssets;
+            lastDay.value = newValue;
+            lastDay.unrealized_gain = newValue - (lastDay.cost || 0);
+            lastDay.total_gain = lastDay.unrealized_gain + (lastDay.realized_gain_period || 0);
+
+            updatedTimeline[updatedTimeline.length - 1] = lastDay;
+          }
+
+          return {
+            ...prev,
+            portfolio_data: updatedPortfolioData,
+            timeline: updatedTimeline
+          };
+        });
+        setPriceTimestamp(data.fetched_at);
+      }
+      return { fromCache: !!data.from_cache };
+    } catch (err) {
+      console.error('[Prices] ❌ Error:', err);
+      return { fromCache: false };
+    }
+  };
+
+  // Auto-refresh precios cada 5 minutos
+  useEffect(() => {
+    if (!showPortfolio) return;
+    const interval = setInterval(refreshPrices, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [showPortfolio, fullPortfolioData]);
+
+  // Inicializar timestamp cuando llegan los datos del backend
+  useEffect(() => {
+    if (fullPortfolioData?.price_captured_at && !priceTimestamp) {
+      setPriceTimestamp(fullPortfolioData.price_captured_at);
+    }
+  }, [fullPortfolioData]);
+
   const handleBackToForm = () => {
     setIsTransitioning(true);
     setTimeout(() => {
@@ -162,13 +250,16 @@ function App() {
   };
 
   return (
-    <div style={{
-      position: 'relative',
-      height: '100vh',
-      overflowY: 'auto',
-      overflowX: 'hidden',
-      overscrollBehavior: 'none'
-    }}>
+    <div
+      id="main-scroll"
+      style={{
+        position: 'relative',
+        height: '100vh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        overscrollBehavior: 'none'
+      }}
+    >
       {/* Form Page */}
       <div style={{
         position: showPortfolio ? 'absolute' : 'relative',
@@ -179,12 +270,11 @@ function App() {
         height: showPortfolio ? 0 : 'auto',
         overflow: showPortfolio ? 'hidden' : 'visible',
         opacity: (!showPortfolio && !isTransitioning) ? 1 : 0,
-        transform: (!showPortfolio && !isTransitioning) ? 'translateX(0)' : 'translateX(-50px)',
-        transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
         pointerEvents: !showPortfolio ? 'auto' : 'none',
         zIndex: !showPortfolio ? 2 : 1
       }}>
-        <GainTrackFormPage
+        <GainTrackForm
           onSubmit={handleApiSubmit}
           isLoading={isLoading}
           error={error}
@@ -201,8 +291,7 @@ function App() {
         minHeight: 0,
         overflow: !showPortfolio ? 'hidden' : 'visible',
         opacity: (showPortfolio && !isTransitioning) ? 1 : 0,
-        transform: (showPortfolio && !isTransitioning) ? 'translateX(0)' : 'translateX(50px)',
-        transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
         pointerEvents: showPortfolio ? 'auto' : 'none',
         zIndex: showPortfolio ? 2 : 1
       }}>
@@ -230,6 +319,8 @@ function App() {
             }}
             onShowGainTrack={handleBackToForm}
             onReprocessCsv={reprocessCsvWithFilters}
+            onRefreshPrices={refreshPrices}
+            priceTimestamp={priceTimestamp}
           />
         </ErrorBoundary>
       </div>

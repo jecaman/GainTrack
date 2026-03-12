@@ -1,8 +1,22 @@
+import { useState, useEffect, useRef } from 'react';
 import { formatEuropeanPrice, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
 import { getAssetLogo } from '../../../../../utils/krakenAssets';
 import { assetLabelMap } from '../../../../../utils/chartUtils';
 
-const PriceTicker = ({ portfolioData, theme }) => {
+const PriceTicker = ({ portfolioData, theme, priceTimestamp }) => {
+  const [flash, setFlash] = useState(false);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (!priceTimestamp) return;
+    setFlash(true);
+    const timer = setTimeout(() => setFlash(false), 1500);
+    return () => clearTimeout(timer);
+  }, [priceTimestamp]);
   const professionalQuotes = [
     "Diversification is the only free lunch in investing",
     "Time in the market beats timing the market",
@@ -111,7 +125,7 @@ const PriceTicker = ({ portfolioData, theme }) => {
           marginRight: '80px',
           whiteSpace: 'nowrap',
           fontSize: '14px',
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: 'monospace',
           fontStyle: 'italic',
           color: '#d0d0d0',
         }}
@@ -136,7 +150,7 @@ const PriceTicker = ({ portfolioData, theme }) => {
             marginRight: '60px',
             whiteSpace: 'nowrap',
             fontSize: '14px',
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: 'monospace',
           }}
         >
           {/* Logo */}
@@ -145,7 +159,7 @@ const PriceTicker = ({ portfolioData, theme }) => {
               src={getAssetLogo(asset.symbol, 'small')}
               alt={asset.symbol}
               style={{ width: '22px', height: '22px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-              onError={(e) => { e.target.style.display = 'none'; }}
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           ) : (
             <div style={{ width: '22px', height: '22px', flexShrink: 0 }} />
@@ -163,7 +177,8 @@ const PriceTicker = ({ portfolioData, theme }) => {
 
           {/* Price */}
           <span style={{
-            fontWeight: '900',
+            fontWeight: '700',
+            fontFamily: 'monospace',
             color: asset.isOwned ? theme.textPrimary : '#d0d0d0',
             opacity: asset.isOwned ? 1 : 0.8,
           }}>
@@ -174,10 +189,9 @@ const PriceTicker = ({ portfolioData, theme }) => {
           {change !== null && (
             <span style={{
               fontWeight: '400',
-              fontStyle: 'italic',
               color: isPositive ? '#00FF99' : '#ef4444',
             }}>
-              {isPositive ? '+' : ''}{formatEuropeanPercentage(change)} {isPositive ? '↗' : '↘'}
+              {isPositive ? '▲' : '▼'}{formatEuropeanPercentage(Math.abs(change))}
             </span>
           )}
         </div>
@@ -198,6 +212,13 @@ const PriceTicker = ({ portfolioData, theme }) => {
   );
 
   return (
+    <>
+    {flash && <style>{`
+      @keyframes ticker-flash {
+        0%   { background: rgba(0,255,136,0.12); }
+        100% { background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.03) 100%); }
+      }
+    `}</style>}
     <div style={{
       height: '50px',
       width: 'calc(100% + 16rem)',
@@ -206,12 +227,13 @@ const PriceTicker = ({ portfolioData, theme }) => {
       // No borderTop — la línea del header sirve de límite superior
       borderBottom: `1px solid ${theme.borderColor}`,
       position: 'absolute',
-      top: '-33px',
+      top: '0px',
       left: '-8rem',
       right: '-8rem',
       zIndex: 10,
       display: 'flex',
       alignItems: 'center',
+      animation: flash ? 'ticker-flash 1.5s ease-out forwards' : 'none',
     }}>
       {/* Fade en los bordes */}
       <div style={{
@@ -243,6 +265,7 @@ const PriceTicker = ({ portfolioData, theme }) => {
         }
       `}</style>
     </div>
+    </>
   );
 };
 

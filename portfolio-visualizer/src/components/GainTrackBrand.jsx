@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // GainTrack Logo Component with Moving Bright Point
 // Nuevo logo con tres segmentos - primero y tercero idénticos, segundo paralelo
@@ -10,8 +10,6 @@ const GainTrackLogo = ({
 }) => {
   const [visible, setVisible] = useState(false);
   const [fade, setFade] = useState(false);
-  const timeoutRef = useRef(null);
-  const fadeTimeoutRef = useRef(null);
 
   // Lógica interna del glow con intervalo limpio
   useEffect(() => {

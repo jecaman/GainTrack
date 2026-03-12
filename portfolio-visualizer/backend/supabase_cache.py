@@ -291,7 +291,7 @@ class SupabaseCache:
 # Instancia global del cache
 cache = SupabaseCache()
 
-# Funciones de conveniencia para usar en main2.py
+# Funciones de conveniencia para usar en main.py
 def obtener_precio(asset: str, fecha: date = None) -> Optional[float]:
     """Función simple para obtener precio de un asset"""
     return cache.obtener_precio_hibrido(asset, fecha)

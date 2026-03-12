@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import './GainTrackForm.css';
 import GainTrackBrand from './GainTrackBrand';
 
@@ -29,12 +29,12 @@ const ThemeToggle = ({ isDark, onToggle }) => (
         backdropFilter: 'blur(8px)'
       }}
       onMouseEnter={(e) => {
-        e.target.style.background = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
-        e.target.style.transform = 'scale(1.05)';
+        e.currentTarget.style.background = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
+        e.currentTarget.style.transform = 'scale(1.05)';
       }}
       onMouseLeave={(e) => {
-        e.target.style.background = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-        e.target.style.transform = 'scale(1)';
+        e.currentTarget.style.background = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+        e.currentTarget.style.transform = 'scale(1)';
       }}
     >
       {/* Toggle circle */}
@@ -460,14 +460,14 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               }}
               onMouseEnter={(e) => {
                 if (activeMethod !== 'api') {
-                  e.target.style.color = theme.textPrimary;
-                  e.target.style.background = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+                  e.currentTarget.style.color = theme.textPrimary;
+                  e.currentTarget.style.background = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (activeMethod !== 'api') {
-                  e.target.style.color = theme.textSecondary;
-                  e.target.style.background = 'transparent';
+                  e.currentTarget.style.color = theme.textSecondary;
+                  e.currentTarget.style.background = 'transparent';
                 }
               }}
             >
@@ -490,14 +490,14 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               }}
               onMouseEnter={(e) => {
                 if (activeMethod !== 'csv') {
-                  e.target.style.color = theme.textPrimary;
-                  e.target.style.background = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+                  e.currentTarget.style.color = theme.textPrimary;
+                  e.currentTarget.style.background = isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (activeMethod !== 'csv') {
-                  e.target.style.color = theme.textSecondary;
-                  e.target.style.background = 'transparent';
+                  e.currentTarget.style.color = theme.textSecondary;
+                  e.currentTarget.style.background = 'transparent';
                 }
               }}
             >
@@ -556,12 +556,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                       fontFamily: "'JetBrains Mono', monospace"
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = theme.greenPrimary;
-                      e.target.style.boxShadow = `0 0 0 2px ${isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(22, 163, 74, 0.1)'}`;
+                      e.currentTarget.style.borderColor = theme.greenPrimary;
+                      e.currentTarget.style.boxShadow = `0 0 0 2px ${isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(22, 163, 74, 0.1)'}`;
                     }}
                     onBlur={(e) => {
-                      e.target.style.borderColor = theme.border;
-                      e.target.style.boxShadow = 'none';
+                      e.currentTarget.style.borderColor = theme.border;
+                      e.currentTarget.style.boxShadow = 'none';
                     }}
                     required
                   />
@@ -601,12 +601,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                       fontFamily: "'JetBrains Mono', monospace"
                     }}
                     onFocus={(e) => {
-                      e.target.style.borderColor = theme.greenPrimary;
-                      e.target.style.boxShadow = `0 0 0 2px ${isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(22, 163, 74, 0.1)'}`;
+                      e.currentTarget.style.borderColor = theme.greenPrimary;
+                      e.currentTarget.style.boxShadow = `0 0 0 2px ${isDarkMode ? 'rgba(0, 255, 136, 0.1)' : 'rgba(22, 163, 74, 0.1)'}`;
                     }}
                     onBlur={(e) => {
-                      e.target.style.borderColor = theme.border;
-                      e.target.style.boxShadow = 'none';
+                      e.currentTarget.style.borderColor = theme.border;
+                      e.currentTarget.style.boxShadow = 'none';
                     }}
                     required
                   />
@@ -651,12 +651,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                     alignItems: 'center'
                   }}
                   onMouseEnter={(e) => {
-                    e.target.style.borderColor = isDarkMode ? 'rgba(34, 197, 94, 0.5)' : 'rgba(22, 163, 74, 0.4)';
-                    e.target.style.background = isDarkMode ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.04)';
+                    e.currentTarget.style.borderColor = isDarkMode ? 'rgba(34, 197, 94, 0.5)' : 'rgba(22, 163, 74, 0.4)';
+                    e.currentTarget.style.background = isDarkMode ? 'rgba(34, 197, 94, 0.08)' : 'rgba(22, 163, 74, 0.04)';
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.borderColor = isDarkMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(22, 163, 74, 0.2)';
-                    e.target.style.background = isDarkMode ? 'rgba(34, 197, 94, 0.05)' : 'rgba(22, 163, 74, 0.02)';
+                    e.currentTarget.style.borderColor = isDarkMode ? 'rgba(34, 197, 94, 0.3)' : 'rgba(22, 163, 74, 0.2)';
+                    e.currentTarget.style.background = isDarkMode ? 'rgba(34, 197, 94, 0.05)' : 'rgba(22, 163, 74, 0.02)';
                   }}
                 >
                   <div style={{
@@ -708,12 +708,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
                     alignItems: 'center'
                   }}
                   onMouseEnter={(e) => {
-                    e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.5)' : 'rgba(16, 185, 129, 0.4)';
-                    e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.05)' : 'rgba(16, 185, 129, 0.03)';
+                    e.currentTarget.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.5)' : 'rgba(16, 185, 129, 0.4)';
+                    e.currentTarget.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.05)' : 'rgba(16, 185, 129, 0.03)';
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)';
-                    e.target.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)';
+                    e.currentTarget.style.borderColor = isDarkMode ? 'rgba(0, 255, 136, 0.3)' : 'rgba(16, 185, 129, 0.25)';
+                    e.currentTarget.style.background = isDarkMode ? 'rgba(0, 255, 136, 0.02)' : 'rgba(16, 185, 129, 0.015)';
                   }}
                 >
                   <div style={{
@@ -778,16 +778,16 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
             }}
             onMouseEnter={(e) => {
               if (!isLoading) {
-                e.target.style.background = theme.greenPrimary;
-                e.target.style.color = isDarkMode ? '#000000' : '#ffffff';
-                e.target.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.background = theme.greenPrimary;
+                e.currentTarget.style.color = isDarkMode ? '#000000' : '#ffffff';
+                e.currentTarget.style.transform = 'translateY(-1px)';
               }
             }}
             onMouseLeave={(e) => {
               if (!isLoading) {
-                e.target.style.background = 'transparent';
-                e.target.style.color = theme.greenPrimary;
-                e.target.style.transform = 'translateY(0)';
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = theme.greenPrimary;
+                e.currentTarget.style.transform = 'translateY(0)';
               }
             }}
           >
@@ -871,14 +871,14 @@ const GainTrackForm = ({ onSubmit, isLoading, error }) => {
               backdropFilter: 'blur(8px)'
             }}
             onMouseEnter={(e) => {
-              e.target.style.color = theme.textPrimary;
-              e.target.style.borderColor = theme.greenPrimary;
-              e.target.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.color = theme.textPrimary;
+              e.currentTarget.style.borderColor = theme.greenPrimary;
+              e.currentTarget.style.transform = 'translateY(-1px)';
             }}
             onMouseLeave={(e) => {
-              e.target.style.color = theme.textSecondary;
-              e.target.style.borderColor = theme.border;
-              e.target.style.transform = 'translateY(0)';
+              e.currentTarget.style.color = theme.textSecondary;
+              e.currentTarget.style.borderColor = theme.border;
+              e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
             Contact Us

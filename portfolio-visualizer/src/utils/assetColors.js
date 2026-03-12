@@ -1,7 +1,6 @@
 // Asset color scheme matching the page design
-// Colors that work well with both dark and light themes
 
-export const assetColors = {
+const assetColors = {
   // Cryptocurrencies - Representative colors that match dashboard style
   'BTC': '#f7931a',      // Bitcoin orange rgba(247,147,26,255)
   'XXBT': '#f7931a',     // Bitcoin orange
@@ -48,7 +47,7 @@ export const assetColors = {
   'NEAR': '#6b7280',     // Near - Gray
   'FLOW': '#9ca3af',     // Flow - Light gray
   'EGLD': '#d1d5db',     // Elrond - Very light gray
-  
+
   // Fiat currencies - Neutral tones
   'EUR': '#4b5563',      // Euro - Dark gray
   'ZEUR': '#4b5563',
@@ -64,20 +63,20 @@ export const assetColors = {
   'USDC': '#a1a1aa',     // USD Coin - Light zinc
   'BUSD': '#d4d4d8',     // Binance USD - Light zinc
   'DAI': '#e4e4e7',      // Dai - Very light zinc
-  
+
   // Staking/DeFi tokens - Purple/Blue spectrum
   'CAKE': '#8b5cf6',     // PancakeSwap - Purple
   'LUNA': '#7c3aed',     // Terra - Deep purple
   'FTM': '#5b21b6',      // Fantom - Dark purple
   'ONE': '#4c1d95',      // Harmony - Deep violet
   'BNB': '#1e1b4b',      // Binance Coin - Deep indigo
-  
+
   // Meme coins - Bright colors
   'DOGE': '#fbbf24',     // Dogecoin - Amber
   'SHIB': '#f59e0b',     // Shiba Inu - Orange
   'PEPE': '#10b981',     // Pepe - Green
   'FLOKI': '#ef4444',    // Floki - Red
-  
+
   // Default fallback colors - continuation of the palette
   'DEFAULT_1': '#06b6d4',  // Cyan
   'DEFAULT_2': '#0891b2',  // Dark cyan
@@ -97,7 +96,7 @@ export const getAssetColor = (asset) => {
   if (assetColors[asset]) {
     return assetColors[asset];
   }
-  
+
   // Clean the asset name (remove prefixes/suffixes and common pairs)
   let cleanAsset = asset
     .replace(/^[XZ]/, '')           // Remove X or Z prefix
@@ -106,12 +105,12 @@ export const getAssetColor = (asset) => {
     .replace(/ZEUR$/, '')           // Remove ZEUR suffix
     .replace(/USD$/, '')            // Remove USD suffix
     .replace(/\/$/, '');            // Remove trailing slash
-  
+
   // Try clean asset name
   if (assetColors[cleanAsset]) {
     return assetColors[cleanAsset];
   }
-  
+
   // Try common mappings
   const commonMappings = {
     'BT': 'BTC',
@@ -119,11 +118,11 @@ export const getAssetColor = (asset) => {
     'XXBT': 'BTC',
     'XETH': 'ETH'
   };
-  
+
   if (commonMappings[cleanAsset] && assetColors[commonMappings[cleanAsset]]) {
     return assetColors[commonMappings[cleanAsset]];
   }
-  
+
   // Use hash-based default color for consistency
   const hash = asset.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const defaultColors = [
@@ -132,7 +131,7 @@ export const getAssetColor = (asset) => {
     assetColors.DEFAULT_7, assetColors.DEFAULT_8, assetColors.DEFAULT_9,
     assetColors.DEFAULT_10
   ];
-  
+
   return defaultColors[hash % defaultColors.length];
 };
 
@@ -153,76 +152,7 @@ export const getAssetColorsArray = (assetsOrCount) => {
     }
     return colors;
   }
-  
+
   // If it's an array, map each asset to its color
   return assetsOrCount.map(asset => getAssetColor(asset));
-};
-
-// Dark theme specific colors (higher contrast)
-export const darkThemeAssetColors = {
-  ...assetColors,
-  // Override some colors for better dark theme visibility
-  'EUR': '#6b7280',
-  'ZEUR': '#6b7280',
-  'USD': '#9ca3af',
-  'ZUSD': '#9ca3af',
-  'GBP': '#d1d5db',
-  'ZGBP': '#d1d5db',
-};
-
-// Light theme specific colors (softer tones)
-export const lightThemeAssetColors = {
-  ...assetColors,
-  // Override some colors for better light theme visibility
-  'BTC': '#f7931a',      // Bitcoin orange for light theme
-  'XXBT': '#f7931a',
-  'XXBTEUR': '#f7931a',
-  'XXBTZEUR': '#f7931a',
-  'ETH': '#627eea',      // Keep Ethereum blue/purple
-  'XETH': '#627eea',
-  'XETHEUR': '#627eea',
-  'XETHZEUR': '#627eea',
-};
-
-// Get theme-specific colors
-export const getThemeAssetColors = (isDark = true) => {
-  return isDark ? darkThemeAssetColors : lightThemeAssetColors;
-};
-
-// Get theme-specific color for asset
-export const getThemeAssetColor = (asset, isDark = true) => {
-  const colors = getThemeAssetColors(isDark);
-  
-  // Try exact match first
-  if (colors[asset]) {
-    return colors[asset];
-  }
-  
-  // Clean the asset name using the same logic as getAssetColor
-  let cleanAsset = asset
-    .replace(/^[XZ]/, '')           // Remove X or Z prefix
-    .replace(/[XZ]$/, '')           // Remove X or Z suffix
-    .replace(/EUR$/, '')            // Remove EUR suffix
-    .replace(/ZEUR$/, '')           // Remove ZEUR suffix
-    .replace(/USD$/, '')            // Remove USD suffix
-    .replace(/\/$/, '');            // Remove trailing slash
-  
-  if (colors[cleanAsset]) {
-    return colors[cleanAsset];
-  }
-  
-  // Try common mappings
-  const commonMappings = {
-    'BT': 'BTC',
-    'ET': 'ETH',
-    'XXBT': 'BTC',
-    'XETH': 'ETH'
-  };
-  
-  if (commonMappings[cleanAsset] && colors[commonMappings[cleanAsset]]) {
-    return colors[commonMappings[cleanAsset]];
-  }
-  
-  // Fallback to regular color
-  return getAssetColor(asset);
 };

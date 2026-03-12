@@ -1,236 +1,179 @@
-from fastapi import FastAPI, UploadFile, File, Request, Form
-from typing import Optional
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import uvicorn
-import krakenex
-from pykrakenapi import KrakenAPI
+#!/usr/bin/env python3
+"""
+main.py - Servidor Portfolio Visualizer
+Arquitectura modular con funciones independientes para FIFO, precios y timeline.
+"""
+
 import pandas as pd
 import time
-import hashlib
-import io
-import requests
-from kraken_pairs import get_eur_pairs
-from datetime import datetime, timedelta, date
 import asyncio
-from threading import Thread, Lock
-import json
-from config import *
-# from cost_calculator import calcular_realized_gains_fifo, calcular_unrealized_gains_fifo  # No longer needed
-# Importar las nuevas funciones modulares del main2.py
-from main2 import (
-    calcular_portfolio_value,
-    calcular_cost_basis,
-    calcular_unrealized_gains,
-    calcular_realized_gains,
-    FIAT_ASSETS as FIAT_ASSETS_MAIN2
-)
+import requests
+from datetime import datetime, date, timedelta, timezone
+from typing import Optional, List, Dict, Any, Union
+import io
+import uvicorn
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.middleware.cors import CORSMiddleware
 
-# =============================================================================
-# CONFIGURACIÓN FASTAPI
-# =============================================================================
+# Importar sistema de cache híbrido
+from supabase_cache import obtener_precios, obtener_precio, stats_cache, get_spain_date
 
-app = FastAPI()
+try:
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    AIOHTTP_AVAILABLE = False
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# =============================================================================
-# SISTEMA DE CACHE
-# =============================================================================
+# Activos fiat
+FIAT_ASSETS = {'USD', 'EUR', 'GBP', 'CAD'}
 
-# Cache para datos privados del usuario (por usuario)
-private_cache = {}
+# Cache para pares encontrados (optimización)
+DYNAMIC_PAIR_CACHE = {}
 
-# Cache global para datos públicos (compartido entre todos los usuarios)
-public_cache = {}
-public_cache_lock = Lock()
+# Cache global para pares de Kraken (se llena una vez por sesión)
+ALL_KRAKEN_PAIRS_CACHE = {}
 
-# Instancia global de Kraken para APIs públicas (sin credenciales)
-public_kraken = None
-public_kraken_api = None
+# Mapeo base conocido de assets para Kraken (algunos assets tienen nombres diferentes)
+KNOWN_ASSET_MAPPING_KRAKEN = {
+    'BTC': 'XXBT',  # Bitcoin se llama XXBT en Kraken
+    'ETH': 'XETH',  # Ethereum se llama XETH en Kraken
+    # Otros assets que sabemos que tienen mapeo especial se pueden añadir aquí
+}
 
-# =============================================================================
-# MODELOS DE DATOS
-# =============================================================================
+# Cache dinámico para mapeos descubiertos automáticamente
+DYNAMIC_ASSET_MAPPING_CACHE = {}
 
-class PortfolioRequest(BaseModel):
-    api_key: str
-    api_secret: str
+# Cache compartido de precios actuales (todos los usuarios comparten este cache)
+_price_cache: dict = {"prices": {}, "fetched_at": None}
+PRICE_CACHE_TTL = 60  # segundos mínimos entre llamadas reales a Kraken
 
-# =============================================================================
-# FUNCIONES DE CACHE
-# =============================================================================
-
-def get_public_cache_key(operation, *args):
-    """Genera clave de cache para operaciones públicas"""
-    return f"public_{operation}_" + "_".join(str(arg) for arg in args)
-
-def get_cached_public_data(cache_key):
-    """Obtiene datos del cache público si existen y no han expirado"""
-    with public_cache_lock:
-        if cache_key in public_cache:
-            data, timestamp = public_cache[cache_key]
-            if time.time() - timestamp < PUBLIC_CACHE_DURATION:
-                print(f"💾 Cache HIT público: {cache_key}")
-                return data
-            else:
-                print(f"⏰ Cache EXPIRED público: {cache_key}")
-                del public_cache[cache_key]
-    return None
-
-def store_cached_public_data(cache_key, data):
-    """Almacena datos en el cache público"""
-    with public_cache_lock:
-        public_cache[cache_key] = (data, time.time())
-        print(f"💾 Cache STORED público: {cache_key}")
-
-# =============================================================================
-# FUNCIONES DE KRAKEN API
-# =============================================================================
-
-def init_public_kraken():
-    """Inicializa la instancia global de Kraken para APIs públicas"""
-    global public_kraken, public_kraken_api
-    try:
-        public_kraken = krakenex.API()
-        public_kraken_api = KrakenAPI(public_kraken)
-        print("✅ Kraken público inicializado")
-    except Exception as e:
-        print(f"❌ Error inicializando Kraken público: {e}")
-
-def generate_kraken_pairs_dynamically(asset):
+def get_dynamic_asset_mapping(trades_df):
     """
-    Genera posibles pares de Kraken para un asset específico basado en patrones conocidos.
+    Descubre automáticamente el mapeo de assets basándose en los datos del CSV
+    y la API de Kraken
+    """
+    # Obtener todos los assets únicos del CSV
+    if 'pair' in trades_df.columns:
+        assets_in_csv = set()
+        for pair in trades_df['pair'].unique():
+            if '/' in pair:
+                base_asset = pair.split('/')[0]
+                assets_in_csv.add(base_asset)
+        
+        # Crear mapeo dinámico
+        dynamic_mapping = {}
+        for asset in assets_in_csv:
+            # Usar mapeo conocido si existe
+            if asset in KNOWN_ASSET_MAPPING_KRAKEN:
+                dynamic_mapping[asset] = KNOWN_ASSET_MAPPING_KRAKEN[asset]
+            else:
+                # Para assets desconocidos, asumir que el nombre es igual
+                # En una implementación más avanzada, aquí consultarías la API de Kraken
+                dynamic_mapping[asset] = asset
+                
+        return dynamic_mapping
     
-    Sistema de transformación Kraken:
-    - Assets legacy (BTC, ETH, XRP, etc.): Usan prefijos XX/X y sufijo Z
-    - Assets modernos (TRUMP, PEPE, etc.): Formato directo sin prefijos
-    - El orden de patrones está optimizado por frecuencia de uso
+    # Fallback al mapeo conocido
+    return KNOWN_ASSET_MAPPING_KRAKEN.copy()
+
+# Se inicializa dinámicamente por cada request
+ASSET_MAPPING_KRAKEN = KNOWN_ASSET_MAPPING_KRAKEN.copy()
+
+# =============================================================================
+# FUNCIONES DE OBTENCIÓN DE PRECIOS (del main.py original)
+# =============================================================================
+
+def get_all_kraken_asset_pairs():
+    """
+    Obtiene TODOS los pares de trading disponibles en Kraken usando la API oficial
+    """
+    global ALL_KRAKEN_PAIRS_CACHE
+    
+    if ALL_KRAKEN_PAIRS_CACHE:
+        return ALL_KRAKEN_PAIRS_CACHE
+    
+    try:
+        print("📡 Obteniendo lista completa de pares de Kraken...")
+        url = "https://api.kraken.com/0/public/AssetPairs"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if 'result' in data and not data.get('error'):
+            ALL_KRAKEN_PAIRS_CACHE = data['result']
+            print(f"✅ Cargados {len(ALL_KRAKEN_PAIRS_CACHE)} pares de Kraken")
+            return ALL_KRAKEN_PAIRS_CACHE
+        else:
+            print(f"❌ Error obteniendo pares: {data.get('error', 'Unknown error')}")
+            return {}
+            
+    except Exception as e:
+        print(f"❌ Error conectando con Kraken AssetPairs API: {e}")
+        return {}
+
+def find_asset_eur_pair(asset):
+    """
+    Busca el par EUR de un asset usando la API oficial de Kraken
     """
     if asset in DYNAMIC_PAIR_CACHE:
         return DYNAMIC_PAIR_CACHE[asset]
     
-    # Verificar si el asset está en la lista de deslistados
-    if asset in DELISTED_ASSETS:
+    # Aplicar mapeo especial si existe (ej: BTC -> XBT)
+    kraken_asset = ASSET_MAPPING_KRAKEN.get(asset, asset)
+    if asset != kraken_asset:
+        print(f"🔄 Mapeo {asset} -> {kraken_asset}")
+    
+    # Obtener todos los pares disponibles
+    all_pairs = get_all_kraken_asset_pairs()
+    if not all_pairs:
+        print(f"❌ No se pudo obtener lista de pares de Kraken")
         return None
     
-    # Verificar cada patrón contra la lista oficial de pares
-    available_pairs = get_eur_pairs()
+    # Buscar par EUR para el asset
+    eur_pairs_found = []
     
-    for pattern_template in KRAKEN_PAIR_PATTERNS:
-        pattern = pattern_template.format(asset=asset)
-        if pattern in available_pairs:
-            DYNAMIC_PAIR_CACHE[asset] = pattern
-            print(f"✅ Pair encontrado para {asset}: {pattern}")
-            return pattern
+    for pair_name, pair_info in all_pairs.items():
+        # Verificar si es un par EUR
+        if pair_info.get('quote') == 'ZEUR' or pair_info.get('quote') == 'EUR':
+            # Verificar si el asset base coincide
+            base_asset = pair_info.get('base', '')
+            
+            # Comparar con diferentes variaciones del asset
+            asset_variations = [
+                kraken_asset,
+                f"X{kraken_asset}",
+                f"Z{kraken_asset}",
+                f"XX{kraken_asset}",
+            ]
+            
+            if base_asset in asset_variations:
+                eur_pairs_found.append({
+                    'pair_name': pair_name,
+                    'altname': pair_info.get('altname', pair_name),
+                    'base': base_asset,
+                    'quote': pair_info.get('quote')
+                })
     
-    # Si no se encuentra ningún patrón válido, marcar como deslistado
-    print(f"❌ No se encontró pair válido para {asset}, marcando como deslistado")
-    DELISTED_ASSETS.add(asset)
-    return None
-
-def obtener_precios_diarios_cached(asset, start_date, end_date):
-    """Obtiene precios históricos con cache público optimizado"""
-    api_start = time.time()
-    global public_kraken_api
-    
-    # Si el asset está en la lista de deslistados, no intentar buscarlo
-    if asset in DELISTED_ASSETS:
-        print(f"⚠️ Asset {asset} está en lista de deslistados, saltando...")
-        return {}
-    
-    # TIMING: Cache lookup
-    cache_start = time.time()
-    cache_key = get_public_cache_key("ohlc", asset, start_date, end_date)
-    cached_data = get_cached_public_data(cache_key)
-    cache_time = time.time() - cache_start
-    
-    if cached_data is not None:
-        print(f"💾 Cache HIT para {asset} ({cache_time:.3f}s)")
-        return cached_data
-    
-    print(f"🌐 Cache MISS para {asset}, llamando API...")
-    
-    # Si no está en cache, obtener de Kraken
-    if public_kraken_api is None:
-        init_public_kraken()
-        if public_kraken_api is None:
-            return {}
-    
-    try:
-        # TIMING: Pair generation
-        pair_start = time.time()
-        kraken_pair = generate_kraken_pairs_dynamically(asset)
-        pair_time = time.time() - pair_start
+    if eur_pairs_found:
+        # Preferir el par con altname más simple si hay múltiples
+        best_pair = min(eur_pairs_found, key=lambda x: len(x['altname']))
+        pair_name = best_pair['pair_name']
+        altname = best_pair['altname']
         
-        if not kraken_pair:
-            print(f"❌ No se pudo generar par para {asset} ({pair_time:.3f}s)")
-            return {}
-
-        print(f"📡 Obteniendo OHLC para {asset} usando par: {kraken_pair}")
-        
-        # TIMING: API call
-        api_call_start = time.time()
-        api_result = public_kraken_api.get_ohlc_data(kraken_pair, interval=1440, ascending=True)
-        api_call_time = time.time() - api_call_start
-        
-        # La API puede devolver una tupla (ohlc_data, last_timestamp)
-        if isinstance(api_result, tuple):
-            ohlc_data = api_result[0]
-        else:
-            ohlc_data = api_result
-        
-        if ohlc_data is None or ohlc_data.empty:
-            print(f"❌ No se obtuvieron datos OHLC para {asset} ({api_call_time:.3f}s)")
-            return {}
-        
-        # TIMING: Data processing
-        processing_start = time.time()
-        precios_diarios = {}
-        for index, row in ohlc_data.iterrows():
-            fecha = index.date()
-            if start_date <= fecha <= end_date:
-                precio_cierre = float(row['close'])
-                precios_diarios[fecha] = precio_cierre
-        
-        processing_time = time.time() - processing_start
-        
-        primera_fecha_precios = min(precios_diarios.keys()) if precios_diarios else None
-        ultima_fecha_precios = max(precios_diarios.keys()) if precios_diarios else None
-        
-        api_total_time = time.time() - api_start
-        print(f"   ✅ {asset}: {len(precios_diarios)} precios ({primera_fecha_precios} → {ultima_fecha_precios}) en {api_total_time:.3f}s")
-        print(f"      ├─ Pair generation: {pair_time:.3f}s")
-        print(f"      ├─ API call: {api_call_time:.3f}s")
-        print(f"      └─ Data processing: {processing_time:.3f}s")
-        
-        # CRÍTICO: Verificar si los precios llegan hasta hoy
-        if ultima_fecha_precios and ultima_fecha_precios != end_date:
-            print(f"   ⚠️ PROBLEMA: {asset} precios solo hasta {ultima_fecha_precios}, se solicitó hasta {end_date}")
-        
-        # Cachear el resultado
-        store_cached_public_data(cache_key, precios_diarios)
-        
-        return precios_diarios
-
-    except Exception as e:
-        api_total_time = time.time() - api_start
-        print(f"❌ Error obteniendo precios para {asset}: {e} ({api_total_time:.3f}s)")
-        return {}
+        DYNAMIC_PAIR_CACHE[asset] = pair_name
+        print(f"✅ Par EUR encontrado para {asset}: {pair_name} (altname: {altname})")
+        return pair_name
+    else:
+        print(f"❌ No se encontró par EUR para {asset}")
+        return None
 
 async def get_single_asset_price_async(session, asset):
     """Obtiene precio de un solo asset de forma asíncrona"""
     if asset in FIAT_ASSETS:
         return asset, 1.0
     
-    # Generar par dinámicamente
-    kraken_pair = generate_kraken_pairs_dynamically(asset)
+    # Buscar par EUR usando la nueva función
+    kraken_pair = find_asset_eur_pair(asset)
     if not kraken_pair:
         return asset, 0.0
     
@@ -252,14 +195,65 @@ async def get_single_asset_price_async(session, asset):
         print(f"❌ Error obteniendo precio para {asset}: {e}")
         return asset, 0.0
 
-async def get_public_kraken_prices_from_pairs_async(assets, asset_to_pair):
-    """Obtiene precios actuales usando pares específicos - VERSION ASYNC"""
+async def get_public_kraken_prices_from_pairs_async(assets):
+    """Obtiene precios actuales de forma asíncrona"""
+    if not assets:
+        return {}
+    
+    print(f"📡 Iniciando obtención de precios para {len(assets)} assets...")
+    
+    async with aiohttp.ClientSession() as session:
+        tasks = [get_single_asset_price_async(session, asset) for asset in assets]
+        results = await asyncio.gather(*tasks)
+        return dict(results)
+
+def get_public_kraken_prices_from_pairs_sync(assets):
+    """Obtiene precios actuales de forma síncrona (del main.py original)"""
     if not assets:
         return {}
     
     try:
-        import aiohttp
+        prices = {}
         
+        for asset in assets:
+            if asset in FIAT_ASSETS:
+                prices[asset] = 1.0
+                continue
+            
+            # Buscar par EUR usando la nueva función
+            kraken_pair = find_asset_eur_pair(asset)
+            
+            try:
+                time.sleep(0.2)  # Rate limiting
+                
+                url = f"https://api.kraken.com/0/public/Ticker?pair={kraken_pair}"
+                response = requests.get(url, timeout=10)
+                data = response.json()
+                
+                if 'result' in data and data['result']:
+                    # La respuesta de Kraken puede tener el nombre del par ligeramente diferente
+                    pair_data = next(iter(data['result'].values()))
+                    price = float(pair_data['c'][0])  # Precio de cierre actual
+                    prices[asset] = price
+                else:
+                    prices[asset] = 0.0
+                    
+            except Exception as e:
+                print(f"❌ Error obteniendo precio para {asset}: {e}")
+                prices[asset] = 0.0
+        
+        return prices
+        
+    except Exception as e:
+        print(f"❌ Error en get_public_kraken_prices_from_pairs_sync: {e}")
+        return {}
+
+async def get_public_kraken_prices_from_pairs_async(assets):
+    """Obtiene precios actuales usando pares específicos - VERSION ASYNC (del main.py original)"""
+    if not assets:
+        return {}
+    
+    try:
         # Crear semáforo para rate limiting (máximo 4 requests concurrentes)
         semaphore = asyncio.Semaphore(4)
         
@@ -291,912 +285,1241 @@ async def get_public_kraken_prices_from_pairs_async(assets, asset_to_pair):
             
             return prices
         
-    except ImportError:
-        # Fallback a versión síncrona si aiohttp no está disponible
-        print("⚠️ aiohttp no disponible, usando versión síncrona")
-        return get_public_kraken_prices_from_pairs_sync(assets, asset_to_pair)
     except Exception as e:
         print(f"❌ Error en get_public_kraken_prices_from_pairs_async: {e}")
         return {}
 
-def get_public_kraken_prices_from_pairs_sync(assets, asset_to_pair):
-    """Obtiene precios actuales usando pares específicos - VERSION SYNC (fallback)"""
-    if not assets:
-        return {}
-    
-    try:
-        prices = {}
-        
-        for asset in assets:
-            if asset in FIAT_ASSETS:
-                prices[asset] = 1.0
-                continue
-            
-            # Usar generate_kraken_pairs_dynamically en lugar del mapeo manual
-            kraken_pair = generate_kraken_pairs_dynamically(asset)
-            if not kraken_pair:
-                prices[asset] = 0.0
-                continue
-            
-            try:
-                time.sleep(0.2)  # Rate limiting
-                
-                url = f"https://api.kraken.com/0/public/Ticker?pair={kraken_pair}"
-                response = requests.get(url, timeout=10)
-                data = response.json()
-                
-                if 'result' in data and data['result']:
-                    # La respuesta de Kraken puede tener el nombre del par ligeramente diferente
-                    pair_data = next(iter(data['result'].values()))
-                    price = float(pair_data['c'][0])  # Precio de cierre actual
-                    prices[asset] = price
-                else:
-                    prices[asset] = 0.0
-                    
-            except Exception as e:
-                prices[asset] = 0.0
-        
-        return prices
-        
-    except Exception as e:
-        return {}
-
-def get_public_kraken_prices_from_pairs(assets, asset_to_pair):
-    """Wrapper que decide entre async y sync"""
+def obtener_precios_de_kraken(assets: List[str]) -> Dict[str, float]:
+    """
+    Función principal usando sistema de cache híbrido Supabase
+    Cache primero, Kraken API como fallback
+    """
     start_time = time.time()
     try:
-        print(f"📡 Iniciando obtención de precios para {len(assets)} assets...")
+        print(f"🚀 [CACHE HÍBRIDO] Obteniendo precios para {len(assets)} assets...")
         
-        # Intentar ejecutar versión async
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Si ya hay un loop corriendo, crear uno nuevo en thread
-            import concurrent.futures
-            print(f"🔄 Usando ThreadPoolExecutor para async...")
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, get_public_kraken_prices_from_pairs_async(assets, asset_to_pair))
-                result = future.result()
-        else:
-            # Si no hay loop, usar asyncio.run
-            print(f"🔄 Usando asyncio.run...")
-            result = asyncio.run(get_public_kraken_prices_from_pairs_async(assets, asset_to_pair))
+        # Usar el sistema de cache híbrido
+        result = obtener_precios(assets)
         
         total_time = time.time() - start_time
         successful_prices = len([p for p in result.values() if p > 0])
+        
+        # Mostrar estadísticas de cache
+        cache_stats = stats_cache()
+        cache_hits = len(result) - len([a for a in assets if a not in result])
+        
+        print(f"⚡ [CACHE] Hits: {cache_hits}/{len(assets)} | BD registros: {cache_stats.get('total_registros', 0)}")
         print(f"⏱️ TIMING - Precios obtenidos: {total_time:.3f}s ({successful_prices}/{len(assets)} exitosos)")
+        
         return result
         
     except Exception as e:
-        print(f"⚠️ Error ejecutando versión async, fallback a sync: {e}")
-        fallback_start = time.time()
-        result = get_public_kraken_prices_from_pairs_sync(assets, asset_to_pair)
-        fallback_time = time.time() - fallback_start
-        successful_prices = len([p for p in result.values() if p > 0])
-        print(f"⏱️ TIMING - Fallback sync: {fallback_time:.3f}s ({successful_prices}/{len(assets)} exitosos)")
-        return result
+        print(f"❌ Error obteniendo precios (fallback a cache local): {e}")
+        # Fallback al sistema anterior si falla Supabase
+        return obtener_precios_fallback(assets)
+
+def obtener_precios_fallback(assets: List[str]) -> Dict[str, float]:
+    """Función de fallback usando el sistema original si falla Supabase"""
+    try:
+        if AIOHTTP_AVAILABLE:
+            try:
+                loop = asyncio.get_running_loop()
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, get_public_kraken_prices_from_pairs_async(assets))
+                    return future.result()
+            except RuntimeError:
+                return asyncio.run(get_public_kraken_prices_from_pairs_async(assets))
+        else:
+            return get_public_kraken_prices_from_pairs_sync(assets)
+    except Exception as e:
+        print(f"❌ Error en fallback: {e}")
+        return {asset: 0.0 for asset in assets}
 
 # =============================================================================
-# FUNCIONES DE PROCESAMIENTO
+# FUNCIÓN MODULAR 1: PORTFOLIO VALUE
 # =============================================================================
 
-def process_trade_fifo(asset_lots, trade_type, vol, cost, timestamp, fee=0):
+def extraer_activo_de_par(par):
     """
-    Procesa un trade usando método FIFO y devuelve el coste invertido resultante.
+    Extrae el activo base del par de trading
+    """
+    if not par or pd.isna(par):
+        return 'UNKNOWN'
+
+    par = str(par).strip()
+
+    # Casos especiales conocidos
+    if par == 'ZUSD':
+        return 'USD'
+    if par == 'ZEUR':
+        return 'EUR'
+
+    # Lógica para extraer activo
+    asset = par.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
+
+    # Si el asset queda vacío después de las sustituciones
+    if not asset or asset == '':
+        if 'USD' in par:
+            return 'USD'
+        elif 'EUR' in par:
+            return 'EUR'
+        elif 'GBP' in par:
+            return 'GBP'
+        elif 'CAD' in par:
+            return 'CAD'
+        else:
+            return f'UNKNOWN_{par}'
+
+    # Si no cambió nada, devolver el par original
+    if asset == par:
+        return par
+
+    return asset
+
+def calcular_portfolio_value(
+    trades_df: pd.DataFrame,
+    cryptos_filter: Optional[List[str]] = None,
+    fecha_inicio: Optional[Union[str, date]] = None,
+    fecha_fin: Optional[Union[str, date]] = None,
+    precios_actuales: Optional[Dict[str, float]] = None,
+    obtener_precios_externos: bool = True,
+    excluded_operations: Optional[set] = None
+) -> Dict[str, Any]:
+    """
+    Calcula Portfolio Value modular con parámetros flexibles
     
     Args:
-        asset_lots: {'buy_lots': [], 'total_invested': 0}  (se modifica in-place)
-        trade_type: 'buy' o 'sell'
-        vol: cantidad de la operación
-        cost: coste de la operación
-        timestamp: fecha de la operación
-        fee: fee de la operación (incluida en cost basis)
+        trades_df: DataFrame con los trades
+        cryptos_filter: Lista de cryptos a incluir (None = todas)
+        fecha_inicio: Fecha inicio para filtrar trades (None = desde el principio)
+        fecha_fin: Fecha fin para filtrar trades (None = hasta el final)
+        precios_actuales: Dict con precios actuales {asset: precio} (None = obtener de API)
+        obtener_precios_externos: Si True, obtiene precios de API externa si no están en precios_actuales
     
     Returns:
-        float: coste actual invertido después de la operación
-    """
-    if trade_type == 'buy':
-        # Agregar nuevo lote de compra a la cola FIFO (incluyendo fee en cost)
-        cost_con_fee = cost + fee
-        asset_lots['buy_lots'].append({
-            'vol': vol,
-            'cost': cost_con_fee,
-            'cost_sin_fee': cost,
-            'fee': fee,
-            'timestamp': timestamp
-        })
-        asset_lots['total_invested'] += cost_con_fee
-        
-    else:  # sell
-        # Consumir lotes FIFO hasta completar la venta
-        remaining_to_sell = vol
-        cost_to_remove = 0
-        
-        # Inicializar realized gains historical si no existe
-        if 'realized_gains_historical' not in asset_lots:
-            asset_lots['realized_gains_historical'] = 0
-        
-        while remaining_to_sell > 0 and asset_lots['buy_lots']:
-            # Tomar el lote más antiguo (FIFO)
-            oldest_lot = asset_lots['buy_lots'][0]
-            
-            if oldest_lot['vol'] <= remaining_to_sell:
-                # Consumir todo el lote
-                cost_to_remove += oldest_lot['cost']
-                
-                # Calcular realized gain para este lote
-                sell_proceeds = (oldest_lot['vol'] / vol) * cost  # Proporción de la venta
-                realized_gain = sell_proceeds - oldest_lot['cost']
-                asset_lots['realized_gains_historical'] += realized_gain
-                
-                remaining_to_sell -= oldest_lot['vol']
-                asset_lots['buy_lots'].pop(0)  # Eliminar lote consumido
-                
-            else:
-                # Consumir parcialmente el lote
-                cost_per_unit = oldest_lot['cost'] / oldest_lot['vol']
-                partial_cost = remaining_to_sell * cost_per_unit
-                cost_to_remove += partial_cost
-                
-                # Calcular realized gain para la parte vendida
-                sell_proceeds = (remaining_to_sell / vol) * cost
-                realized_gain = sell_proceeds - partial_cost
-                asset_lots['realized_gains_historical'] += realized_gain
-                
-                # Actualizar el lote restante
-                oldest_lot['vol'] -= remaining_to_sell
-                oldest_lot['cost'] -= partial_cost
-                remaining_to_sell = 0
-        
-        # Actualizar inversión total
-        asset_lots['total_invested'] -= cost_to_remove
-        
-        # Si queda cantidad por vender sin lotes disponibles (venta en corto)
-        if remaining_to_sell > 0:
-            print(f"⚠️ Venta en corto detectada: {remaining_to_sell} unidades sin lotes de compra")
-    
-    return asset_lots['total_invested']
-
-def create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices, calculate_period_gains=False, fecha_inicio=None, fecha_fin=None):
-    """Crear datos de portfolio usando las nuevas funciones modulares del main2.py
-    
-    Args:
-        trades_df: DataFrame con los trades
-        balances: Dict con balances actuales
-        current_prices: Dict con precios actuales
-        calculate_period_gains: Si True, calcula gains del período filtrado
-        fecha_inicio: Fecha inicio para filtro período
-        fecha_fin: Fecha fin para filtro período
-    """
-    
-    # 1. Calcular Portfolio Value usando nueva función modular
-    portfolio_result = calcular_portfolio_value(
-        trades_df=trades_df,
-        precios_actuales=current_prices,
-        obtener_precios_externos=False
-    )
-    
-    # 2. Calcular Cost Basis usando nueva función modular  
-    cost_basis_result = calcular_cost_basis(trades_df=trades_df)
-    
-    # 3. Calcular Unrealized Gains usando nueva función modular
-    unrealized_result = calcular_unrealized_gains(portfolio_result, cost_basis_result)
-    
-    # 4. Calcular Realized Gains usando nueva función modular
-    realized_result = calcular_realized_gains(trades_df=trades_df)
-    
-    # 5. Extraer totales de los resultados
-    portfolio_value = portfolio_result.get('totales', {}).get('total_portfolio_value', 0)
-    total_invested_fifo = cost_basis_result.get('totales', {}).get('total_cost_basis', 0) 
-    unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0)
-    realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0)
-    total_fees = cost_basis_result.get('totales', {}).get('total_fees', 0)
-    
-    # 6. Si está activado el cálculo de período, recalcular gains
-    if calculate_period_gains and fecha_inicio and fecha_fin:
-        print(f"🎯 Recalculando gains para período: {fecha_inicio} a {fecha_fin}")
-        
-        # Calcular el timeline solo para obtener gains del período
-        timeline_result = calcular_holdings_diarios_csv(
-            trades_df, current_prices, fecha_inicio, fecha_fin, True
-        )
-        
-        if timeline_result:
-            # Usar los valores del último día del timeline (que contiene los gains del período)
-            last_day = timeline_result[-1]
-            realized_gains_total = last_day.get('realized_gains', 0)
-            unrealized_gains_total = last_day.get('unrealized_gains', 0)
-            
-            print(f"🎯 Gains período recalculados:")
-            print(f"   Realized: {realized_gains_total:.2f}€")
-            print(f"   Unrealized: {unrealized_gains_total:.2f}€")
-            print(f"   Total: {realized_gains_total + unrealized_gains_total:.2f}€")
-    
-    # 7. Extraer datos por asset
-    portfolio_assets = portfolio_result.get('assets', {})
-    cost_basis_assets = cost_basis_result.get('assets', {})
-    unrealized_assets = unrealized_result.get('assets', {}) 
-    realized_assets = realized_result.get('assets', {})
-    
-    # 8. Crear portfolio array usando los resultados de las funciones modulares
-    portfolio_array = []
-    
-    # Combinar datos de todas las fuentes (portfolio, cost basis, unrealized, realized)
-    all_assets = set()
-    all_assets.update(portfolio_assets.keys())
-    all_assets.update(cost_basis_assets.keys()) 
-    all_assets.update(unrealized_assets.keys())
-    all_assets.update(realized_assets.keys())
-    all_assets.update(balances.keys())
-    
-    for asset in all_assets:
-        # Datos del portfolio value
-        portfolio_data = portfolio_assets.get(asset, {})
-        current_value = portfolio_data.get('portfolio_value', 0)
-        current_price = portfolio_data.get('precio_actual', current_prices.get(asset, 1.0 if asset in FIAT_ASSETS_MAIN2 else 0))
-        amount = portfolio_data.get('cantidad_actual', balances.get(asset, 0))
-        
-        # Datos del cost basis
-        cost_data = cost_basis_assets.get(asset, {})
-        total_invested = cost_data.get('cost_basis', 0)
-        fees_paid = cost_data.get('fees_incluidos', 0)
-        
-        # Datos de unrealized gains
-        unrealized_data = unrealized_assets.get(asset, {})
-        unrealized_gains_asset = unrealized_data.get('unrealized_gains', 0)
-        
-        # Datos de realized gains  
-        realized_data = realized_assets.get(asset, {})
-        realized_gains_asset = realized_data.get('realized_gains', 0)
-        
-        # Calcular net profit y porcentajes
-        net_profit_asset = realized_gains_asset + unrealized_gains_asset
-        pnl_eur = current_value - total_invested  # PnL tradicional
-        
-        # Porcentajes
-        pnl_percent = (pnl_eur / total_invested * 100) if total_invested > 0 else 0
-        net_profit_percent = (net_profit_asset / total_invested * 100) if total_invested > 0 else 0
-        
-        # Solo incluir assets con balance o historial de trading
-        if amount > 0 or total_invested > 0 or realized_gains_asset != 0:
-            portfolio_array.append({
-                'asset': asset,
-                'asset_type': 'fiat' if asset in FIAT_ASSETS_MAIN2 else 'crypto',
-                'amount': amount,
-                'current_price': current_price,
-                'total_invested': total_invested,
-                'fees_paid': fees_paid,
-                'current_value': current_value,
-                'pnl_eur': pnl_eur,
-                'pnl_percent': max(-999.99, min(999.99, pnl_percent)),
-                # Nuevos campos usando funciones modulares
-                'realized_gains': realized_gains_asset,
-                'unrealized_gains': unrealized_gains_asset,
-                'net_profit': net_profit_asset,
-                'net_profit_percent': max(-999.99, min(999.99, net_profit_percent))
-            })
-    
-    # 9. Calcular KPIs consolidados
-    crypto_value = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'crypto')
-    liquidity = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'fiat')
-    net_profit = realized_gains_total + unrealized_gains_total
-    net_profit_percentage = (net_profit / total_invested_fifo * 100) if total_invested_fifo > 0 else 0
-    
-    
-    return {
-        'portfolio_data': portfolio_array,
-        'kpis': {
-            'total_invested': total_invested_fifo,  # Solo assets retenidos (FIFO)
-            'current_value': portfolio_value,       # Valor actual de mercado
-            'profit': net_profit,                   # Net Profit = Realized + Unrealized
-            'profit_percentage': net_profit_percentage,
-            'fees': total_fees,
-            'liquidity': liquidity,
-            # Nuevos KPIs detallados
-            'realized_gains': realized_gains_total,
-            'unrealized_gains': unrealized_gains_total,
-            'unrealized_percentage': (unrealized_gains_total / total_invested_fifo * 100) if total_invested_fifo > 0 else 0
-        },
-        'data_source': 'csv'
-    }
-
-def create_portfolio_data_from_trades(trades_df, balances, current_prices, calculate_period_gains=False, fecha_inicio=None, fecha_fin=None):
-    """Wrapper para mantener compatibilidad - usa versión mejorada con funciones modulares"""
-    return create_portfolio_data_from_trades_enhanced_v2(trades_df, balances, current_prices, calculate_period_gains, fecha_inicio, fecha_fin)
-
-def calcular_holdings_diarios_csv(trades_df, current_prices=None, fecha_inicio=None, fecha_fin=None, calculate_period_gains=False):
-    """Calcula los holdings diarios desde el primer trade hasta HOY
-    
-    Args:
-        trades_df: DataFrame con los trades
-        current_prices: Dict con precios actuales para usar en el último día
-        fecha_inicio: Fecha de inicio para filtro (YYYY-MM-DD string) - opcional
-        fecha_fin: Fecha de fin para filtro (YYYY-MM-DD string) - opcional
-        calculate_period_gains: Si True, calcula gains solo del período filtrado (solo de operaciones del período)
+        Dict con resultados por asset y totales:
+        {
+            'assets': {
+                'BTC': {
+                    'cantidad_actual': 0.5,
+                    'precio_actual': 98556,
+                    'portfolio_value': 49278
+                },
+                ...
+            },
+            'totales': {
+                'total_portfolio_value': 123456,
+                'total_cantidad_assets': 5,
+                'assets_con_balance': ['BTC', 'ETH', ...]
+            },
+            'metadata': {
+                'trades_procesados': 150,
+                'fecha_inicio_real': '2023-01-01',
+                'fecha_fin_real': '2024-01-01',
+                'precios_obtenidos_de': 'externos|parametros|mixto'
+            }
+        }
     """
     start_time = time.time()
+    
+    # 1. VALIDACIÓN Y PREPARACIÓN
     if trades_df.empty:
-        return []
+        return {
+            'assets': {},
+            'totales': {'total_portfolio_value': 0, 'total_cantidad_assets': 0, 'assets_con_balance': []},
+            'metadata': {'error': 'DataFrame vacío'}
+        }
     
-    # TIMING: Preparación inicial
-    prep_start = time.time()
-    trades_df = trades_df.sort_values('time').copy()
+    # Copiar DataFrame para no modificar el original
+    df = trades_df.copy()
     
-    # Obtener rango de fechas
-    fecha_minima_trades = trades_df['time'].min().date()
-    fecha_ultimo_trade = trades_df['time'].max().date()
-    today = date.today()
+    # Asegurar que la columna time es datetime
+    if 'time' not in df.columns:
+        return {'error': 'Columna time no encontrada en DataFrame'}
     
-    # Usar fechas de parámetros si se proporcionan, sino usar rango completo
+    df['time'] = pd.to_datetime(df['time'])
+    
+    # Extraer activo de cada trade
+    df['asset'] = df['pair'].apply(extraer_activo_de_par)
+    
+    # 2. FILTROS DE FECHA
     if fecha_inicio:
-        fecha_minima = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
-    else:
-        fecha_minima = fecha_minima_trades
-        
+        if isinstance(fecha_inicio, str):
+            fecha_inicio = pd.to_datetime(fecha_inicio).date()
+        df = df[df['time'].dt.date >= fecha_inicio]
+    
     if fecha_fin:
-        fecha_maxima = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
-    else:
-        fecha_maxima = today
+        if isinstance(fecha_fin, str):
+            fecha_fin = pd.to_datetime(fecha_fin).date()
+        df = df[df['time'].dt.date <= fecha_fin]
     
-    print(f"🔍 TIMELINE DEBUG:")
-    print(f"   Primer trade: {fecha_minima_trades}")
-    print(f"   Último trade: {fecha_ultimo_trade}")
-    print(f"   Fecha filtro inicio: {fecha_inicio or 'N/A'}")
-    print(f"   Fecha filtro fin: {fecha_fin or 'N/A'}")
-    print(f"   Rango a calcular: {fecha_minima} a {fecha_maxima}")
-    print(f"   Cálculo de período: {calculate_period_gains}")
+    # 3. FILTRO DE CRYPTOS
+    if cryptos_filter:
+        df = df[df['asset'].isin(cryptos_filter)]
     
-    # Obtener assets únicos para precios históricos
-    assets_unicos = set()
-    for _, trade in trades_df.iterrows():
-        pair = str(trade['pair'])
-        asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
-        if asset == pair:
-            asset = pair
-        assets_unicos.add(asset)
+    # 4. CÁLCULO DE CANTIDADES ACTUALES POR ASSET
+    assets_quantities = {}
+    trades_procesados = 0
     
-    prep_time = time.time() - prep_start
-    print(f"⏱️ TIMING - Preparación timeline: {prep_time:.3f}s")
+    for _, trade in df.iterrows():
+        asset = trade['asset']
+        tipo = trade['type']
+        ordertype = trade.get('ordertype', '')
+        volumen = float(trade['vol'])
+        
+        # Filtrar operaciones excluidas
+        if excluded_operations:
+            operation_key = f"{tipo.title()} {ordertype.title()}"
+            if operation_key in excluded_operations:
+                continue
+
+        if asset not in assets_quantities:
+            assets_quantities[asset] = 0.0
+        
+        if tipo == 'buy':
+            assets_quantities[asset] += volumen
+        elif tipo == 'sell':
+            assets_quantities[asset] -= volumen
+        
+        trades_procesados += 1
     
-    # TIMING: Obtención de precios históricos
-    historical_prices_start = time.time()
-    precios_historicos = {}
-    print(f"📡 Obteniendo precios históricos para {len(assets_unicos)} assets...")
+    # Filtrar assets con cantidad > 0
+    assets_con_balance = {asset: cantidad for asset, cantidad in assets_quantities.items() if cantidad > 0}
     
-    for i, asset in enumerate(assets_unicos):
-        asset_start = time.time()
-        if i > 0:
-            time.sleep(0.5)
-        
-        precios = obtener_precios_diarios_cached(asset, fecha_minima, fecha_maxima)
-        asset_time = time.time() - asset_start
-        
-        if precios:
-            precios_historicos[asset] = precios
-            print(f"   ✅ {asset}: {len(precios)} precios obtenidos en {asset_time:.3f}s")
-        else:
-            print(f"   ⚠️ {asset}: No se pudieron obtener precios históricos ({asset_time:.3f}s)")
+    # 5. OBTENER PRECIOS ACTUALES
+    precios_finales = {}
+    precios_source = 'parametros'
     
-    historical_prices_time = time.time() - historical_prices_start
-    print(f"⏱️ TIMING - Precios históricos totales: {historical_prices_time:.3f}s")
+    if precios_actuales:
+        precios_finales.update(precios_actuales)
     
-    # TIMING: Generación de timeline día por día
-    timeline_generation_start = time.time()
-    fecha_actual = fecha_minima
-    timeline = []
-    holdings_por_asset = {}  # {asset: {'buy_lots': [], 'total_invested': 0, 'fees': 0, 'cantidad': 0}}
+    # Obtener precios externos para assets faltantes (solo crypto, ignorar fiat)
+    if obtener_precios_externos:
+        assets_sin_precio = [asset for asset in assets_con_balance.keys() 
+                           if asset not in precios_finales and asset not in FIAT_ASSETS]
+        
+        if assets_sin_precio:
+            # =============================================================
+            # 📊 SECCIÓN KRAKEN API - PRECIOS TIEMPO REAL
+            # =============================================================
+            # print(f"📡 [KRAKEN API] Obteniendo precios tiempo real para {len(assets_sin_precio)} assets...")
+            start_time = time.time()
+            precios_externos = obtener_precios(assets_sin_precio)
+            tiempo_transcurrido = time.time() - start_time
+            # print(f"⚡ [KRAKEN API] Exitosos: {len(precios_externos)}/{len(assets_sin_precio)} assets")
+            # print(f"⏱️ [KRAKEN API] Tiempo: {tiempo_transcurrido:.3f}s")
+            
+            # =============================================================
+            # 💾 SECCIÓN SUPABASE - ESTADÍSTICAS CACHE HISTÓRICO
+            # =============================================================
+            # print(f"📊 [SUPABASE] Consultando estadísticas cache histórico...")
+            start_time_cache = time.time()
+            cache_stats = stats_cache()
+            tiempo_cache = time.time() - start_time_cache
+            # print(f"💾 [SUPABASE] Cache histórico: {cache_stats.get('total_registros', 0)} registros")
+            # print(f"⏱️ [SUPABASE] Tiempo consulta: {tiempo_cache:.3f}s")
+            
+            precios_finales.update(precios_externos)
+            precios_source = 'tiempo_real' if precios_externos else ('mixto' if precios_actuales else 'externos')
     
-    # Variables para cálculo de gains por período
-    portfolio_value_at_period_start = 0
-    cash_flows_during_period = 0  # Suma de compras (positivo) y ventas (negativo)
-    period_start_calculated = False
-    period_realized_gains_total = 0  # Acumular realized gains del período
-    assets_bought_in_period = set()  # Tracks assets bought during the period
+    # Agregar precios fiat
+    for asset in assets_con_balance.keys():
+        if asset in FIAT_ASSETS and asset not in precios_finales:
+            precios_finales[asset] = 1.0
     
-    days_to_process = (fecha_maxima - fecha_minima).days + 1
-    print(f"📅 Procesando {days_to_process} días de timeline...")
+    # 6. CALCULAR PORTFOLIO VALUE POR ASSET (solo crypto, ignorar fiat)
+    results_by_asset = {}
+    total_portfolio_value = 0.0
     
-    day_count = 0
-    while fecha_actual <= fecha_maxima:
-        fecha_str = fecha_actual.strftime('%Y-%m-%d')
+    for asset, cantidad in assets_con_balance.items():
+        # Ignorar activos fiat para cálculos de portfolio
+        if asset in FIAT_ASSETS:
+            continue
+            
+        precio_actual = precios_finales.get(asset, 0)
+        portfolio_value_asset = cantidad * precio_actual
         
-        # Procesar trades de este día
-        trades_del_dia = trades_df[trades_df['time'].dt.date == fecha_actual]
-        
-        # Rastrear ventas del día
-        ventas_del_dia = []
-        
-        for _, trade in trades_del_dia.iterrows():
-            pair = str(trade['pair'])
-            asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
-            if asset == pair:
-                asset = pair
-            
-            if asset not in holdings_por_asset:
-                holdings_por_asset[asset] = {
-                    'buy_lots': [],
-                    'total_invested': 0,
-                    'total_invested_historical': 0,
-                    'fees': 0,
-                    'cantidad': 0,
-                    'realized_gains_historical': 0
-                }
-            
-            vol = float(trade['vol'])
-            cost = float(trade['cost'])
-            fee = float(trade['fee'])
-            timestamp = trade['time']
-            
-            # Si es una venta, guardar información para el tooltip
-            if trade['type'] == 'sell':
-                # Calcular realized gain de esta venta antes de procesarla
-                realized_gain_before = holdings_por_asset[asset].get('realized_gains_historical', 0)
-                
-                # Procesar la venta
-                process_trade_fifo(holdings_por_asset[asset], trade['type'], vol, cost, timestamp, fee)
-                
-                # Calcular realized gain de esta venta específica
-                realized_gain_after = holdings_por_asset[asset].get('realized_gains_historical', 0)
-                realized_gain_this_sale = realized_gain_after - realized_gain_before
-                
-                ventas_del_dia.append({
-                    'asset': asset,
-                    'volume': vol,
-                    'cost': cost,  # Ingresos de la venta
-                    'fee': fee,
-                    'realized_gain': realized_gain_this_sale,
-                    'timestamp': timestamp
-                })
-            else:
-                # Procesar compra normalmente
-                process_trade_fifo(holdings_por_asset[asset], trade['type'], vol, cost, timestamp, fee)
-            
-            holdings_por_asset[asset]['fees'] += fee
-            
-            # Actualizar cantidad total (para balance)
-            if trade['type'] == 'buy':
-                holdings_por_asset[asset]['cantidad'] += vol
-                holdings_por_asset[asset]['total_invested_historical'] += cost + fee
-            else:
-                holdings_por_asset[asset]['cantidad'] -= vol
-        
-        # Calcular totales del día usando FIFO
-        coste_total_dia = sum(holding["total_invested"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
-        fees_total_dia = sum(holding["fees"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
-        
-        # Calcular valor de mercado - usar precios actuales para el último día
-        valor_mercado_dia = 0.0
-        unrealized_gains_dia = 0.0
-        is_last_day = (day_count == days_to_process - 1)
-        
-        for asset, holding in holdings_por_asset.items():
-            if holding["cantidad"] > 0:
-                if is_last_day and current_prices and asset in current_prices:
-                    # Último día: usar precio actual para coincidir con KPIs
-                    precio_actual = current_prices[asset]
-                else:
-                    # Días anteriores: usar precio histórico
-                    precio_actual = precios_historicos.get(asset, {}).get(fecha_actual, 0)
-                
-                valor_actual = holding["cantidad"] * precio_actual
-                valor_mercado_dia += valor_actual
-                
-                # Calcular unrealized gains para este asset
-                costo_base = holding.get("total_invested", 0)
-                unrealized_gain_asset = valor_actual - costo_base
-                unrealized_gains_dia += unrealized_gain_asset
-        
-        # Calcular realized gains acumulados hasta esta fecha
-        realized_gains_dia = sum(holding.get("realized_gains_historical", 0) for holding in holdings_por_asset.values())
-        
-        # Total gains = realized + unrealized
-        total_gains_dia = realized_gains_dia + unrealized_gains_dia
-        
-        # **NUEVA LÓGICA**: Cálculo de gains por período si está activado
-        if calculate_period_gains:
-            # Capturar valor del portfolio al inicio del período (primer día)
-            if not period_start_calculated and fecha_actual == fecha_minima:
-                portfolio_value_at_period_start = valor_mercado_dia
-                period_start_calculated = True
-                print(f"📊 Valor portfolio inicio período ({fecha_str}): {portfolio_value_at_period_start:.2f}€")
-            
-            # Rastrear flujos de caja del día (compras/ventas)
-            day_cash_flows = 0
-            day_period_realized_gains = 0  # Solo realized gains del día para el período
-            
-            for trade in trades_del_dia.iterrows():
-                trade_data = trade[1]
-                trade_cost = float(trade_data.get('cost', 0))
-                trade_fee = float(trade_data.get('fee', 0))
-                trade_type = str(trade_data.get('type', '')).lower()
-                
-                if trade_type == 'buy':
-                    day_cash_flows += (trade_cost + trade_fee)  # Dinero que sale (positivo)
-                elif trade_type == 'sell':
-                    day_cash_flows -= trade_cost  # Dinero que entra (negativo porque es ganancia)
-            
-            # Trackear assets comprados en el período
-            for trade in trades_del_dia.iterrows():
-                trade_data = trade[1]
-                pair = str(trade_data['pair'])
-                asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
-                if asset == pair:
-                    asset = pair
-                
-                trade_type = str(trade_data.get('type', '')).lower()
-                if trade_type == 'buy':
-                    assets_bought_in_period.add(asset)
-            
-            # Solo contar realized gains de ventas de assets que también se compraron en el período
-            day_period_realized_gains = 0
-            for venta in ventas_del_dia:
-                if venta['asset'] in assets_bought_in_period:
-                    day_period_realized_gains += venta['realized_gain']
-                    print(f"🎯 Counting realized gain for {venta['asset']}: {venta['realized_gain']:.2f}€ (bought in period)")
-                else:
-                    print(f"⚠️ Skipping realized gain for {venta['asset']}: {venta['realized_gain']:.2f}€ (NOT bought in period)")
-            
-            period_realized_gains_total += day_period_realized_gains
-            
-            cash_flows_during_period += day_cash_flows
-            
-            # Calcular gains del período hasta este día (progresivo)
-            period_gains_so_far = valor_mercado_dia - portfolio_value_at_period_start - cash_flows_during_period
-            
-            # Calcular unrealized gains del período hasta este día
-            period_unrealized_gains_so_far = period_gains_so_far - period_realized_gains_total
-            
-            # Sobrescribir valores para mostrar solo gains del período (progresivo)
-            total_gains_dia = period_gains_so_far
-            realized_gains_dia = period_realized_gains_total  # Solo del período (acumulado)
-            unrealized_gains_dia = period_unrealized_gains_so_far  # Solo del período (hasta este día)
-            
-            # Debug en el último día
-            if fecha_actual == fecha_maxima:
-                print(f"🎯 GAINS PERÍODO FINAL:")
-                print(f"   Valor final: {valor_mercado_dia:.2f}€")
-                print(f"   Valor inicio: {portfolio_value_at_period_start:.2f}€")
-                print(f"   Flujos caja: {cash_flows_during_period:.2f}€")
-                print(f"   Total gains: {period_gains_so_far:.2f}€")
-                print(f"   Realized gains período: {period_realized_gains_total:.2f}€")
-                print(f"   Unrealized gains período: {period_unrealized_gains_so_far:.2f}€")
-        
-        # Calcular total_invested_fifo_dia (solo activos retenidos, homólogo a KPI)
-        total_invested_fifo_dia = sum(holding["total_invested"] for holding in holdings_por_asset.values() if holding["cantidad"] > 0)
-        total_gains_percent = (total_gains_dia / total_invested_fifo_dia * 100) if total_invested_fifo_dia > 0 else 0
-        
-        
-        # Preparar información de ventas para el frontend
-        sales_info = None
-        if ventas_del_dia:
-            # Ordenar ventas por volumen en euros (cost) descendente
-            ventas_ordenadas = sorted(ventas_del_dia, key=lambda x: x['cost'], reverse=True)
-            
-            # Tomar máximo 5 ventas
-            ventas_principales = ventas_ordenadas[:5]
-            ventas_adicionales = len(ventas_ordenadas) - 5 if len(ventas_ordenadas) > 5 else 0
-            
-            # Calcular totales
-            total_volume_eur = sum(venta['cost'] for venta in ventas_del_dia)
-            total_realized_gain = sum(venta['realized_gain'] for venta in ventas_del_dia)
-            
-            sales_info = {
-                "total_sales": len(ventas_del_dia),
-                "total_volume_eur": round(total_volume_eur, 2),
-                "total_realized_gain": round(total_realized_gain, 2),
-                "sales": [
-                    {
-                        "asset": venta['asset'],
-                        "volume": round(venta['volume'], 6),
-                        "volume_eur": round(venta['cost'], 2),
-                        "realized_gain": round(venta['realized_gain'], 2),
-                        "fee": round(venta['fee'], 2)
-                    }
-                    for venta in ventas_principales
-                ],
-                "additional_sales": ventas_adicionales
-            }
-        
-        dia_data = {
-            "date": fecha_str,
-            "cost": round(total_invested_fifo_dia, 2),
-            "value": round(valor_mercado_dia, 2),
-            "fees": round(fees_total_dia, 2),
-            "realized_gains": round(realized_gains_dia, 2),
-            "unrealized_gains": round(unrealized_gains_dia, 2),
-            "net_profit": round(total_gains_dia, 2),
-            "net_profit_percent": round(total_gains_percent, 2),
-            "sales": sales_info  # Nueva información de ventas
+        results_by_asset[asset] = {
+            'cantidad_actual': cantidad,
+            'precio_actual': precio_actual,
+            'portfolio_value': portfolio_value_asset,
+            'asset_type': 'crypto'
         }
         
-        timeline.append(dia_data)
+        total_portfolio_value += portfolio_value_asset
         
-        # Avanzar al siguiente día
-        fecha_actual += timedelta(days=1)
-        day_count += 1
-        
-        # Progress cada 30 días
-        if day_count % 30 == 0:
-            progress = (day_count / days_to_process) * 100
-            print(f"   📅 Progreso timeline: {progress:.1f}% ({day_count}/{days_to_process} días)")
+        if precio_actual == 0 and cantidad > 0:
+            print(f"⚠️ PRECIO FALTANTE: {asset} no tiene precio disponible")
     
-    timeline_generation_time = time.time() - timeline_generation_start
-    print(f"⏱️ TIMING - Generación timeline: {timeline_generation_time:.3f}s")
+    # 7. METADATA
+    fecha_inicio_real = df['time'].min().date() if not df.empty else None
+    fecha_fin_real = df['time'].max().date() if not df.empty else None
     
-    # DEBUG: Verificar rango final del timeline
-    if timeline:
-        primera_fecha = timeline[0]['date']
-        ultima_fecha = timeline[-1]['date']
-        print(f"🔍 TIMELINE GENERADO:")
-        print(f"   Primera fecha: {primera_fecha}")
-        print(f"   Última fecha: {ultima_fecha}")
-        print(f"   Total días: {len(timeline)}")
-        print(f"   ¿Llega hasta hoy ({today})? {ultima_fecha == today.strftime('%Y-%m-%d')}")
+    processing_time = time.time() - start_time
     
-    total_time = time.time() - start_time
-    print(f"⏱️ TIMING - TOTAL calcular_holdings_diarios_csv: {total_time:.3f}s")
-    
-    return timeline
-
-def process_trades_csv(df, fecha_inicio=None, fecha_fin=None, calculate_period_gains=False):
-    """Procesa CSV de Trades History
-    
-    Args:
-        df: DataFrame con los trades
-        fecha_inicio: Fecha inicio para filtro período (YYYY-MM-DD string) - opcional
-        fecha_fin: Fecha fin para filtro período (YYYY-MM-DD string) - opcional  
-        calculate_period_gains: Si True, calcula gains solo del período filtrado
-    """
-    start_time = time.time()
-    try:
-        # TIMING: Validación de columnas
-        validation_start = time.time()
-        required_columns = ['txid', 'time', 'type', 'pair', 'price', 'cost', 'fee', 'vol']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            return {"error": f"Invalid Trades CSV format. Missing required columns: {missing_columns}"}
-        
-        df['time'] = pd.to_datetime(df['time'])
-        trades_df = df[df['type'].isin(['buy', 'sell'])].copy()
-        validation_time = time.time() - validation_start
-        print(f"⏱️ TIMING - Validación y preparación: {validation_time:.3f}s")
-        
-        # TIMING: Cálculo de balances
-        balance_start = time.time()
-        balances = {}
-        asset_to_pair = {}
-        
-        for _, row in trades_df.iterrows():
-            pair = str(row['pair'])
-            asset = pair.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
-            if asset == pair:
-                asset = pair
-            
-            asset_to_pair[asset] = pair
-            vol = float(row['vol'])
-            
-            if row['type'] == 'buy':
-                balances[asset] = balances.get(asset, 0) + vol
-            else:
-                balances[asset] = balances.get(asset, 0) - vol
-        
-        balance_time = time.time() - balance_start
-        print(f"⏱️ TIMING - Cálculo balances: {balance_time:.3f}s")
-        
-        # TIMING: Obtención de precios actuales
-        prices_start = time.time()
-        assets_with_balance = [asset for asset, balance in balances.items() if balance > 0]
-        print(f"📡 Obteniendo precios para {len(assets_with_balance)} assets...")
-        current_prices = get_public_kraken_prices_from_pairs(assets_with_balance, asset_to_pair)
-        prices_time = time.time() - prices_start
-        print(f"⏱️ TIMING - Obtención precios actuales: {prices_time:.3f}s")
-        
-        # TIMING: Creación de datos de portfolio
-        portfolio_start = time.time()
-        portfolio_result = create_portfolio_data_from_trades(trades_df, balances, current_prices, calculate_period_gains, fecha_inicio, fecha_fin)
-        portfolio_time = time.time() - portfolio_start
-        print(f"⏱️ TIMING - Creación portfolio: {portfolio_time:.3f}s")
-        
-        # TIMING: Generación de timeline
-        timeline_start = time.time()
-        print(f"📈 Generando timeline histórico...")
-        timeline_data = calcular_holdings_diarios_csv(trades_df, current_prices, fecha_inicio, fecha_fin, calculate_period_gains)
-        timeline_time = time.time() - timeline_start
-        print(f"⏱️ TIMING - Generación timeline: {timeline_time:.3f}s")
-        
-        portfolio_result["timeline"] = timeline_data
-        
-        total_time = time.time() - start_time
-        print(f"⏱️ TIMING - TOTAL process_trades_csv: {total_time:.3f}s")
-        return portfolio_result
-        
-    except Exception as e:
-        return {"error": f"Error processing Trades CSV: {str(e)}"}
-
-def process_csv_data(csv_content, fecha_inicio=None, fecha_fin=None, calculate_period_gains=False):
-    """Procesa los datos del CSV de Kraken
-    
-    Args:
-        csv_content: Contenido del CSV
-        fecha_inicio: Fecha inicio para filtro período (YYYY-MM-DD string) - opcional
-        fecha_fin: Fecha fin para filtro período (YYYY-MM-DD string) - opcional
-        calculate_period_gains: Si True, calcula gains solo del período filtrado
-    """
-    start_time = time.time()
-    try:
-        # TIMING: Parseo del CSV
-        parse_start = time.time()
-        print(f"🔍 Parseando CSV...")
-        df = pd.read_csv(io.StringIO(csv_content))
-        parse_time = time.time() - parse_start
-        print(f"⏱️ TIMING - Parseo CSV: {parse_time:.3f}s")
-        print(f"🔍 CSV parseado: {df.shape[0]} filas, {df.shape[1]} columnas")
-        print(f"🔍 Columnas encontradas: {list(df.columns)}")
-        
-        # Solo soportamos Trades CSV por ahora
-        if 'txid' in df.columns and 'pair' in df.columns:
-            print(f"🔍 Formato de Trades detectado, procesando...")
-            
-            # TIMING: Procesamiento de trades
-            trades_start = time.time()
-            result = process_trades_csv(df, fecha_inicio, fecha_fin, calculate_period_gains)
-            trades_time = time.time() - trades_start
-            print(f"⏱️ TIMING - Procesamiento trades: {trades_time:.3f}s")
-            
-            print(f"🔍 Resultado del procesamiento: {type(result)}")
-            if isinstance(result, dict) and "error" in result:
-                print(f"❌ Error en process_trades_csv: {result['error']}")
-            
-            total_time = time.time() - start_time
-            print(f"⏱️ TIMING - TOTAL process_csv_data: {total_time:.3f}s")
-            return result
-        else:
-            error_msg = "Invalid CSV format. Please use Trades History export from Kraken"
-            print(f"❌ {error_msg}")
-            return {"error": error_msg}
-    
-    except Exception as e:
-        error_msg = f"Error processing CSV: {str(e)}"
-        print(f"❌ Exception en process_csv_data: {error_msg}")
-        return {"error": error_msg}
+    return {
+        'assets': results_by_asset,
+        'totales': {
+            'total_portfolio_value': total_portfolio_value,
+            'total_cantidad_assets': len(results_by_asset),  # Solo crypto assets
+            'assets_con_balance': list(results_by_asset.keys())  # Solo crypto assets
+        },
+        'metadata': {
+            'trades_procesados': trades_procesados,
+            'fecha_inicio_real': fecha_inicio_real.strftime('%Y-%m-%d') if fecha_inicio_real else None,
+            'fecha_fin_real': fecha_fin_real.strftime('%Y-%m-%d') if fecha_fin_real else None,
+            'precios_obtenidos_de': precios_source,
+            'processing_time_seconds': processing_time
+        }
+    }
 
 # =============================================================================
-# ENDPOINTS
+# FUNCIÓN MODULAR 2: COST BASIS (FIFO)
 # =============================================================================
+
+def calcular_cost_basis(
+    trades_df: pd.DataFrame,
+    cryptos_filter: Optional[List[str]] = None,
+    fecha_inicio: Optional[Union[str, date]] = None,
+    fecha_fin: Optional[Union[str, date]] = None,
+    incluir_inversion_historica: bool = True,
+    excluded_operations: Optional[set] = None
+) -> Dict[str, Any]:
+    """
+    Calcula Cost Basis usando metodología FIFO con parámetros flexibles
+    
+    Args:
+        trades_df: DataFrame con los trades
+        cryptos_filter: Lista de cryptos a incluir (None = todas)
+        fecha_inicio: Fecha inicio para filtrar trades (None = desde el principio)
+        fecha_fin: Fecha fin para filtrar trades (None = hasta el final)
+    
+    Returns:
+        Dict con cost basis por asset y totales
+    """
+    start_time = time.time()
+    
+    # Copiar DataFrame para no modificar el original
+    df = trades_df.copy()
+    
+    # Asegurar que la columna time es datetime
+    if 'time' not in df.columns:
+        return {'error': 'Columna time no encontrada en DataFrame'}
+    
+    df['time'] = pd.to_datetime(df['time'])
+    
+    # Extraer activo de cada trade
+    df['asset'] = df['pair'].apply(extraer_activo_de_par)
+    
+    # 2. FILTROS DE FECHA
+    if fecha_inicio:
+        if isinstance(fecha_inicio, str):
+            fecha_inicio = pd.to_datetime(fecha_inicio).date()
+        df = df[df['time'].dt.date >= fecha_inicio]
+    
+    if fecha_fin:
+        if isinstance(fecha_fin, str):
+            fecha_fin = pd.to_datetime(fecha_fin).date()
+        df = df[df['time'].dt.date <= fecha_fin]
+    
+    # 3. FILTRO DE CRYPTOS (ignorar fiat automáticamente)
+    crypto_df = df[~df['asset'].isin(FIAT_ASSETS)].copy()
+    
+    if cryptos_filter:
+        crypto_df = crypto_df[crypto_df['asset'].isin(cryptos_filter)]
+    
+    # 4. ORDENAR POR TIEMPO (CRUCIAL PARA FIFO)
+    crypto_df = crypto_df.sort_values('time')
+    
+    # 5. PROCESAR TRADES POR ASSET USANDO FIFO
+    assets_cost_basis = {}
+    trades_procesados = 0
+    
+    for asset in crypto_df['asset'].unique():
+        # Filtrar trades de este asset
+        asset_trades = crypto_df[crypto_df['asset'] == asset].copy()
+        
+        # Inicializar estructuras FIFO para este asset
+        cola_compras = []  # Cola FIFO para compras
+        total_fees_asset = 0.0
+        inversion_historica_total = 0.0  # Total invertido históricamente (todas las compras)
+        
+        # Procesar cada trade de este asset en orden cronológico
+        for _, trade in asset_trades.iterrows():
+            tipo = trade['type']
+            ordertype = trade.get('ordertype', '')
+            volumen = float(trade['vol'])
+            cost = float(trade['cost'])
+            fee = float(trade['fee'])
+            
+            # Filtrar operaciones excluidas
+            if excluded_operations:
+                operation_key = f"{tipo.title()} {ordertype.title()}"
+                if operation_key in excluded_operations:
+                    continue
+
+            total_fees_asset += fee
+            trades_procesados += 1
+            
+            if tipo == 'buy':
+                # Agregar compra a la cola FIFO (incluyendo fee en el cost basis)
+                cost_con_fee = cost + fee
+                inversion_historica_total += cost_con_fee  # Rastrear inversión histórica total
+                cola_compras.append({
+                    'volumen': volumen,
+                    'cost': cost_con_fee,
+                    'precio_unitario': cost_con_fee / volumen if volumen > 0 else 0,
+                    'timestamp': trade['time']
+                })
+            
+            elif tipo == 'sell':
+                # Procesar venta usando FIFO - consumir de los lotes más antiguos
+                volumen_restante = volumen
+                
+                while volumen_restante > 0 and cola_compras:
+                    lote = cola_compras[0]
+                    
+                    if lote['volumen'] <= volumen_restante:
+                        # Consumir lote completo
+                        volumen_restante -= lote['volumen']
+                        cola_compras.pop(0)
+                    else:
+                        # Consumir parcialmente
+                        proporcion = volumen_restante / lote['volumen']
+                        lote['volumen'] -= volumen_restante
+                        lote['cost'] -= lote['cost'] * proporcion
+                        volumen_restante = 0
+                
+                # Verificar venta en corto (no mostrar mensaje)
+                if volumen_restante > 0:
+                    pass  # Venta en corto detectada pero no mostramos mensaje
+        
+        # Cost basis = suma del coste de las unidades que quedan
+        cantidad_restante = sum(lote['volumen'] for lote in cola_compras)
+        cost_basis_total = sum(lote['cost'] for lote in cola_compras)
+        
+        # Solo incluir assets con cantidad restante > 0 O con inversión histórica (para calcular ROI correcto)
+        if cantidad_restante > 0 or inversion_historica_total > 0:
+            assets_cost_basis[asset] = {
+                'cantidad_restante': cantidad_restante,
+                'cost_basis': cost_basis_total,
+                'fees_incluidos': total_fees_asset,
+                'lotes_fifo': len(cola_compras),
+                'precio_promedio_ponderado': cost_basis_total / cantidad_restante if cantidad_restante > 0 else 0,
+                'lotes_detalle': cola_compras[:3],  # Primeros 3 lotes para mostrar
+                'inversion_historica_total': inversion_historica_total  # NUEVO: inversión total histórica
+            }
+    
+    # 6. TOTALES
+    total_cost_basis = sum(asset_data['cost_basis'] for asset_data in assets_cost_basis.values())
+    total_fees = sum(asset_data['fees_incluidos'] for asset_data in assets_cost_basis.values())
+    
+    # 7. METADATA
+    fecha_inicio_real = crypto_df['time'].min().date() if not crypto_df.empty else None
+    fecha_fin_real = crypto_df['time'].max().date() if not crypto_df.empty else None
+    processing_time = time.time() - start_time
+    
+    return {
+        'assets': assets_cost_basis,
+        'totales': {
+            'total_cost_basis': total_cost_basis,
+            'total_fees': total_fees,
+            'assets_retenidos': list(assets_cost_basis.keys())
+        },
+        'metadata': {
+            'trades_procesados': trades_procesados,
+            'fecha_inicio_real': fecha_inicio_real.strftime('%Y-%m-%d') if fecha_inicio_real else None,
+            'fecha_fin_real': fecha_fin_real.strftime('%Y-%m-%d') if fecha_fin_real else None,
+            'processing_time_seconds': processing_time
+        }
+    }
+
+# =============================================================================
+# FUNCIÓN MODULAR 3: UNREALIZED GAINS
+# =============================================================================
+
+def calcular_unrealized_gains(
+    portfolio_value_result: Dict,
+    cost_basis_result: Dict
+) -> Dict[str, Any]:
+    """
+    Calcula Unrealized Gains = Portfolio Value - Cost Basis
+    
+    Args:
+        portfolio_value_result: Resultado de calcular_portfolio_value()
+        cost_basis_result: Resultado de calcular_cost_basis()
+    
+    Returns:
+        Dict con unrealized gains por asset y totales
+    """
+    start_time = time.time()
+    
+    assets_unrealized = {}
+    
+    # Obtener datos de ambos resultados
+    portfolio_assets = portfolio_value_result.get('assets', {})
+    cost_basis_assets = cost_basis_result.get('assets', {})
+    
+    # Procesar cada asset que tenga portfolio value
+    for asset, portfolio_data in portfolio_assets.items():
+        if asset in FIAT_ASSETS:
+            continue
+            
+        portfolio_value = portfolio_data['portfolio_value']
+        cost_basis_data = cost_basis_assets.get(asset, {})
+        cost_basis = cost_basis_data.get('cost_basis', 0)
+        
+        # Solo incluir assets con cantidad > 0
+        if portfolio_data['cantidad_actual'] > 0:
+            unrealized_gains = portfolio_value - cost_basis
+            unrealized_percent = (unrealized_gains / cost_basis * 100) if cost_basis > 0 else 0
+            
+            assets_unrealized[asset] = {
+                'portfolio_value': portfolio_value,
+                'cost_basis': cost_basis,
+                'unrealized_gains': unrealized_gains,
+                'unrealized_percent': unrealized_percent,
+                'cantidad': portfolio_data['cantidad_actual'],
+                'precio_actual': portfolio_data['precio_actual']
+            }
+    
+    # Totales
+    total_portfolio_value = sum(data['portfolio_value'] for data in assets_unrealized.values())
+    total_cost_basis = sum(data['cost_basis'] for data in assets_unrealized.values())
+    total_unrealized_gains = total_portfolio_value - total_cost_basis
+    
+    processing_time = time.time() - start_time
+    
+    return {
+        'assets': assets_unrealized,
+        'totales': {
+            'total_portfolio_value': total_portfolio_value,
+            'total_cost_basis': total_cost_basis,
+            'total_unrealized_gains': total_unrealized_gains,
+            'total_unrealized_percent': (total_unrealized_gains / total_cost_basis * 100) if total_cost_basis > 0 else 0
+        },
+        'metadata': {
+            'processing_time_seconds': processing_time,
+            'assets_procesados': len(assets_unrealized)
+        }
+    }
+
+# =============================================================================
+# FUNCIÓN MODULAR 4: REALIZED GAINS
+# =============================================================================
+
+def calcular_realized_gains(
+    trades_df: pd.DataFrame,
+    cryptos_filter: Optional[List[str]] = None,
+    fecha_inicio: Optional[Union[str, date]] = None,
+    fecha_fin: Optional[Union[str, date]] = None,
+    excluded_operations: Optional[set] = None
+) -> Dict[str, Any]:
+    """
+    Calcula Realized Gains usando metodología FIFO con parámetros flexibles
+    
+    Args:
+        trades_df: DataFrame con los trades
+        cryptos_filter: Lista de cryptos a incluir (None = todas)
+        fecha_inicio: Fecha inicio para filtrar trades (None = desde el principio)
+        fecha_fin: Fecha fin para filtrar trades (None = hasta el final)
+    
+    Returns:
+        Dict con realized gains por asset y totales
+    """
+    start_time = time.time()
+    
+    # Copiar DataFrame para no modificar el original
+    df = trades_df.copy()
+    
+    # Asegurar que la columna time es datetime
+    if 'time' not in df.columns:
+        return {'error': 'Columna time no encontrada en DataFrame'}
+    
+    df['time'] = pd.to_datetime(df['time'])
+    
+    # Extraer activo de cada trade
+    df['asset'] = df['pair'].apply(extraer_activo_de_par)
+    
+    # 2. FILTROS DE FECHA
+    if fecha_inicio:
+        if isinstance(fecha_inicio, str):
+            fecha_inicio = pd.to_datetime(fecha_inicio).date()
+        df = df[df['time'].dt.date >= fecha_inicio]
+    
+    if fecha_fin:
+        if isinstance(fecha_fin, str):
+            fecha_fin = pd.to_datetime(fecha_fin).date()
+        df = df[df['time'].dt.date <= fecha_fin]
+    
+    # 3. FILTRO DE CRYPTOS (ignorar fiat automáticamente)
+    crypto_df = df[~df['asset'].isin(FIAT_ASSETS)].copy()
+    
+    if cryptos_filter:
+        crypto_df = crypto_df[crypto_df['asset'].isin(cryptos_filter)]
+    
+    # 4. ORDENAR POR TIEMPO (CRUCIAL PARA FIFO)
+    crypto_df = crypto_df.sort_values('time')
+    
+    # 5. PROCESAR TRADES POR ASSET USANDO FIFO
+    assets_realized_gains = {}
+    trades_procesados = 0
+    total_ventas = 0
+    
+    for asset in crypto_df['asset'].unique():
+        # Filtrar trades de este asset
+        asset_trades = crypto_df[crypto_df['asset'] == asset].copy()
+        
+        # Inicializar estructuras FIFO para este asset
+        cola_compras = []  # Cola FIFO para compras
+        realized_gains_total = 0.0
+        ventas_detalle = []
+        ventas_procesadas = 0
+        
+        # Procesar cada trade de este asset en orden cronológico
+        for _, trade in asset_trades.iterrows():
+            tipo = trade['type']
+            ordertype = trade.get('ordertype', '')
+            volumen = float(trade['vol'])
+            cost = float(trade['cost'])
+            fee = float(trade['fee'])
+            
+            # Filtrar operaciones excluidas
+            if excluded_operations:
+                operation_key = f"{tipo.title()} {ordertype.title()}"
+                if operation_key in excluded_operations:
+                    continue
+
+            trades_procesados += 1
+
+            if tipo == 'buy':
+                # Agregar compra a la cola FIFO (incluyendo fee en el cost)
+                cost_con_fee = cost + fee
+                cola_compras.append({
+                    'volumen': volumen,
+                    'cost': cost_con_fee,
+                    'timestamp': trade['time']
+                })
+            
+            elif tipo == 'sell':
+                total_ventas += 1
+                ventas_procesadas += 1
+                
+                # Procesar venta usando FIFO - calcular realized gain
+                volumen_restante = volumen
+                ingresos_venta = cost  # Lo que recibiste por la venta
+                cost_vendido = 0.0     # Lo que costaron originalmente las unidades vendidas
+                
+                while volumen_restante > 0 and cola_compras:
+                    lote = cola_compras[0]
+                    
+                    if lote['volumen'] <= volumen_restante:
+                        # Consumir lote completo
+                        cost_vendido += lote['cost']
+                        volumen_restante -= lote['volumen']
+                        cola_compras.pop(0)
+                    else:
+                        # Consumir parcialmente
+                        proporcion = volumen_restante / lote['volumen']
+                        cost_parcial = lote['cost'] * proporcion
+                        cost_vendido += cost_parcial
+                        
+                        lote['volumen'] -= volumen_restante
+                        lote['cost'] -= cost_parcial
+                        volumen_restante = 0
+                
+                # Calcular realized gain de esta venta
+                ingresos_netos = ingresos_venta - fee  # Restar fee de venta
+                realized_gain_venta = ingresos_netos - cost_vendido
+                realized_gains_total += realized_gain_venta
+                
+                # Guardar detalle de la venta
+                ventas_detalle.append({
+                    'volumen': volumen,
+                    'ingresos_brutos': ingresos_venta,
+                    'ingresos_netos': ingresos_netos,
+                    'cost_vendido': cost_vendido,
+                    'realized_gain': realized_gain_venta,
+                    'timestamp': trade['time'],
+                    'fee': fee
+                })
+        
+        # Solo incluir assets que tuvieron ventas
+        if ventas_procesadas > 0:
+            assets_realized_gains[asset] = {
+                'realized_gains': realized_gains_total,
+                'ventas_procesadas': ventas_procesadas,
+                'ventas_detalle': ventas_detalle
+            }
+    
+    # 6. TOTALES
+    total_realized_gains = sum(asset_data['realized_gains'] for asset_data in assets_realized_gains.values())
+    
+    # 7. METADATA
+    fecha_inicio_real = crypto_df['time'].min().date() if not crypto_df.empty else None
+    fecha_fin_real = crypto_df['time'].max().date() if not crypto_df.empty else None
+    processing_time = time.time() - start_time
+    
+    return {
+        'assets': assets_realized_gains,
+        'totales': {
+            'total_realized_gains': total_realized_gains,
+            'total_ventas': total_ventas,
+            'assets_procesados': list(assets_realized_gains.keys())
+        },
+        'metadata': {
+            'trades_procesados': trades_procesados,
+            'fecha_inicio_real': fecha_inicio_real.strftime('%Y-%m-%d') if fecha_inicio_real else None,
+            'fecha_fin_real': fecha_fin_real.strftime('%Y-%m-%d') if fecha_fin_real else None,
+            'processing_time_seconds': processing_time
+        }
+    }
+
+
+# =============================================================================
+# CONFIGURACIÓN FASTAPI
+# =============================================================================
+
+app = FastAPI(title="Portfolio Visualizer v2", version="2.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# =============================================================================
+# ENDPOINTS API
+# =============================================================================
+
+@app.get("/")
+async def root():
+    return {"message": "Portfolio Visualizer v2 - Powered by modular functions"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "version": "2.0.0"}
 
 @app.get("/api/health")
-async def health_check():
-    """Endpoint para verificar que el servidor funciona"""
-    return {"status": "ok", "message": "Server is running"}
+async def api_health_check():
+    return {"status": "ok", "version": "2.0.0", "backend": "main.py"}
+
+@app.get("/api/cache/stats")
+async def get_cache_stats():
+    """Endpoint para obtener estadísticas del cache de Supabase"""
+    try:
+        stats = stats_cache()
+        return {
+            "status": "success",
+            "cache_stats": stats,
+            "message": "Estadísticas del cache híbrido Supabase"
+        }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "error": f"Error obteniendo estadísticas del cache: {str(e)}"
+        }
 
 @app.get("/api/trades/date-range")
 async def get_trades_date_range():
-    """Obtiene las fechas de inicio y fin de todos los trades"""
+    """Endpoint para obtener el rango de fechas de los trades"""
     try:
-        # Leer el archivo CSV de trades histórico
-        trades_df = pd.read_csv('trades.csv')
+        df = pd.read_csv('trades.csv')
+        df['time'] = pd.to_datetime(df['time'])
         
-        if trades_df.empty:
-            return {"error": "No trades data available"}
-        
-        # Convertir columna de tiempo a datetime
-        trades_df['time'] = pd.to_datetime(trades_df['time'])
-        
-        # Obtener fecha mínima y fecha actual
-        start_date = trades_df['time'].min().strftime('%Y-%m-%d')
-        end_date = date.today().strftime('%Y-%m-%d')
+        start_date = df['time'].min().strftime('%Y-%m-%d')
+        end_date = df['time'].max().strftime('%Y-%m-%d')
         
         return {
             "start_date": start_date,
             "end_date": end_date,
-            "total_trades": len(trades_df)
+            "total_trades": len(df)
+        }
+    except Exception as e:
+        return {"error": f"Error obteniendo rango de fechas: {str(e)}"}
+
+def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: str = None, fecha_fin: str = None) -> List[Dict[str, Any]]:
+    """
+    Calcula timeline diario del portfolio de forma simplificada.
+    Siempre toma fecha inicio y fin, calculando total gains, unrealized y realized para cada día.
+    """
+    try:
+        # Mapeo de assets del CSV a assets del cache
+        ASSET_MAPPING = {
+            'BTC': 'XXBT', 'ETH': 'XETH', 'XRP': 'XRP', 'SOL': 'SOL',
+            'LINK': 'LINK', 'HBAR': 'HBAR', 'TRUMP': 'TRUMP'
         }
         
-    except FileNotFoundError:
-        return {"error": "Trades file not found"}
-    except Exception as e:
-        return {"error": f"Error reading trades data: {str(e)}"}
+        # Preparar datos
+        df = trades_df.copy()
+        df['time'] = pd.to_datetime(df['time'])
+        df['fecha'] = df['time'].dt.date
+        df = df.sort_values('time')
+        
+        # Determinar rango de fechas: usar parámetros o fecha mínima hasta hoy
+        if fecha_inicio and fecha_fin:
+            from datetime import datetime
+            fecha_start = datetime.strptime(fecha_inicio, '%Y-%m-%d').date()
+            fecha_end = datetime.strptime(fecha_fin, '%Y-%m-%d').date()
+        else:
+            fecha_start = df['fecha'].min()
+            fecha_end = get_spain_date()
+        
+        # Crear rango de fechas completo
+        fechas_timeline = []
+        fecha_actual = fecha_start
+        while fecha_actual <= fecha_end:
+            fechas_timeline.append(fecha_actual)
+            fecha_actual += timedelta(days=1)
+        
+        # Obtener todos los assets únicos para cache batch
+        assets_en_trades = list(set(ASSET_MAPPING.get(pair.split('/')[0], pair.split('/')[0]) 
+                                   for pair in df['pair'].unique() 
+                                   if '/' in pair and pair.split('/')[0] not in FIAT_ASSETS))
+        
+        # Obtener precios en batch
+        from supabase_cache import cache
+        precios_batch = cache.obtener_precios_cache_batch(assets_en_trades, fecha_start, fecha_end)
+        
+        timeline = []
+        holdings_acumulados = {}
+        cost_basis_fifo = {}
+        realized_gain_acumulado = 0.0  # Running total of realized gains
 
-@app.post("/api/portfolio/csv-debug")
-async def upload_csv_debug(request: Request):
-    """Endpoint de debug para ver qué recibimos"""
-    try:
-        print(f"📤 DEBUG REQUEST - Headers: {dict(request.headers)}")
-        print(f"📤 DEBUG REQUEST - Method: {request.method}")
-        print(f"📤 DEBUG REQUEST - URL: {request.url}")
+        for fecha in fechas_timeline:
+            # Procesar trades del día
+            trades_del_dia = df[df['fecha'] == fecha]
+            operations_del_dia = []
+
+            for _, trade in trades_del_dia.iterrows():
+                # Extraer y mapear asset
+                asset_csv = trade['pair'].split('/')[0]
+                asset = ASSET_MAPPING.get(asset_csv, asset_csv)
+
+                if asset in FIAT_ASSETS:
+                    continue
+
+                tipo = trade['type']
+                ordertype = str(trade.get('ordertype', ''))
+                cantidad = float(trade['vol'])
+                cost = float(trade['cost'])
+                fee = float(trade['fee'])
+                operation_key = f"{tipo.title()} {ordertype.title()}"
+
+                # Inicializar estructuras
+                if asset not in holdings_acumulados:
+                    holdings_acumulados[asset] = 0
+                if asset not in cost_basis_fifo:
+                    cost_basis_fifo[asset] = []
+
+                # Procesar según tipo
+                operation_extra = {}
+                if tipo.lower() == 'buy':
+                    holdings_acumulados[asset] += cantidad
+                    cost_con_fee = cost + fee
+                    cost_basis_fifo[asset].append({
+                        'volumen': cantidad,
+                        'cost': cost_con_fee,
+                        'timestamp': trade['time']
+                    })
+
+                elif tipo.lower() == 'sell':
+                    holdings_acumulados[asset] -= cantidad
+
+                    # Procesar venta usando FIFO y calcular realized gain
+                    volumen_restante = cantidad
+                    cost_vendido = 0.0
+                    while volumen_restante > 0 and cost_basis_fifo[asset]:
+                        lote = cost_basis_fifo[asset][0]
+
+                        if lote['volumen'] <= volumen_restante:
+                            volumen_restante -= lote['volumen']
+                            cost_vendido += lote['cost']
+                            cost_basis_fifo[asset].pop(0)
+                        else:
+                            proporcion = volumen_restante / lote['volumen']
+                            cost_parcial = lote['cost'] * proporcion
+                            cost_vendido += cost_parcial
+                            lote['volumen'] -= volumen_restante
+                            lote['cost'] -= cost_parcial
+                            volumen_restante = 0
+
+                    realized_gain = (cost - fee) - cost_vendido
+                    realized_gain_acumulado += realized_gain
+                    operation_extra = {'realized_gain': realized_gain}
+
+                # Guardar operación del día
+                operations_del_dia.append({
+                    'asset': asset,
+                    'type': tipo.lower(),
+                    'cantidad': cantidad,
+                    'cost': cost,
+                    'fee': fee,
+                    'price': float(trade.get('price', 0)),
+                    'operation_key': operation_key,
+                    'ordertype': ordertype,
+                    'timestamp': str(trade.get('time', '')),
+                    **operation_extra
+                })
+
+            # Calcular valor del portfolio para este día
+            valor_total = 0
+            cost_basis_total = 0
+            assets_con_valor_del_dia = {}
+
+            for asset, cantidad in holdings_acumulados.items():
+                if cantidad > 0:
+                    # Obtener precio para la fecha
+                    precio = None
+                    if asset in precios_batch and fecha in precios_batch[asset]:
+                        precio = precios_batch[asset][fecha]
+                    else:
+                        # Fallback: buscar precio más cercano
+                        if asset in precios_batch:
+                            fechas_disponibles = [f for f in precios_batch[asset].keys() if f <= fecha]
+                            if fechas_disponibles:
+                                fecha_cercana = max(fechas_disponibles)
+                                precio = precios_batch[asset][fecha_cercana]
+                            else:
+                                # Si no hay fechas anteriores, usar la siguiente disponible
+                                fechas_futuras = [f for f in precios_batch[asset].keys() if f > fecha]
+                                if fechas_futuras:
+                                    precio = precios_batch[asset][min(fechas_futuras)]
+
+                    if precio is not None:
+                        valor_asset = cantidad * precio
+                        valor_total += valor_asset
+                        assets_con_valor_del_dia[asset] = {
+                            'precio': precio,
+                            'cantidad': cantidad,
+                            'valor': valor_asset
+                        }
+
+                # Calcular cost basis para este asset
+                if asset in cost_basis_fifo and cantidad > 0:
+                    cost_basis_asset = sum(lote['cost'] for lote in cost_basis_fifo[asset])
+                    cost_basis_total += cost_basis_asset
+
+            # Calcular gains
+            unrealized_gain = valor_total - cost_basis_total
+
+            # Cumulative realized gains up to this date (FIFO, same logic as operations)
+            realized_gain_period = realized_gain_acumulado
+            total_gain = unrealized_gain + realized_gain_acumulado
+
+            # Añadir punto al timeline
+            timeline.append({
+                'date': fecha.isoformat(),
+                'value': valor_total,
+                'cost': cost_basis_total,
+                'total_gain': total_gain,
+                'unrealized_gain': unrealized_gain,
+                'realized_gain_period': realized_gain_period,
+                'operations': operations_del_dia,
+                'assets_con_valor': assets_con_valor_del_dia
+            })
         
-        form = await request.form()
-        print(f"📤 DEBUG FORM - Keys: {list(form.keys())}")
-        
-        for key, value in form.items():
-            print(f"📤 DEBUG FORM - {key}: {type(value)} - {str(value)[:100]}...")
-        
-        return {"debug": "ok", "form_keys": list(form.keys())}
+        return timeline
         
     except Exception as e:
-        print(f"❌ DEBUG Exception: {e}")
-        import traceback
-        print(f"❌ DEBUG Traceback: {traceback.format_exc()}")
-        return {"error": str(e)}
+        print(f"❌ [TIMELINE] Error: {e}")
+        return []
 
 @app.post("/api/portfolio/csv")
-async def upload_csv(
-    csv_file: UploadFile = File(),
-    fecha_inicio: Optional[str] = Form(None),
-    fecha_fin: Optional[str] = Form(None),
-    calculate_period_gains: Optional[bool] = Form(False)
+async def upload_csv_and_get_portfolio(
+    csv_file: UploadFile = File(...),
+    excluded_operations: Optional[str] = Form(None),
+    start_date: Optional[str] = Form(None),
+    end_date: Optional[str] = Form(None)
 ):
-    """Endpoint para procesar CSV de Kraken con soporte para filtros de fecha"""
+    """
+    Endpoint principal que procesa CSV y retorna KPIs usando funciones modulares
+    """
+    print(f"🚀 [ENDPOINT] Received CSV request - start_date: {start_date}, end_date: {end_date}")
+    if excluded_operations:
+        print(f"❌ [ENDPOINT] Excluded operations: {excluded_operations[:100]}...")  # First 100 chars
+    import time
+    import signal
     start_time = time.time()
+    
+    # Timeout de 60 segundos para evitar que el endpoint se cuelgue
+    def timeout_handler(signum, frame):
+        raise TimeoutError("El procesamiento del CSV tardó más de 60 segundos")
+    
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(60)  # 60 segundos timeout
+    
     try:
-        print(f"📤 INICIO - Recibiendo archivo: {csv_file.filename if csv_file else 'None'}")
-        print(f"📤 Content-Type: {csv_file.content_type if csv_file else 'None'}")
-        print(f"📤 Size: {csv_file.size if hasattr(csv_file, 'size') else 'Unknown'}")
-        print(f"📤 Parámetros de fecha - Inicio: {fecha_inicio}, Fin: {fecha_fin}, Cálculo período: {calculate_period_gains}")
+        # 1. Leer CSV
+        contents = await csv_file.read()
+        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
         
-        if not csv_file:
-            print("❌ No se recibió archivo")
-            return {"error": "No file provided"}
+        # 1.5. Procesar excluded_operations
+        excluded_ops_set = set()
+        if excluded_operations:
+            try:
+                import json
+                excluded_ops_list = json.loads(excluded_operations)
+                excluded_ops_set = set(excluded_ops_list)
+                print(f"🚫 [FILTROS] Operaciones excluidas: {excluded_ops_set}")
+            except Exception as e:
+                print(f"❌ [FILTROS] Error procesando excluded_operations: {e}")
         
-        if not csv_file.filename:
-            print("❌ Archivo sin nombre")
-            return {"error": "File has no filename"}
+        # 1.6. Generar mapeo dinámico de assets basado en el CSV
+        dynamic_asset_mapping = get_dynamic_asset_mapping(df)
+        print(f"🔄 [MAPPING] Mapeo dinámico generado: {dynamic_asset_mapping}")
         
-        # TIMING: Lectura del archivo
-        read_start = time.time()    
-        content = await csv_file.read()
-        read_time = time.time() - read_start
-        print(f"⏱️ TIMING - Lectura archivo: {read_time:.3f}s - {len(content)} bytes")
+        # 2. Calcular Portfolio Value
+        portfolio_result = calcular_portfolio_value(
+            trades_df=df,
+            obtener_precios_externos=True,
+            excluded_operations=excluded_ops_set
+        )
         
-        if len(content) == 0:
-            print("❌ Archivo vacío")
-            return {"error": "File is empty"}
+        # 3. Calcular Cost Basis
+        cost_basis_result = calcular_cost_basis(
+            trades_df=df,
+            excluded_operations=excluded_ops_set
+        )
         
-        # TIMING: Decodificación
-        decode_start = time.time()
-        try:
-            csv_content = content.decode('utf-8')
-            decode_time = time.time() - decode_start
-            print(f"⏱️ TIMING - Decodificación: {decode_time:.3f}s - {len(csv_content)} caracteres")
-        except UnicodeDecodeError as e:
-            print(f"❌ Error de decodificación: {e}")
-            return {"error": f"File encoding error: {str(e)}"}
+        # 4. Calcular Unrealized Gains
+        unrealized_result = calcular_unrealized_gains(portfolio_result, cost_basis_result)
         
-        # TIMING: Procesamiento completo
-        processing_start = time.time()
-        print("📤 Iniciando procesamiento...")
-        result = process_csv_data(csv_content, fecha_inicio, fecha_fin, calculate_period_gains)
-        processing_time = time.time() - processing_start
-        print(f"⏱️ TIMING - Procesamiento total: {processing_time:.3f}s")
+        # 5. Calcular Realized Gains
+        realized_result = calcular_realized_gains(
+            trades_df=df,
+            excluded_operations=excluded_ops_set
+        )
         
-        if isinstance(result, dict) and "error" in result:
-            print(f"❌ Error en procesamiento: {result['error']}")
-            return {"error": result["error"]}
+        # 6. Extraer totales
+        portfolio_value = portfolio_result.get('totales', {}).get('total_portfolio_value', 0)
+        total_invested = cost_basis_result.get('totales', {}).get('total_cost_basis', 0)
+        unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0)
+        realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0)
+        total_fees = cost_basis_result.get('totales', {}).get('total_fees', 0)
+
+        # 7. Extraer datos por asset
+        portfolio_assets = portfolio_result.get('assets', {})
+        cost_basis_assets = cost_basis_result.get('assets', {})
+        unrealized_assets = unrealized_result.get('assets', {})
+        realized_assets = realized_result.get('assets', {})
         
+        # 8. Crear portfolio array compatible con frontend
+        portfolio_array = []
+        all_assets = set()
+        all_assets.update(portfolio_assets.keys())
+        all_assets.update(cost_basis_assets.keys())
+        all_assets.update(unrealized_assets.keys())
+        all_assets.update(realized_assets.keys())
+        
+        for asset in all_assets:
+            # Datos del portfolio value
+            portfolio_data = portfolio_assets.get(asset, {})
+            current_value = portfolio_data.get('portfolio_value', 0)
+            current_price = portfolio_data.get('precio_actual', 0)
+            amount = portfolio_data.get('cantidad_actual', 0)
+            
+            # Datos del cost basis
+            cost_data = cost_basis_assets.get(asset, {})
+            total_invested_asset = cost_data.get('cost_basis', 0)  # Solo activos retenidos
+            fees_paid = cost_data.get('fees_incluidos', 0)
+            inversion_historica = cost_data.get('inversion_historica_total', total_invested_asset)  # Inversión histórica total
+            
+            # Datos de gains
+            unrealized_data = unrealized_assets.get(asset, {})
+            unrealized_gains_asset = unrealized_data.get('unrealized_gains', 0)
+            
+            realized_data = realized_assets.get(asset, {})
+            realized_gains_asset = realized_data.get('realized_gains', 0)
+            
+            # Calcular métricas
+            net_profit_asset = realized_gains_asset + unrealized_gains_asset
+            pnl_eur = current_value - total_invested_asset  # PnL tradicional (solo activos retenidos)
+            pnl_percent = (pnl_eur / total_invested_asset * 100) if total_invested_asset > 0 else 0
+            # ROI corregido: usar inversión histórica total para el net_profit_percent
+            net_profit_percent = (net_profit_asset / inversion_historica * 100) if inversion_historica > 0 else 0
+            
+            # Solo incluir assets con datos relevantes
+            if amount > 0 or total_invested_asset > 0 or realized_gains_asset != 0:
+                portfolio_array.append({
+                    'asset': asset,
+                    'asset_type': 'fiat' if asset in FIAT_ASSETS else 'crypto',
+                    'amount': amount,
+                    'current_price': current_price,
+                    'total_invested': total_invested_asset,
+                    'fees_paid': fees_paid,
+                    'current_value': current_value,
+                    'pnl_eur': pnl_eur,
+                    'pnl_percent': pnl_percent,
+                    'realized_gains': realized_gains_asset,
+                    'unrealized_gains': unrealized_gains_asset,
+                    'net_profit': net_profit_asset,
+                    'net_profit_percent': net_profit_percent
+                })
+        
+        # 9. Calcular KPIs consolidados
+        crypto_value = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'crypto')
+        liquidity = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'fiat')
+        net_profit = realized_gains_total + unrealized_gains_total
+        net_profit_percentage = (net_profit / total_invested * 100) if total_invested > 0 else 0
+        
+        # 10. Generar Timeline usando cache híbrido (optimizado)
+        timeline_start = time.time()
+        print(f"📅 [TIMELINE] Iniciando timeline con filtros: {start_date} to {end_date}")
+        timeline_data = calcular_timeline_con_cache_hibrido(df, start_date, end_date)
+        timeline_time = time.time() - timeline_start
+        print(f"⏱️ [TIMELINE] Completado en {timeline_time:.3f}s - {len(timeline_data)} días generados")
+        
+        # Sobreescribir el último entry del timeline con precios reales de Kraken
+        if timeline_data:
+            last_entry = timeline_data[-1]
+            real_time_assets_con_valor = {}
+            for asset_csv, asset_data in portfolio_assets.items():
+                kraken_name = ASSET_MAPPING_KRAKEN.get(asset_csv, asset_csv)
+                precio = asset_data.get('precio_actual', 0)
+                cantidad = asset_data.get('cantidad_actual', 0)
+                if cantidad > 0 and precio > 0:
+                    real_time_assets_con_valor[kraken_name] = {
+                        'precio': precio,
+                        'cantidad': cantidad,
+                        'valor': asset_data.get('portfolio_value', 0)
+                    }
+            last_entry['assets_con_valor'] = real_time_assets_con_valor
+            last_entry['value'] = portfolio_value
+            # Keep last_entry['cost'] as the timeline's own FIFO cost basis (same as what KPIGrid uses)
+            # Compute unrealized using real-time value minus the timeline's FIFO cost basis
+            # This ensures the tooltip matches the KPIGrid which also uses the timeline FIFO
+            timeline_cost_basis = last_entry['cost']
+            timeline_realized = last_entry['realized_gain_period']  # from realized_gain_acumulado
+            timeline_unrealized = portfolio_value - timeline_cost_basis
+            last_entry['unrealized_gain'] = timeline_unrealized
+            last_entry['total_gain'] = timeline_unrealized + timeline_realized
+
+        # 11. Tiempo total de procesamiento
         total_time = time.time() - start_time
-        print(f"⏱️ TIMING - TOTAL ENDPOINT: {total_time:.3f}s")
-        print(f"✅ CSV procesado exitosamente")
-        return result
+        # print(f"⏱️ [TOTAL] Endpoint procesado en {total_time:.3f}s")
         
+        # 12. Respuesta final
+        response_data = {
+            'portfolio_data': portfolio_array,
+            'timeline': timeline_data,
+            'asset_mapping': dynamic_asset_mapping,  # Include dynamic asset mapping for frontend
+            'kpis': {
+                'total_invested': total_invested,
+                'current_value': portfolio_value,
+                'profit': net_profit,
+                'profit_percentage': net_profit_percentage,
+                'fees': total_fees,
+                'liquidity': liquidity,
+                'realized_gains': realized_gains_total,
+                'unrealized_gains': unrealized_gains_total,
+                'unrealized_percentage': (unrealized_gains_total / total_invested * 100) if total_invested > 0 else 0
+            },
+            'data_source': 'csv_v2',
+            'version': '2.0.0',
+            'price_captured_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Añadir información de tipos de operaciones si está disponible
+        if 'operation_types_info' in globals() and operation_types_info:
+            response_data['operation_types'] = operation_types_info
+            
+        return response_data
+        
+    except TimeoutError as e:
+        signal.alarm(0)  # Cancelar timeout
+        raise HTTPException(status_code=408, detail=str(e))
     except Exception as e:
-        error_msg = f"Error processing file: {str(e)}"
-        print(f"❌ Exception en upload_csv: {error_msg}")
-        print(f"❌ Exception type: {type(e)}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
-        return {"error": error_msg}
+        signal.alarm(0)  # Cancelar timeout
+        return {"error": f"Error procesando CSV: {str(e)}"}
+    finally:
+        signal.alarm(0)  # Asegurar que se cancele el timeout
+
+@app.get("/api/prices/current")
+async def get_current_prices(assets: str):
+    """
+    Precios actuales para los assets solicitados.
+    Cache compartido server-side con TTL de 60s — protege la API de Kraken
+    independientemente de cuántos usuarios hagan refresh a la vez.
+    """
+    global _price_cache
+
+    now = datetime.now(timezone.utc)
+    asset_list = [a.strip() for a in assets.split(",") if a.strip()]
+
+    # Devolver cache si está fresco
+    if _price_cache["fetched_at"]:
+        age = (now - _price_cache["fetched_at"]).total_seconds()
+        if age < PRICE_CACHE_TTL:
+            prices = {a: _price_cache["prices"].get(a) for a in asset_list}
+            return {
+                "prices": prices,
+                "fetched_at": _price_cache["fetched_at"].isoformat(),
+                "from_cache": True,
+                "cache_age_seconds": int(age)
+            }
+
+    # Fetch fresco desde Kraken
+    try:
+        if AIOHTTP_AVAILABLE:
+            fresh_prices = await get_public_kraken_prices_from_pairs_async(asset_list)
+        else:
+            fresh_prices = get_public_kraken_prices_from_pairs_sync(asset_list)
+
+        _price_cache["prices"].update(fresh_prices)
+        _price_cache["fetched_at"] = now
+
+        return {
+            "prices": {a: fresh_prices.get(a) for a in asset_list},
+            "fetched_at": now.isoformat(),
+            "from_cache": False,
+            "cache_age_seconds": 0
+        }
+    except Exception as e:
+        # Si falla, devolver cache aunque sea stale
+        if _price_cache["fetched_at"]:
+            return {
+                "prices": {a: _price_cache["prices"].get(a) for a in asset_list},
+                "fetched_at": _price_cache["fetched_at"].isoformat(),
+                "from_cache": True,
+                "stale": True
+            }
+        raise HTTPException(status_code=503, detail=f"Price service unavailable: {str(e)}")
+
+
+@app.get("/api/test")
+async def test_functions():
+    """Endpoint para probar las funciones modulares"""
+    try:
+        # Ejecutar las pruebas
+        df = pd.read_csv('trades.csv')
+        
+        portfolio_result = calcular_portfolio_value(trades_df=df, obtener_precios_externos=True)
+        cost_basis_result = calcular_cost_basis(trades_df=df)
+        
+        return {
+            "portfolio_value": portfolio_result.get('totales', {}),
+            "cost_basis": cost_basis_result.get('totales', {}),
+            "status": "success"
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 # =============================================================================
-# INICIALIZACIÓN
+# FUNCIÓN PRINCIPAL Y PRUEBAS
 # =============================================================================
 
 if __name__ == "__main__":
-    print("🚀 Iniciando servidor Portfolio Visualizer...")
-    print("📊 Backend disponible en: http://localhost:8000")
-    print("🌐 Frontend disponible en: http://localhost:5173")
-    print("📖 Documentación API: http://localhost:8000/docs")
-    print("=" * 50)
+    import sys
     
-    print("🔧 Inicializando APIs públicas...")
-    init_public_kraken()
-    
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        from tests.test_portfolio import ejecutar_todas_las_pruebas
+        print("🧪 Ejecutando pruebas...")
+        ejecutar_todas_las_pruebas()
+    else:
+        # Modo servidor
+        print("🚀 Iniciando Portfolio Visualizer...")
+        uvicorn.run(app, host="0.0.0.0", port=8001)

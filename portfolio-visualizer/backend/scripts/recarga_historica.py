@@ -15,9 +15,12 @@ Ejemplos:
 """
 import logging
 import sys
+import os
 import time
 from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from supabase_cache import cache, get_spain_date
 
 # Configurar logging

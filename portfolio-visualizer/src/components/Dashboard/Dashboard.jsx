@@ -4,10 +4,11 @@ import OperationsSection from './Sections/Operations/OperationsSection';
 import PortfolioSection from './Sections/Portfolio/PortfolioSection';
 import Filters from '../Filters';
 import Header from './Header';
+import { assetLabelMap } from '../../utils/chartUtils';
 
 
 
-const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, onReprocessCsv, isVisible = true }) => {
+const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, onReprocessCsv, onRefreshPrices, priceTimestamp, isVisible = true }) => {
   const [filters, setFilters] = useState({
     dateRange: 'all',
     assetType: 'all',
@@ -16,14 +17,37 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   });
   const [hiddenAssets, setHiddenAssets] = useState(new Set());
   const [excludedOperations, setExcludedOperations] = useState(new Set());
+  const [disabledOps, setDisabledOps] = useState(new Set()); // IDs únicos de operaciones individuales desactivadas
+
+  const handleToggleAsset = (displaySymbol) => {
+    setHiddenAssets(prev => {
+      const arr = Array.from(prev);
+      if (arr.includes(displaySymbol)) {
+        return new Set(arr.filter(s => s !== displaySymbol));
+      }
+      return new Set([...arr, displaySymbol]);
+    });
+  };
+
+  const handleToggleAllAssets = (allSymbols, showAll) => {
+    setHiddenAssets(showAll ? new Set() : new Set(allSymbols));
+  };
+
+  const handleToggleOperation = (opId) => {
+    setDisabledOps(prev => {
+      const next = new Set(prev);
+      if (next.has(opId)) next.delete(opId);
+      else next.add(opId);
+      return next;
+    });
+  };
+
+  const handleToggleAllOperations = (opIds, includeAll) => {
+    setDisabledOps(includeAll ? new Set() : new Set(opIds));
+  };
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('overview');
   
-  // Debug: Log operation types when portfolio data changes
-  useEffect(() => {
-    if (portfolioData && portfolioData.operation_types) {
-    }
-  }, [portfolioData]);
   const [showApplyPopup, setShowApplyPopup] = useState(false);
   const [popupSource, setPopupSource] = useState('filter'); // 'filter' or 'timeline'
   // Dates for filters (can be point click dates)
@@ -40,6 +64,11 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   // Filter's selected preset to sync with Timeline quick filters
   const [filterSelectedPreset, setFilterSelectedPreset] = useState(null);
   
+  // Persistent timeline UI state (survive section navigation)
+  const [timelineViewMode, setTimelineViewMode] = useState('both');
+  const [timelineShowCostBasis, setTimelineShowCostBasis] = useState(false);
+  const [timelinePeriodMode, setTimelinePeriodMode] = useState('day');
+
   // Track if we're in point click mode
   const [isInPointClickMode, setIsInPointClickMode] = useState(false);
   const [isApplyingFromTimeline, setIsApplyingFromTimeline] = useState(false);
@@ -101,14 +130,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     }
   }, [startDate, endDate, timelineStartDate, timelineEndDate, showApplyPopup]);
 
-  // Track when we exit point click mode and show popup if needed
-  const prevIsInPointClickMode = useRef(isInPointClickMode);
-
-  useEffect(() => {
-    prevIsInPointClickMode.current = isInPointClickMode;
-  }, [isInPointClickMode]);
-
-
   const handleFiltersChange = (newFilters, skipTimelineUpdate = false) => {
     setFilters(newFilters);
     
@@ -168,6 +189,9 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         lastShownPopup.current = '';
         // Tell showTimelinePopup to suppress the next call (avoids popup flash during sync)
         isFilterChangingDates.current = true;
+        // Auto-reset after a short delay so it doesn't block the next legitimate popup
+        // (e.g. the flag from initial Filters mount was blocking the first user zoom)
+        setTimeout(() => { isFilterChangingDates.current = false; }, 500);
       }
     }
   };
@@ -216,10 +240,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     // Use stored timeline dates if available
     const datesToUse = window.timelineDates || timelineData.dateRange;
     
-    console.log('🎯 APPLY TIMELINE TO ALL - DATES TO USE:', datesToUse);
-    console.log('🎯 WINDOW.TIMELINE DATES:', window.timelineDates);
-    console.log('🔍 [DEBUG] onReprocessCsv function available:', typeof onReprocessCsv);
-    
     if (datesToUse) {
       // Check if this is a special point-click case
       const isPointClick = datesToUse.isPointClick;
@@ -228,8 +248,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         // For point clicks: Update only filter dates, leave timeline dates unchanged
         const clickedDate = datesToUse.startDate;
         
-        // Close popup immediately for point clicks
-        console.log('Dashboard: Closing popup for point click');
         setShowApplyPopup(false);
         
         // Let handleFiltersChange update the filter dates, but skip timeline update
@@ -241,12 +259,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
           }
         }, 'pointClick'); // Special flag for point clicks
         
-        // Re-process CSV with new date filter if available
         if (onReprocessCsv) {
-          console.log('🎯 [DASHBOARD] Point click - calling reprocessCsv with:', clickedDate, clickedDate);
           onReprocessCsv(clickedDate, clickedDate, Array.from(excludedOperations));
-        } else {
-          console.log('❌ [DASHBOARD] No onReprocessCsv function available');
         }
         
         // Enable point click mode
@@ -337,13 +351,10 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       // Create a unique key for this popup request
       const popupKey = `${timelineDates.startDate}-${timelineDates.endDate}`;
       
-      // Don't show if we already showed this exact popup
       if (lastShownPopup.current === popupKey) {
-        console.log('🚫 DUPLICATE POPUP BLOCKED:', popupKey);
         return;
       }
-      
-      console.log('✅ SHOWING NEW POPUP:', popupKey);
+
       lastShownPopup.current = popupKey;
       
       // CLEAR any old timeline dates first to prevent mixing old with new
@@ -357,7 +368,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         quickFilter: timelineDates.quickFilter
       };
       
-      console.log('📦 STORED TIMELINE DATES:', window.timelineDates);
       setShowApplyPopup(true);
     }
   };
@@ -399,6 +409,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             filters={filters}
             hiddenAssets={hiddenAssets}
             excludedOperations={excludedOperations}
+            disabledOps={disabledOps}
             showApplyPopup={showApplyPopup}
             setShowApplyPopup={setShowApplyPopup}
             startDate={startDate}
@@ -417,6 +428,13 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             filterSelectedPreset={filterSelectedPreset}
             onFilterReset={handleFilterReset}
             isApplyingFromTimeline={isApplyingFromTimeline}
+            timelineViewMode={timelineViewMode}
+            setTimelineViewMode={setTimelineViewMode}
+            timelineShowCostBasis={timelineShowCostBasis}
+            setTimelineShowCostBasis={setTimelineShowCostBasis}
+            timelinePeriodMode={timelinePeriodMode}
+            setTimelinePeriodMode={setTimelinePeriodMode}
+            priceTimestamp={priceTimestamp}
           />
         );
       case 'operations':
@@ -428,6 +446,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             filters={filters}
             hiddenAssets={hiddenAssets}
             excludedOperations={excludedOperations}
+            disabledOps={disabledOps}
             showApplyPopup={showApplyPopup}
             setShowApplyPopup={setShowApplyPopup}
             startDate={startDate}
@@ -446,6 +465,10 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             filterSelectedPreset={filterSelectedPreset}
             onFilterReset={handleFilterReset}
             isApplyingFromTimeline={isApplyingFromTimeline}
+            onToggleAsset={handleToggleAsset}
+            onToggleAllAssets={handleToggleAllAssets}
+            onToggleOperation={handleToggleOperation}
+            onToggleAllOperations={handleToggleAllOperations}
           />
         );
       case 'portfolio':
@@ -466,15 +489,13 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       background: theme.bg,
       color: theme.textPrimary,
       fontFamily: "'Inter', sans-serif",
-      paddingRight: sidebarOpen ? '350px' : '0',
-      transition: 'padding-right 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
       position: 'relative'
     }}>
       {/* Global Filters Component - Only render when dashboard is visible */}
       {isVisible && (
-        <Filters 
-          theme={theme} 
-          onFiltersChange={handleFiltersChange} 
+        <Filters
+          theme={theme}
+          onFiltersChange={handleFiltersChange}
           onFilterReset={handleFilterReset}
           portfolioData={portfolioData}
           onSidebarToggle={setSidebarOpen}
@@ -487,23 +508,28 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
           timelineQuickFilter={timelineQuickFilter}
         />
       )}
-      
-      {/* Header */}
-      <Header 
+
+      {/* Header — siempre a ancho completo, fuera del contenedor que hace paddingRight */}
+      <Header
         theme={theme}
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
-        onBackToForm={onBackToForm}
+        onBackToForm={onShowGainTrack || onBackToForm}
         onToggleTheme={onToggleTheme}
         sidebarOpen={sidebarOpen}
+        onRefreshPrices={onRefreshPrices}
+        priceTimestamp={priceTimestamp}
+        disabledOpsCount={disabledOps.size}
       />
 
-      {/* Main Content Area - Las secciones ocupan todo el espacio tras el header */}
-      <div style={{ 
-        padding: '0 4rem 0 4rem', // Sin margen arriba
-        marginTop: '-200px', // Compensar el espacio que deja la línea fixed
-        paddingTop: '2px', // Justo debajo de la línea divisora
-        overflow: 'visible' // Permitir que el ticker salga por arriba
+      {/* Main Content Area — se desplaza cuando abre el sidebar */}
+      <div style={{
+        paddingTop: '0',
+        paddingBottom: '0',
+        paddingLeft: '4rem',
+        paddingRight: sidebarOpen ? 'calc(350px + 4rem)' : '4rem',
+        transition: 'padding-right 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
+        overflow: 'visible'
       }}>
         {renderCurrentSection()}
       </div>

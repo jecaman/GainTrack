@@ -449,7 +449,6 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
       const mappedPreset = presetMap[timelineQuickFilter];
       if (mappedPreset && mappedPreset !== selectedTimePreset) {
         setSelectedTimePreset(mappedPreset);
-        console.log(`Synced timeline quick filter '${timelineQuickFilter}' to tab preset '${mappedPreset}'`);
       }
     }
   }, [timelineQuickFilter]);
@@ -496,8 +495,6 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
   };
   
   const handleApplyFilter = () => {
-    console.log('Aplicando período a toda la página:', { startDate, endDate, popupSource });
-    
     // If popup source is 'timeline', use the callback to update Filter
     if (popupSource === 'timeline' && onApplyToAll) {
       onApplyToAll({
@@ -624,7 +621,6 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
   // Helper function to get max portfolio value from timeline
   const getMaxTimelineValue = () => {
     if (!portfolioData?.timeline || portfolioData.timeline.length === 0) {
-      console.log('No timeline data, using fallback 100');
       return 100; // Fallback
     }
     
@@ -633,8 +629,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     });
     
     const maxValue = Math.max(...values);
-    // console.log('Max timeline value found:', maxValue, 'Ceiling:', Math.ceil(maxValue));
-    return Math.max(100, Math.ceil(maxValue)); // At least 100 as minimum
+    return Math.max(100, Math.ceil(maxValue));
   };
 
   // Helper function to update active filters count — max 1 per section (4 sections total)
@@ -899,7 +894,6 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
 
   const handleQuickFilter = (filterType) => {
     // Implement quick filter logic here
-    console.log('Quick filter:', filterType);
     if (onFiltersChange) {
       onFiltersChange({ type: 'quick', filter: filterType });
     }
@@ -965,21 +959,21 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
           }}
           onMouseEnter={(e) => {
             if (!isTabHoverDisabled) {
-              e.target.style.background = theme.bgContainer;
-              e.target.style.borderColor = '#00ff99';
-              e.target.style.color = theme.textPrimary;
-              e.target.style.transform = 'translateX(-6px)';
+              e.currentTarget.style.background = theme.bgContainer;
+              e.currentTarget.style.borderColor = '#00ff99';
+              e.currentTarget.style.color = theme.textPrimary;
+              e.currentTarget.style.transform = 'translateX(-6px)';
               // Brillo como los KPIs pero sin el borde derecho (interior)
-              e.target.style.boxShadow = '0 -0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0 0.5rem 0.5rem rgba(0, 255, 136, 0.15), -0.25rem 0 0.5rem rgba(0, 255, 136, 0.15)';
+              e.currentTarget.style.boxShadow = '0 -0.5rem 0.5rem rgba(0, 255, 136, 0.15), 0 0.5rem 0.5rem rgba(0, 255, 136, 0.15), -0.25rem 0 0.5rem rgba(0, 255, 136, 0.15)';
             }
             setShowTabPulse(false);
           }}
           onMouseLeave={(e) => {
-            e.target.style.background = theme.bgElevated;
-            e.target.style.borderColor = theme.borderColor;
-            e.target.style.color = '#ffffff';
-            e.target.style.transform = 'translateX(0)';
-            e.target.style.boxShadow = 'none';
+            e.currentTarget.style.background = theme.bgElevated;
+            e.currentTarget.style.borderColor = theme.borderColor;
+            e.currentTarget.style.color = '#ffffff';
+            e.currentTarget.style.transform = 'translateX(0)';
+            e.currentTarget.style.boxShadow = 'none';
           }}
         >
           {/* FILTERS text written horizontally but rotated */}
@@ -1070,14 +1064,14 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                 }}
                 onMouseEnter={(e) => {
                   if (activeSection !== section.id) {
-                    e.target.style.color = theme.textPrimary;
-                    e.target.style.background = theme.bgContainer;
+                    e.currentTarget.style.color = theme.textPrimary;
+                    e.currentTarget.style.background = theme.bgContainer;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (activeSection !== section.id) {
-                    e.target.style.color = theme.textSecondary;
-                    e.target.style.background = 'transparent';
+                    e.currentTarget.style.color = theme.textSecondary;
+                    e.currentTarget.style.background = 'transparent';
                   }
                 }}
               >
@@ -1185,10 +1179,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                 setShowCustomCalendar(true);
                               }}
                               onMouseEnter={(e) => {
-                                e.target.style.borderColor = '#00ff99';
+                                e.currentTarget.style.borderColor = '#00ff99';
                               }}
                               onMouseLeave={(e) => {
-                                e.target.style.borderColor = theme.borderColor;
+                                e.currentTarget.style.borderColor = theme.borderColor;
                               }}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={theme.textSecondary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1282,10 +1276,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                 setShowCustomCalendar(true);
                               }}
                               onMouseEnter={(e) => {
-                                e.target.style.borderColor = '#00ff99';
+                                e.currentTarget.style.borderColor = '#00ff99';
                               }}
                               onMouseLeave={(e) => {
-                                e.target.style.borderColor = theme.borderColor;
+                                e.currentTarget.style.borderColor = theme.borderColor;
                               }}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={theme.textSecondary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1375,22 +1369,22 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                               backdropFilter: 'blur(10px)'
                             }}
                             onMouseEnter={(e) => {
-                              e.target.style.background = '#ff6b6b';
-                              e.target.style.color = 'white';
-                              e.target.style.transform = 'translateY(-2px)';
-                              e.target.style.boxShadow = '0 4px 12px rgba(255, 107, 107, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                              e.currentTarget.style.background = '#ff6b6b';
+                              e.currentTarget.style.color = 'white';
+                              e.currentTarget.style.transform = 'translateY(-2px)';
+                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(255, 107, 107, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
                             }}
                             onMouseLeave={(e) => {
-                              e.target.style.background = theme.bgElevated;
-                              e.target.style.color = '#ff6b6b';
-                              e.target.style.transform = 'translateY(0)';
-                              e.target.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+                              e.currentTarget.style.background = theme.bgElevated;
+                              e.currentTarget.style.color = '#ff6b6b';
+                              e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
                             }}
                             onMouseDown={(e) => {
-                              e.target.style.transform = 'translateY(0) scale(0.98)';
+                              e.currentTarget.style.transform = 'translateY(0) scale(0.98)';
                             }}
                             onMouseUp={(e) => {
-                              e.target.style.transform = 'translateY(-2px) scale(1)';
+                              e.currentTarget.style.transform = 'translateY(-2px) scale(1)';
                             }}
                           >
                             ✕ Clear
@@ -1432,14 +1426,14 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           }}
                           onMouseEnter={(e) => {
                             if (selectedTimePreset !== preset) {
-                              e.target.style.borderColor = '#00ff99';
-                              e.target.style.backgroundColor = theme.bgContainer;
+                              e.currentTarget.style.borderColor = '#00ff99';
+                              e.currentTarget.style.backgroundColor = theme.bgContainer;
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (selectedTimePreset !== preset) {
-                              e.target.style.borderColor = theme.borderColor;
-                              e.target.style.backgroundColor = theme.bgElevated;
+                              e.currentTarget.style.borderColor = theme.borderColor;
+                              e.currentTarget.style.backgroundColor = theme.bgElevated;
                             }
                           }}
                         >
@@ -1749,10 +1743,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   lineHeight: '1'
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.target.style.color = '#00ff99';
+                                  e.currentTarget.style.color = '#00ff99';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.target.style.color = theme.textSecondary;
+                                  e.currentTarget.style.color = theme.textSecondary;
                                 }}
                               >
                                 ▲
@@ -1784,10 +1778,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   lineHeight: '1'
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.target.style.color = '#00ff99';
+                                  e.currentTarget.style.color = '#00ff99';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.target.style.color = theme.textSecondary;
+                                  e.currentTarget.style.color = theme.textSecondary;
                                 }}
                               >
                                 ▼
@@ -1824,7 +1818,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                         }}
                         onInput={(e) => {
                           const value = parseFloat(e.target.value);
-                          e.target.style.background = `linear-gradient(to right, #00ff99 0%, #00ff99 ${value}%, ${theme.borderColor} ${value}%, ${theme.borderColor} 100%)`;
+                          e.currentTarget.style.background = `linear-gradient(to right, #00ff99 0%, #00ff99 ${value}%, ${theme.borderColor} ${value}%, ${theme.borderColor} 100%)`;
                         }}
                       />
                     </div>
@@ -1950,10 +1944,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   lineHeight: '1'
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.target.style.color = '#00ff99';
+                                  e.currentTarget.style.color = '#00ff99';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.target.style.color = theme.textSecondary;
+                                  e.currentTarget.style.color = theme.textSecondary;
                                 }}
                               >
                                 ▲
@@ -1984,10 +1978,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   lineHeight: '1'
                                 }}
                                 onMouseEnter={(e) => {
-                                  e.target.style.color = '#00ff99';
+                                  e.currentTarget.style.color = '#00ff99';
                                 }}
                                 onMouseLeave={(e) => {
-                                  e.target.style.color = theme.textSecondary;
+                                  e.currentTarget.style.color = theme.textSecondary;
                                 }}
                               >
                                 ▼
@@ -2025,7 +2019,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           const value = parseFloat(e.target.value);
                           const maxValue = getMaxTimelineValue();
                           const percentage = (value / maxValue) * 100;
-                          e.target.style.background = `linear-gradient(to right, #00ff99 0%, #00ff99 ${percentage}%, ${theme.borderColor} ${percentage}%, ${theme.borderColor} 100%)`;
+                          e.currentTarget.style.background = `linear-gradient(to right, #00ff99 0%, #00ff99 ${percentage}%, ${theme.borderColor} ${percentage}%, ${theme.borderColor} 100%)`;
                         }}
                       />
                     </div>
@@ -2095,10 +2089,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                         transition: 'background 0.2s ease'
                       }}
                       onMouseEnter={(e) => {
-                        e.target.style.background = theme.bgElevated;
+                        e.currentTarget.style.background = theme.bgElevated;
                       }}
                       onMouseLeave={(e) => {
-                        e.target.style.background = 'transparent';
+                        e.currentTarget.style.background = 'transparent';
                       }}
                       >
                         <input
@@ -2110,10 +2104,18 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           }}
                         />
                         <span style={{
-                          color: theme.textPrimary,
-                          fontWeight: '600',
-                          fontSize: '14px',
-                          fontFamily: "'Inter', sans-serif"
+                          backgroundColor: operation.toLowerCase().startsWith('buy') ? 'rgba(0, 255, 153, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                          color: operation.toLowerCase().startsWith('buy') ? '#00FF99' : '#ef4444',
+                          padding: '3px 9px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          textTransform: 'uppercase',
+                          fontFamily: 'monospace',
+                          letterSpacing: '0.5px',
+                          whiteSpace: 'nowrap',
+                          opacity: excludedOperations.has(operation) ? 0.35 : 1,
+                          transition: 'opacity 0.2s ease',
                         }}>{operation}</span>
                       </label>
                     ))}
@@ -2195,7 +2197,6 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       setBalanceThreshold('');
                       setExcludedOperations(new Set());
                       setActiveFilters(0);
-                      console.log('All filters cleared');
                       // Use onFilterReset for clear all to ensure timeline dates are also updated
                       if (onFilterReset) {
                         onFilterReset({
@@ -2235,14 +2236,14 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       letterSpacing: '0.8px'
                     }}
                     onMouseEnter={(e) => {
-                      e.target.style.borderColor = '#ff6b6b';
-                      e.target.style.color = '#ff6b6b';
-                      e.target.style.background = theme.bgElevated;
+                      e.currentTarget.style.borderColor = '#ff6b6b';
+                      e.currentTarget.style.color = '#ff6b6b';
+                      e.currentTarget.style.background = theme.bgElevated;
                     }}
                     onMouseLeave={(e) => {
-                      e.target.style.borderColor = theme.textSecondary;
-                      e.target.style.color = theme.textPrimary;
-                      e.target.style.background = theme.bgContainer;
+                      e.currentTarget.style.borderColor = theme.textSecondary;
+                      e.currentTarget.style.color = theme.textPrimary;
+                      e.currentTarget.style.background = theme.bgContainer;
                     }}
                   >
                     CLEAR ALL
@@ -2335,12 +2336,12 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           fontFamily: "'Inter', sans-serif"
                         }}
                         onMouseEnter={(e) => {
-                          e.target.style.borderColor = '#00ff99';
-                          e.target.style.backgroundColor = theme.bgElevated;
+                          e.currentTarget.style.borderColor = '#00ff99';
+                          e.currentTarget.style.backgroundColor = theme.bgElevated;
                         }}
                         onMouseLeave={(e) => {
-                          e.target.style.borderColor = theme.borderColor;
-                          e.target.style.backgroundColor = theme.bgContainer;
+                          e.currentTarget.style.borderColor = theme.borderColor;
+                          e.currentTarget.style.backgroundColor = theme.bgContainer;
                         }}
                       >
                         {option}
@@ -2479,7 +2480,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                 e.currentTarget.style.transform = 'scale(1)';
               }}
             >
-              Apply Filter to Page
+              Apply to All Sections
             </button>
             
             <button
@@ -2598,12 +2599,12 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = 'rgba(255, 102, 102, 0.2)';
-                  e.target.style.color = '#ff6666';
+                  e.currentTarget.style.background = 'rgba(255, 102, 102, 0.2)';
+                  e.currentTarget.style.color = '#ff6666';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'transparent';
-                  e.target.style.color = '#ff6666';
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#ff6666';
                 }}
               >
                 ×
@@ -2643,8 +2644,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
-                onMouseEnter={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.color = '#ffffff')}
-                onMouseLeave={(e) => !isMonthNavigationDisabled(-1) && (e.target.style.color = '#ffffff')}
+                onMouseEnter={(e) => !isMonthNavigationDisabled(-1) && (e.currentTarget.style.color = '#ffffff')}
+                onMouseLeave={(e) => !isMonthNavigationDisabled(-1) && (e.currentTarget.style.color = '#ffffff')}
               >
                 ‹
               </button>
@@ -2666,10 +2667,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   transition: 'all 0.2s ease'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = '#2a2a2a';
+                  e.currentTarget.style.background = '#2a2a2a';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = '#1a1a1a';
+                  e.currentTarget.style.background = '#1a1a1a';
                 }}
               >
                 {calendarDate.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()} - {calendarDate.getFullYear()}
@@ -2692,8 +2693,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
-                onMouseEnter={(e) => !isMonthNavigationDisabled(1) && (e.target.style.color = '#ffffff')}
-                onMouseLeave={(e) => !isMonthNavigationDisabled(1) && (e.target.style.color = '#ffffff')}
+                onMouseEnter={(e) => !isMonthNavigationDisabled(1) && (e.currentTarget.style.color = '#ffffff')}
+                onMouseLeave={(e) => !isMonthNavigationDisabled(1) && (e.currentTarget.style.color = '#ffffff')}
               >
                 ›
               </button>
@@ -2789,14 +2790,14 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                             }}
                             onMouseEnter={(e) => {
                               if (isAvailable && calendarDate.getMonth() !== index) {
-                                e.target.style.background = '#2a2a2a';
-                                e.target.style.color = '#ffffff';
+                                e.currentTarget.style.background = '#2a2a2a';
+                                e.currentTarget.style.color = '#ffffff';
                               }
                             }}
                             onMouseLeave={(e) => {
                               if (isAvailable && calendarDate.getMonth() !== index) {
-                                e.target.style.background = 'transparent';
-                                e.target.style.color = '#cccccc';
+                                e.currentTarget.style.background = 'transparent';
+                                e.currentTarget.style.color = '#cccccc';
                               }
                             }}
                           >
@@ -2851,14 +2852,14 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           }}
                           onMouseEnter={(e) => {
                             if (calendarDate.getFullYear() !== year) {
-                              e.target.style.background = '#2a2a2a';
-                              e.target.style.color = '#ffffff';
+                              e.currentTarget.style.background = '#2a2a2a';
+                              e.currentTarget.style.color = '#ffffff';
                             }
                           }}
                           onMouseLeave={(e) => {
                             if (calendarDate.getFullYear() !== year) {
-                              e.target.style.background = 'transparent';
-                              e.target.style.color = '#cccccc';
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.color = '#cccccc';
                             }
                           }}
                         >
@@ -2953,22 +2954,22 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     onMouseEnter={(e) => {
                       if (day && dayState !== 'disabled' && !isSelected) {
                         if (dayState === 'in-range') {
-                          e.target.style.backgroundColor = '#263d2a';
-                          e.target.style.color = '#ffffff';
+                          e.currentTarget.style.backgroundColor = '#263d2a';
+                          e.currentTarget.style.color = '#ffffff';
                         } else {
-                          e.target.style.backgroundColor = '#2a2a2a';
-                          e.target.style.color = '#ffffff';
+                          e.currentTarget.style.backgroundColor = '#2a2a2a';
+                          e.currentTarget.style.color = '#ffffff';
                         }
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (day && dayState !== 'disabled' && !isSelected) {
                         if (dayState === 'in-range') {
-                          e.target.style.backgroundColor = '#1a2d1f';
-                          e.target.style.color = '#ffffff';
+                          e.currentTarget.style.backgroundColor = '#1a2d1f';
+                          e.currentTarget.style.color = '#ffffff';
                         } else {
-                          e.target.style.backgroundColor = 'transparent';
-                          e.target.style.color = isWeekend ? '#ff6666' : '#cccccc';
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.color = isWeekend ? '#ff6666' : '#cccccc';
                         }
                       }
                     }}
@@ -3023,12 +3024,12 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   textTransform: 'uppercase'
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.background = '#2a2a2a';
-                  e.target.style.borderColor = '#666666';
+                  e.currentTarget.style.background = '#2a2a2a';
+                  e.currentTarget.style.borderColor = '#666666';
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.background = 'transparent';
-                  e.target.style.borderColor = '#444444';
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.borderColor = '#444444';
                 }}
               >
                 CLEAR

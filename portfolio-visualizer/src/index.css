@@ -42,65 +42,6 @@
   }
 }
 
-/* === COMPONENTS === */
-@layer components {
-  .btn-primary {
-    background-color: #aa00fe;
-    color: white;
-    font-weight: 500;
-    padding: 12px 24px;
-    border-radius: 8px;
-    transition: all 0.2s;
-    transform: scale(1);
-  }
-
-  .btn-primary:hover {
-    background-color: #8a00d4;
-    transform: scale(1.02);
-  }
-
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .input-field {
-    width: 100%;
-    padding: 12px 16px;
-    background-color: #1f2937;
-    border: 1px solid #4b5563;
-    border-radius: 8px;
-    color: white;
-    outline: none;
-    transition: all 0.2s;
-  }
-
-  .input-field:focus {
-    border-color: #aa00fe;
-    box-shadow: 0 0 0 2px rgba(170, 0, 254, 0.2);
-  }
-
-  .input-field::placeholder {
-    color: #9ca3af;
-  }
-
-  .card {
-    background-color: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 12px;
-    padding: 24px;
-  }
-
-  .neon-text {
-    color: #aa00fe;
-    text-shadow: 0 0 10px #aa00fe, 0 0 20px #aa00fe, 0 0 30px #aa00fe;
-  }
-
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-out;
-  }
-}
-
 /* === SCROLLBAR === */
 ::-webkit-scrollbar {
   width: 6px;
