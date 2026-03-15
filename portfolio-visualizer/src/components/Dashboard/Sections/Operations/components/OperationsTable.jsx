@@ -32,6 +32,7 @@ const OperationsTable = ({
   onToggleAllAssets,
   onToggleOperation,
   onToggleAllOperations,
+  currency = { symbol: '€', multiplier: 1 },
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
@@ -634,7 +635,7 @@ const OperationsTable = ({
                       fontFamily: 'monospace',
                       fontSize: '15px'
                     }}>
-                      {operation.price > 0 ? formatEuropeanCurrency(operation.price) : '-'}
+                      {operation.price > 0 ? formatEuropeanPrice(operation.price * currency.multiplier, currency.symbol) : '-'}
                     </td>
 
                     {/* Total Value */}
@@ -646,7 +647,7 @@ const OperationsTable = ({
                       fontSize: '15px',
                       fontWeight: '600'
                     }}>
-                      {formatEuropeanCurrency(operation.cost)}
+                      {formatEuropeanCurrency(operation.cost * currency.multiplier, currency.symbol)}
                     </td>
 
                     {/* Fee */}
@@ -657,7 +658,7 @@ const OperationsTable = ({
                       fontFamily: 'monospace',
                       fontSize: '15px'
                     }}>
-                      {formatEuropeanPrice(operation.fee)}
+                      {formatEuropeanPrice(operation.fee * currency.multiplier, currency.symbol)}
                     </td>
 
                     {/* Realized P&L */}
@@ -670,7 +671,7 @@ const OperationsTable = ({
                     }}>
                       {operation.realizedGain !== null ? (
                         <span style={{ color: operation.realizedGain >= 0 ? '#00FF99' : '#ef4444' }}>
-                          {operation.realizedGain >= 0 ? '+' : ''}{formatEuropeanCurrency(operation.realizedGain)}
+                          {operation.realizedGain >= 0 ? '+' : ''}{formatEuropeanCurrency(operation.realizedGain * currency.multiplier, currency.symbol)}
                         </span>
                       ) : (
                         <span style={{ color: theme.textSecondary }}>-</span>

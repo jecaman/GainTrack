@@ -15,6 +15,8 @@ function App() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [csvFile, setCsvFile] = useState(null); // Store CSV file for re-processing
   const [priceTimestamp, setPriceTimestamp] = useState(null);
+  const [userRefreshCount, setUserRefreshCount] = useState(0);
+  const [fiatRates, setFiatRates] = useState({ USD: 1.0, GBP: 1.0, CAD: 1.0 });
 
   // Function to re-process CSV with date filters
   const reprocessCsvWithFilters = async (startDate, endDate, excludedOperations = []) => {
@@ -175,6 +177,9 @@ function App() {
           });
 
           // Actualizar último punto del timeline con los nuevos precios
+          // portfolio_data usa keys del CSV (BTC, ETH) pero el timeline usa
+          // keys de Kraken (XXBT, XETH). Usar asset_mapping para traducir.
+          const assetMapping = prev.asset_mapping || {};
           let updatedTimeline = prev.timeline;
           if (prev.timeline && prev.timeline.length > 0) {
             updatedTimeline = [...prev.timeline];
@@ -182,12 +187,14 @@ function App() {
             const updatedAssets = { ...lastDay.assets_con_valor };
             let newValue = 0;
 
-            for (const [backendKey, price] of Object.entries(pricesByBackendKey)) {
-              if (updatedAssets[backendKey]) {
-                updatedAssets[backendKey] = {
-                  ...updatedAssets[backendKey],
+            for (const [csvKey, price] of Object.entries(pricesByBackendKey)) {
+              // Mapear key del CSV → key del timeline (e.g. BTC → XXBT)
+              const timelineKey = assetMapping[csvKey] || csvKey;
+              if (updatedAssets[timelineKey]) {
+                updatedAssets[timelineKey] = {
+                  ...updatedAssets[timelineKey],
                   precio: price,
-                  valor: price * updatedAssets[backendKey].cantidad
+                  valor: price * updatedAssets[timelineKey].cantidad
                 };
               }
             }
@@ -212,20 +219,32 @@ function App() {
           };
         });
         setPriceTimestamp(data.fetched_at);
+        if (!data.from_cache) {
+          setUserRefreshCount(c => c + 1);
+        }
       }
-      return { fromCache: !!data.from_cache };
+      return { fromCache: !!data.from_cache, cacheAge: data.cache_age_seconds || 0 };
     } catch (err) {
       console.error('[Prices] ❌ Error:', err);
-      return { fromCache: false };
+      return { fromCache: false, cacheAge: 0, error: true };
     }
   };
 
-  // Auto-refresh precios cada 5 minutos
+  // Auto-refresh precios cada ~5 min (alineado con BG task del backend)
   useEffect(() => {
     if (!showPortfolio) return;
-    const interval = setInterval(refreshPrices, 5 * 60 * 1000);
+    const interval = setInterval(refreshPrices, 310 * 1000);
     return () => clearInterval(interval);
   }, [showPortfolio, fullPortfolioData]);
+
+  // Cargar tipos de cambio fiat al mostrar el portfolio
+  useEffect(() => {
+    if (!showPortfolio) return;
+    fetch('http://localhost:8001/api/forex-rates')
+      .then(r => r.json())
+      .then(rates => { if (rates.USD) setFiatRates(rates); })
+      .catch(() => {});
+  }, [showPortfolio]);
 
   // Inicializar timestamp cuando llegan los datos del backend
   useEffect(() => {
@@ -321,6 +340,8 @@ function App() {
             onReprocessCsv={reprocessCsvWithFilters}
             onRefreshPrices={refreshPrices}
             priceTimestamp={priceTimestamp}
+            userRefreshCount={userRefreshCount}
+            fiatRates={fiatRates}
           />
         </ErrorBoundary>
       </div>

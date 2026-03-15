@@ -3,20 +3,19 @@ import { formatEuropeanPrice, formatEuropeanPercentage } from '../../../../../ut
 import { getAssetLogo } from '../../../../../utils/krakenAssets';
 import { assetLabelMap } from '../../../../../utils/chartUtils';
 
-const PriceTicker = ({ portfolioData, theme, priceTimestamp }) => {
+const PriceTicker = ({ portfolioData, theme, priceTimestamp, userRefreshCount = 0, currency = { symbol: '€', multiplier: 1 } }) => {
   const [flash, setFlash] = useState(false);
-  const isFirstRender = useRef(true);
+  const prevRefreshCount = useRef(0);
 
+  // Solo flash cuando el usuario hace refresh explícito (userRefreshCount cambia)
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    if (!priceTimestamp) return;
+    if (userRefreshCount === 0) return; // Ignorar estado inicial
+    if (userRefreshCount === prevRefreshCount.current) return;
+    prevRefreshCount.current = userRefreshCount;
     setFlash(true);
-    const timer = setTimeout(() => setFlash(false), 1500);
+    const timer = setTimeout(() => setFlash(false), 1000);
     return () => clearTimeout(timer);
-  }, [priceTimestamp]);
+  }, [userRefreshCount]);
   const professionalQuotes = [
     "Diversification is the only free lunch in investing",
     "Time in the market beats timing the market",
@@ -182,7 +181,7 @@ const PriceTicker = ({ portfolioData, theme, priceTimestamp }) => {
             color: asset.isOwned ? theme.textPrimary : '#d0d0d0',
             opacity: asset.isOwned ? 1 : 0.8,
           }}>
-            {formatEuropeanPrice(asset.price)}
+            {formatEuropeanPrice(asset.price * currency.multiplier, currency.symbol)}
           </span>
 
           {/* 24h Change — only shown if real data available */}
@@ -215,7 +214,7 @@ const PriceTicker = ({ portfolioData, theme, priceTimestamp }) => {
     <>
     {flash && <style>{`
       @keyframes ticker-flash {
-        0%   { background: rgba(0,255,136,0.12); }
+        0%   { background: rgba(0,255,136,0.05); }
         100% { background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.03) 100%); }
       }
     `}</style>}
@@ -233,7 +232,7 @@ const PriceTicker = ({ portfolioData, theme, priceTimestamp }) => {
       zIndex: 10,
       display: 'flex',
       alignItems: 'center',
-      animation: flash ? 'ticker-flash 1.5s ease-out forwards' : 'none',
+      animation: flash ? 'ticker-flash 1.0s ease-out forwards' : 'none',
     }}>
       {/* Fade en los bordes */}
       <div style={{

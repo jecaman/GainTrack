@@ -8,7 +8,9 @@ import { assetLabelMap } from '../../utils/chartUtils';
 
 
 
-const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, onReprocessCsv, onRefreshPrices, priceTimestamp, isVisible = true }) => {
+const CURRENCY_SYMBOLS = { EUR: '€', USD: '$', GBP: '£', CAD: 'CA$' };
+
+const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, onReprocessCsv, onRefreshPrices, priceTimestamp, userRefreshCount = 0, isVisible = true, fiatRates = {} }) => {
   const [filters, setFilters] = useState({
     dateRange: 'all',
     assetType: 'all',
@@ -18,6 +20,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   const [hiddenAssets, setHiddenAssets] = useState(new Set());
   const [excludedOperations, setExcludedOperations] = useState(new Set());
   const [disabledOps, setDisabledOps] = useState(new Set()); // IDs únicos de operaciones individuales desactivadas
+  const [selectedCurrency, setSelectedCurrency] = useState('EUR');
 
   const handleToggleAsset = (displaySymbol) => {
     setHiddenAssets(prev => {
@@ -133,6 +136,12 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   const handleFiltersChange = (newFilters, skipTimelineUpdate = false) => {
     setFilters(newFilters);
     
+    // Handle currency changes
+    if (newFilters.type === 'currency' && newFilters.selectedCurrency) {
+      setSelectedCurrency(newFilters.selectedCurrency);
+      return;
+    }
+
     // Handle asset filter changes
     if (newFilters.type === 'assetFilter' && newFilters.hiddenAssets !== undefined) {
       setHiddenAssets(newFilters.hiddenAssets);
@@ -393,6 +402,11 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     }
   };
 
+  const currency = {
+    symbol: CURRENCY_SYMBOLS[selectedCurrency] || '€',
+    multiplier: selectedCurrency === 'EUR' ? 1 : (fiatRates[selectedCurrency] || 1),
+  };
+
   const handleSectionChange = (sectionId) => {
     setActiveSection(sectionId);
   };
@@ -435,6 +449,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             timelinePeriodMode={timelinePeriodMode}
             setTimelinePeriodMode={setTimelinePeriodMode}
             priceTimestamp={priceTimestamp}
+            userRefreshCount={userRefreshCount}
+            currency={currency}
           />
         );
       case 'operations':
@@ -469,6 +485,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             onToggleAllAssets={handleToggleAllAssets}
             onToggleOperation={handleToggleOperation}
             onToggleAllOperations={handleToggleAllOperations}
+            currency={currency}
           />
         );
       case 'portfolio':

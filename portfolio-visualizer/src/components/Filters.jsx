@@ -58,7 +58,7 @@ const AssetLogo = ({ asset, size = 16 }) => {
         fontSize: `${size * 0.6}px`,
         fontWeight: '700',
         color: '#000',
-        fontFamily: "'SF Mono', monospace"
+        fontFamily: "'JetBrains Mono', monospace"
       }}>
         {asset[0]}
       </div>
@@ -1107,7 +1107,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       color: '#ffffff',
                       fontSize: '14px',
                       fontWeight: '600',
-                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      fontFamily: "'JetBrains Mono', monospace",
                       letterSpacing: '0.5px',
                       textTransform: 'uppercase'
                     }}>Date Range{sectionActive.dateRange && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
@@ -1403,7 +1403,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       color: '#ffffff',
                       fontSize: '12px',
                       fontWeight: '600',
-                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      fontFamily: "'JetBrains Mono', monospace",
                       letterSpacing: '0.5px',
                       textTransform: 'uppercase'
                     }}>Quick Periods</label>
@@ -1422,7 +1422,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                             fontWeight: selectedTimePreset === preset ? '700' : '500',
                             cursor: 'pointer',
                             transition: 'all 0.2s ease',
-                            fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
+                            fontFamily: "'JetBrains Mono', monospace"
                           }}
                           onMouseEnter={(e) => {
                             if (selectedTimePreset !== preset) {
@@ -1460,7 +1460,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: '600',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                    fontFamily: "'JetBrains Mono', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
                   }}>ASSETS{sectionActive.assets && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
@@ -1519,7 +1519,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                           color: isDisabled ? 'rgba(245, 245, 245, 0.4)' : theme.textPrimary,
                           fontSize: '14px',
                           fontWeight: '600',
-                          fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace"
+                          fontFamily: "'JetBrains Mono', monospace"
                         }}>{asset}</span>
                         {isDisabled && (
                           <span style={{
@@ -1548,7 +1548,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       color: theme.textPrimary,
                       fontSize: '13px',
                       fontWeight: '600',
-                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      fontFamily: "'JetBrains Mono', monospace",
                       letterSpacing: '0.1px',
                       textTransform: 'uppercase'
                     }}>SELECT ALL</span>
@@ -1616,7 +1616,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: '600',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                    fontFamily: "'JetBrains Mono', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
                   }}>THRESHOLD FILTERS{sectionActive.thresholds && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
@@ -1633,7 +1633,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                         <label style={{
                           color: '#ffffff',
                           fontSize: '11px',
-                          fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                          fontFamily: "'JetBrains Mono', monospace",
                           fontWeight: '600',
                           letterSpacing: '0.5px',
                           textTransform: 'uppercase'
@@ -1834,7 +1834,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                         <label style={{
                           color: '#ffffff',
                           fontSize: '11px',
-                          fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                          fontFamily: "'JetBrains Mono', monospace",
                           fontWeight: '600',
                           letterSpacing: '0.5px',
                           textTransform: 'uppercase'
@@ -2072,7 +2072,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     color: '#ffffff',
                     fontSize: '14px',
                     fontWeight: '600',
-                    fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                    fontFamily: "'JetBrains Mono', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
                   }}>Operations{sectionActive.operations && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
@@ -2133,7 +2133,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                         color: theme.textPrimary,
                         fontSize: '13px',
                         fontWeight: '600',
-                        fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                        fontFamily: "'JetBrains Mono', monospace",
                         letterSpacing: '0.1px',
                         textTransform: 'uppercase'
                       }}>SELECT ALL</span>
@@ -2231,7 +2231,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       fontWeight: '600',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
-                      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+                      fontFamily: "'JetBrains Mono', monospace",
                       textTransform: 'uppercase',
                       letterSpacing: '0.8px'
                     }}
@@ -2291,7 +2291,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   }}>Base Currency</label>
                   <select
                     value={baseCurrency}
-                    onChange={(e) => setBaseCurrency(e.target.value)}
+                    onChange={(e) => {
+                      setBaseCurrency(e.target.value);
+                      onFiltersChange && onFiltersChange({ type: 'currency', selectedCurrency: e.target.value });
+                    }}
                     style={{
                       width: '100%',
                       padding: '8px',
@@ -2305,7 +2308,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                   >
                     <option value="EUR">EUR (€)</option>
                     <option value="USD">USD ($)</option>
-                    <option value="BTC">BTC (₿)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="CAD">CAD (CA$)</option>
                   </select>
                 </div>
 
@@ -2548,7 +2552,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
               border: '1px solid #4a4a4a',
               borderRadius: '10px',
               padding: '16px',
-              fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace",
+              fontFamily: "'JetBrains Mono', monospace",
               pointerEvents: 'auto',
               boxShadow: '0 12px 40px rgba(0, 0, 0, 0.7), 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
               width: '260px',

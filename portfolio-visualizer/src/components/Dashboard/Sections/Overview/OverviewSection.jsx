@@ -168,7 +168,7 @@ const ZigzagLogo = ({
   );
 };
 
-const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, hiddenAssets, excludedOperations, disabledOps = new Set(), showApplyPopup, setShowApplyPopup, startDate, endDate, buttonStartDate, buttonEndDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, isInPointClickMode, setIsInPointClickMode, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, onFilterReset, isApplyingFromTimeline, timelineViewMode, setTimelineViewMode, timelineShowCostBasis, setTimelineShowCostBasis, timelinePeriodMode, setTimelinePeriodMode, priceTimestamp }) => {
+const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, filters = {}, hiddenAssets, excludedOperations, disabledOps = new Set(), showApplyPopup, setShowApplyPopup, startDate, endDate, buttonStartDate, buttonEndDate, setStartDate, setEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, isInPointClickMode, setIsInPointClickMode, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, onFilterReset, isApplyingFromTimeline, timelineViewMode, setTimelineViewMode, timelineShowCostBasis, setTimelineShowCostBasis, timelinePeriodMode, setTimelinePeriodMode, priceTimestamp, userRefreshCount = 0, currency = { symbol: '€', multiplier: 1 } }) => {
   const [sloganGlow, setSloganGlow] = useState(false);
   const lastProfitRef = useRef(null);
 
@@ -252,22 +252,23 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
       marginBottom: '0'
     }}>
       {/* Price Ticker */}
-      <PriceTicker portfolioData={portfolioData} theme={theme} priceTimestamp={priceTimestamp} />
+      <PriceTicker portfolioData={portfolioData} theme={theme} priceTimestamp={priceTimestamp} userRefreshCount={userRefreshCount} currency={currency} />
       
       {/* Primera línea: KPIs centrados */}
       <div style={{
         width: '100%',
         marginTop: '40px'
       }}>
-        <KPIGrid 
-          portfolioData={portfolioData} 
-          theme={theme} 
+        <KPIGrid
+          portfolioData={portfolioData}
+          theme={theme}
           startDate={startDate}
           endDate={endDate}
           hiddenAssets={hiddenAssets}
           excludedOperations={excludedOperations}
           disabledOps={disabledOps}
           sidebarOpen={sidebarOpen}
+          currency={currency}
         />
       </div>
 
@@ -327,6 +328,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
           excludedOperations={excludedOperations}
           disabledOps={disabledOps}
           sidebarOpen={sidebarOpen}
+          currency={currency}
         />
 
         {/* Tercera línea: Tabla ocupando todo el ancho */}
@@ -345,6 +347,7 @@ const OverviewSection = ({ portfolioData, isLoading, theme, onShowGainTrack, fil
             excludedOperations={excludedOperations}
             disabledOps={disabledOps}
             sidebarOpen={sidebarOpen}
+            currency={currency}
           />
         </div>
       </div>

@@ -235,7 +235,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
 };
 
 // Main KPI Grid Component (LIMPIO)
-const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false }) => {
+const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false, currency = { symbol: '€', multiplier: 1 } }) => {
   
   // Estado para controlar el tamaño de la ventana
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -519,34 +519,36 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
     const unrealizedPercentText = `${formatEuropeanPercentage(Math.abs(unrealizedPercentage), 1)}`;
     const totalGainsPercentText = `${formatEuropeanPercentage(Math.abs(totalGainsPercentage), 1)}`;
 
+    const fmt = (v) => formatEuropeanCurrency(v * currency.multiplier, currency.symbol);
+
     // Datos estructurados para el hover del Net Profit
     const realizedData = {
-      value: `${realizedIsPositive ? '+' : ''}${formatEuropeanCurrency(realizedGains)}`,
+      value: `${realizedIsPositive ? '+' : ''}${fmt(realizedGains)}`,
       percent: realizedPercentText,
       isPositive: realizedIsPositive
     };
 
     const unrealizedData = {
-      value: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanCurrency(unrealizedGains)}`,
+      value: `${unrealizedIsPositive ? '+' : ''}${fmt(unrealizedGains)}`,
       percent: unrealizedPercentText,
       isPositive: unrealizedIsPositive
     };
 
     return {
-      totalInvested: formatEuropeanCurrency(kpis.total_invested),
-      currentValue: formatEuropeanCurrency(kpis.current_value),
-      profit: `${totalGainsIsPositive ? '+' : ''}${formatEuropeanCurrency(totalGains)}`, // Use totalGains instead of kpis.profit
-      profitPercent: totalGainsPercentText, // Use calculated total gains percentage
+      totalInvested: fmt(kpis.total_invested),
+      currentValue: fmt(kpis.current_value),
+      profit: `${totalGainsIsPositive ? '+' : ''}${fmt(totalGains)}`,
+      profitPercent: totalGainsPercentText,
       isPositive: totalGainsIsPositive,
-      liquidity: kpis.liquidity > 0 ? formatEuropeanCurrency(kpis.liquidity) : 'N/A',
-      fees: formatEuropeanCurrency(kpis.fees),
+      liquidity: kpis.liquidity > 0 ? fmt(kpis.liquidity) : 'N/A',
+      fees: fmt(kpis.fees),
       // Nuevos KPIs
-      realizedGains: `${realizedIsPositive ? '+' : ''}${formatEuropeanCurrency(realizedGains)}`,
+      realizedGains: `${realizedIsPositive ? '+' : ''}${fmt(realizedGains)}`,
       realizedIsPositive,
-      unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanCurrency(unrealizedGains)}`,
+      unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${fmt(unrealizedGains)}`,
       unrealizedIsPositive,
       unrealizedPercent: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanPercentage(unrealizedPercentage, 1)}`,
-      totalGains: `${totalGainsIsPositive ? '+' : ''}${formatEuropeanCurrency(totalGains)}`,
+      totalGains: `${totalGainsIsPositive ? '+' : ''}${fmt(totalGains)}`,
       totalGainsIsPositive,
       realizedData,
       unrealizedData

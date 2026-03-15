@@ -3,6 +3,110 @@
 Este documento explica los cambios funcionales realizados en la aplicación, describiendo
 **qué se pretendía hacer**, **qué estaba mal** y **qué se corrigió**.
 
+## Sesión — 2026-03-15 (shared price caching + auto-refresh)
+
+### 1. Background refresh de precios + feedback inteligente en toast
+
+**Contexto / Problema:**
+El frontend refrescaba precios cada 5 min pero el backend cacheaba 60s → los usuarios veían precios de hasta 5 min de antigüedad. Además, el primer request tras inactividad era lento (cache frío). El toast mostraba "Rate limited" en ámbar cuando los datos del cache tenían solo 8s de antigüedad, dando falsa sensación de error.
+
+**Fix / Decisión:**
+**Arquitectura del cache:**
+- `_price_cache` es un dict en RAM del proceso Python. Compartido entre todos los usuarios, se pierde al reiniciar.
+- `_tracked_assets` (set) acumula los assets solicitados por cualquier cliente. El BG task solo refresca estos.
+
+**Cambios:**
+1. **Backend background task** (`_background_price_refresh`): tarea async que llama a Kraken cada ~5 min (295s), manteniendo el cache siempre caliente. Se lanza al startup vía `lifespan` de FastAPI y se cancela al shutdown. ~288 calls/día a Kraken.
+2. **Cache TTL**: subido de 60s a 300s (5 min), alineado con el BG task.
+3. **Frontend auto-refresh**: cada ~5.1 min (310s), llama al endpoint (siempre cache hit) y actualiza la UI.
+4. **Toast inteligente**: basado en `cacheAge`. Datos de <15s → verde "Prices up to date (Xs ago)". Datos de ≥15s → ámbar "Cached — next refresh in ~Xs". Fetch real → verde "Prices updated". Error → ámbar.
+
+**Flujo**: solo el BG task llama a Kraken. El endpoint y el frontend nunca llaman a Kraken directamente (salvo cache frío tras reinicio del servidor).
+
+**Cambios en código:**
+- `backend/main.py`: `_tracked_assets` set, `_background_price_refresh()`, lifespan context manager, `_tracked_assets.update()` en endpoint, TTL 300s.
+- `src/App.jsx`: intervalo 310s, `cacheAge` en return de `refreshPrices()`.
+- `src/components/Dashboard/Header.jsx`: toast con lógica basada en `cacheAge` y `toastType`.
+- `CLAUDE.md`: nueva sección "Cache de Precios Actuales" con documentación completa.
+
+---
+
+## Sesión — 2026-03-15 (selector moneda fiat)
+
+### 2. Selector de moneda fiat en CONFIG (EUR/USD/GBP/CAD)
+
+**Contexto / Problema:**
+Todos los valores se mostraban siempre en EUR. Se quería poder cambiar la divisa de presentación a USD, GBP o CAD sin recalcular nada en el backend.
+
+**Decisión de diseño:**
+Todo sigue calculándose internamente en EUR. La conversión es puramente de presentación: un objeto `currency = { symbol, multiplier }` se propaga desde App → Dashboard → todos los componentes de display. Cada componente multiplica los valores EUR por `currency.multiplier` y usa `currency.symbol` como símbolo al formatear.
+
+**Fuente de tipos de cambio:**
+Nuevo endpoint `GET /api/forex-rates` que consulta Kraken API (pares EURUSD, EURGBP, EURCAD) en tiempo real. Se carga una vez al abrir el portfolio.
+
+**Flujo:**
+1. Filters.jsx CONFIG tab → `onFiltersChange({ type: 'currency', selectedCurrency: 'USD' })`
+2. Dashboard.jsx → `setSelectedCurrency('USD')` + computa `currency = { symbol: '$', multiplier: 1.08 }`
+3. currency se pasa a OverviewSection y OperationsSection → todos los hijos
+
+**Cambios en código:**
+- `backend/main.py`: nuevo endpoint `/api/forex-rates`
+- `App.jsx`: estado `fiatRates`, fetch al abrir portfolio, prop a Dashboard
+- `Filters.jsx`: opciones EUR/USD/GBP/CAD (sin BTC), propagación via onFiltersChange
+- `Dashboard.jsx`: estado `selectedCurrency`, cálculo `currency`, paso a secciones
+- `OverviewSection.jsx`, `OperationsSection.jsx`: pass-through de `currency`
+- `KPIGrid.jsx`, `AssetLeaderboard.jsx`, `PortfolioBar.jsx`, `PriceTicker.jsx`, `OperationsTable.jsx`: aplican `currency.multiplier` y `currency.symbol`
+
+---
+
+## Sesión — 2026-03-15 (crypto-to-crypto)
+
+### 1. Soporte para trades crypto-to-crypto (XRP/ETH)
+
+**Contexto / Problema:**
+El backend asumía que todos los trades tienen fiat como quote (EUR, USD, GBP, CAD). El campo `cost` del CSV se trataba directamente como EUR. Para un trade `XRP/ETH`, `cost=0.002` significa 0.002 ETH, pero el sistema lo leía como 0.002 EUR — corrompiendo el cost basis, realized gains y todo el portfolio.
+
+**Causa raíz:**
+1. `extraer_activo_de_par()` no manejaba pares con `/` que tengan quote crypto (ej: `XRP/ETH` devolvía el par entero).
+2. No había lógica para convertir costes en crypto a EUR antes de los cálculos FIFO.
+
+**Fix / Decisión:**
+Preprocesamiento del DataFrame antes de cualquier cálculo FIFO:
+- `extraer_activo_de_par()`: añadido early-return para formato `BASE/QUOTE` con `/` → devuelve `BASE`.
+- Nueva función `extraer_quote_de_par()`: extrae el quote asset del par (`XRP/ETH` → `ETH`).
+- Nueva función `convertir_crypto_quotes_a_eur(df)`: para cada trade donde el quote no es fiat, obtiene el precio EUR del quote en esa fecha vía `obtener_precio()` (Supabase cache) y multiplica `cost` y `fee`. Todo el código downstream recibe los valores ya en EUR sin cambios.
+- Integrado en el endpoint `POST /api/portfolio/csv` como paso 1.7, antes de los cálculos.
+- Precio XETH para 2026-03-09 poblado en Supabase cache: 1717.37 EUR/ETH.
+
+**Resultado para el trade real:**
+`XRP/ETH` 2026-03-09: cost 0.002 ETH × 1717.37 EUR/ETH = **3.43 EUR** (antes: 0.002 EUR).
+
+**Cambios en código:**
+- `backend/main.py`: fix `extraer_activo_de_par`, nueva `extraer_quote_de_par`, nueva `convertir_crypto_quotes_a_eur`, integración en endpoint.
+- `backend/trades.csv`: actualizado al CSV 2024-12-09→2026-03-15 que incluye el trade XRP/ETH.
+
+---
+
+## Sesión — 2026-03-15
+
+### 1. Refresh de precios no actualiza KPIs, tabla de assets ni timeline
+
+**Contexto / Problema:**
+Al hacer refresh de precios (botón del Header), el PriceTicker se actualizaba correctamente pero los KPIs, AssetLeaderboard y TimelineChart seguían mostrando los precios anteriores.
+
+**Causa raíz:**
+Discrepancia de keys entre `portfolio_data` y `timeline`. El backend usa las keys del CSV (`BTC`, `ETH`) en `portfolio_data[].asset`, pero mapea a keys de Kraken (`XXBT`, `XETH`) en `timeline[].assets_con_valor`. La función `refreshPrices` construía `pricesByBackendKey` con las keys del CSV y luego intentaba actualizar `assets_con_valor[BTC]`, que no existía porque el timeline usaba `XXBT`. El update se saltaba silenciosamente (`if (updatedAssets[backendKey])` era `false`).
+
+PriceTicker funcionaba porque lee directamente de `portfolio_data[].current_price`, que sí usa las keys del CSV.
+
+**Fix / Decisión:**
+Usar `fullPortfolioData.asset_mapping` (mapeo dinámico generado por el backend, e.g. `{BTC: 'XXBT', ETH: 'XETH', SOL: 'SOL'}`) para traducir las keys del CSV a las keys del timeline antes de actualizar `assets_con_valor`.
+
+**Cambios en código:**
+- `App.jsx`: en `refreshPrices()`, mapear `csvKey → timelineKey` vía `assetMapping[csvKey] || csvKey` antes de actualizar el último entry del timeline.
+
+---
+
 ## Sesión — 2026-03-09
 
 ### 1. Popup "Apply to All" no aparecía en el primer zoom del timeline

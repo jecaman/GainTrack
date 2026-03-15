@@ -46,7 +46,10 @@ DYNAMIC_ASSET_MAPPING_CACHE = {}
 
 # Cache compartido de precios actuales (todos los usuarios comparten este cache)
 _price_cache: dict = {"prices": {}, "fetched_at": None}
-PRICE_CACHE_TTL = 60  # segundos mínimos entre llamadas reales a Kraken
+PRICE_CACHE_TTL = 300  # 5 min — alineado con el intervalo del BG task
+
+# Assets rastreados para background refresh (se acumulan con cada request)
+_tracked_assets: set = set()
 
 def get_dynamic_asset_mapping(trades_df):
     """
@@ -342,20 +345,25 @@ def obtener_precios_fallback(assets: List[str]) -> Dict[str, float]:
 
 def extraer_activo_de_par(par):
     """
-    Extrae el activo base del par de trading
+    Extrae el activo base del par de trading.
+    Soporta formato moderno con '/' (BTC/EUR, XRP/ETH) y formato antiguo (XXBTZEUR).
     """
     if not par or pd.isna(par):
         return 'UNKNOWN'
 
     par = str(par).strip()
 
-    # Casos especiales conocidos
+    # Formato moderno Kraken con '/' (ej: BTC/EUR, XRP/ETH, TRUMP/EUR)
+    if '/' in par:
+        return par.split('/')[0]
+
+    # Casos especiales conocidos (formato antiguo)
     if par == 'ZUSD':
         return 'USD'
     if par == 'ZEUR':
         return 'EUR'
 
-    # Lógica para extraer activo
+    # Lógica para extraer activo (formato antiguo sin '/')
     asset = par.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
 
     # Si el asset queda vacío después de las sustituciones
@@ -376,6 +384,80 @@ def extraer_activo_de_par(par):
         return par
 
     return asset
+
+
+def extraer_quote_de_par(par):
+    """
+    Extrae el activo quote del par de trading.
+    Soporta formato moderno con '/' (BTC/EUR → EUR, XRP/ETH → ETH) y formato antiguo.
+    """
+    if not par or pd.isna(par):
+        return 'UNKNOWN'
+
+    par = str(par).strip()
+
+    # Formato moderno Kraken con '/'
+    if '/' in par:
+        return par.split('/')[1]
+
+    # Formato antiguo: detectar suffix fiat
+    for suffix, fiat in [('ZEUR', 'EUR'), ('ZUSD', 'USD'), ('EUR', 'EUR'), ('USD', 'USD'), ('GBP', 'GBP'), ('CAD', 'CAD')]:
+        if par.endswith(suffix):
+            return fiat
+
+    return 'UNKNOWN'
+
+
+# Mapeo de nombres display a nombres internos Kraken para assets quote en pares crypto/crypto
+_QUOTE_DISPLAY_TO_KRAKEN = {
+    'BTC': 'XXBT',
+    'ETH': 'XETH',
+}
+
+
+def convertir_crypto_quotes_a_eur(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Preprocesa el DataFrame convirtiendo cost y fee a EUR para trades crypto-to-crypto.
+    Ejemplo: XRP/ETH con cost=0.002 ETH → cost = 0.002 * eth_eur_price
+    Los trades contra fiat (BTC/EUR, etc.) no se modifican.
+    """
+    df = df.copy()
+    converted_count = 0
+    skipped_count = 0
+
+    for idx, row in df.iterrows():
+        quote = extraer_quote_de_par(row['pair'])
+
+        # Si el quote es fiat o desconocido, no hay conversión necesaria
+        if quote in FIAT_ASSETS or quote == 'UNKNOWN':
+            continue
+
+        # El quote es crypto — obtener precio EUR en la fecha del trade
+        kraken_quote = _QUOTE_DISPLAY_TO_KRAKEN.get(quote, quote)
+        trade_date = pd.to_datetime(row['time']).date()
+
+        precio_eur = obtener_precio(kraken_quote, trade_date)
+
+        if precio_eur is None:
+            txid = row.get('txid', idx)
+            print(f"⚠️ [C2C] Sin precio EUR para {kraken_quote} en {trade_date} — trade {txid} NO convertido")
+            skipped_count += 1
+            continue
+
+        cost_original = float(row['cost'])
+        fee_original = float(row['fee'])
+        price_original = float(row['price'])
+        df.at[idx, 'cost'] = cost_original * precio_eur
+        df.at[idx, 'fee'] = fee_original * precio_eur
+        df.at[idx, 'price'] = price_original * precio_eur
+
+        converted_count += 1
+        print(f"✅ [C2C] {row['pair']} @ {trade_date}: price {price_original:.7f} {quote} × {precio_eur:.2f} EUR/{quote} = {df.at[idx, 'price']:.4f} EUR/unit, cost {cost_original:.6f} → {df.at[idx, 'cost']:.4f} EUR")
+
+    if converted_count > 0 or skipped_count > 0:
+        print(f"🔄 [C2C] Conversión crypto-to-crypto: {converted_count} convertidos, {skipped_count} omitidos sin precio")
+
+    return df
 
 def calcular_portfolio_value(
     trades_df: pd.DataFrame,
@@ -978,10 +1060,47 @@ def calcular_realized_gains(
 
 
 # =============================================================================
+# BACKGROUND PRICE REFRESH
+# =============================================================================
+
+async def _background_price_refresh():
+    """Refresca el cache de precios cada 55s para que siempre esté caliente."""
+    global _price_cache
+    while True:
+        await asyncio.sleep(295)  # ~5 min (ligeramente menor que TTL de 300s)
+        if not _tracked_assets:
+            continue
+        try:
+            assets_to_refresh = list(_tracked_assets)
+            if AIOHTTP_AVAILABLE:
+                fresh = await get_public_kraken_prices_from_pairs_async(assets_to_refresh)
+            else:
+                fresh = get_public_kraken_prices_from_pairs_sync(assets_to_refresh)
+            _price_cache["prices"].update(fresh)
+            _price_cache["fetched_at"] = datetime.now(timezone.utc)
+            print(f"[BG-Refresh] Kraken API OK — {len(fresh)} assets actualizados")
+        except Exception as e:
+            print(f"[BG-Refresh] Error (no fatal): {e}")
+
+# =============================================================================
 # CONFIGURACIÓN FASTAPI
 # =============================================================================
 
-app = FastAPI(title="Portfolio Visualizer v2", version="2.0.0")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(_background_price_refresh())
+    print("[BG-Refresh] Tarea de fondo iniciada (cada ~5 min)")
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    print("[BG-Refresh] Tarea de fondo detenida")
+
+app = FastAPI(title="Portfolio Visualizer v2", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1271,7 +1390,10 @@ async def upload_csv_and_get_portfolio(
         # 1.6. Generar mapeo dinámico de assets basado en el CSV
         dynamic_asset_mapping = get_dynamic_asset_mapping(df)
         print(f"🔄 [MAPPING] Mapeo dinámico generado: {dynamic_asset_mapping}")
-        
+
+        # 1.7. Convertir costes crypto-to-crypto a EUR
+        df = convertir_crypto_quotes_a_eur(df)
+
         # 2. Calcular Portfolio Value
         portfolio_result = calcular_portfolio_value(
             trades_df=df,
@@ -1438,6 +1560,30 @@ async def upload_csv_and_get_portfolio(
     finally:
         signal.alarm(0)  # Asegurar que se cancele el timeout
 
+@app.get("/api/forex-rates")
+async def get_forex_rates():
+    """Tipos de cambio EUR→USD/GBP/CAD a tiempo real desde Kraken"""
+    try:
+        url = "https://api.kraken.com/0/public/Ticker?pair=EURUSD,EURGBP,EURCAD"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        rates = {}
+        if 'result' in data:
+            for pair_key, ticker in data['result'].items():
+                price = float(ticker['c'][0])
+                pk = pair_key.upper()
+                if 'USD' in pk:
+                    rates['USD'] = price
+                elif 'GBP' in pk:
+                    rates['GBP'] = price
+                elif 'CAD' in pk:
+                    rates['CAD'] = price
+        return rates
+    except Exception as e:
+        print(f"❌ [FOREX] Error obteniendo tipos de cambio: {e}")
+        return {'USD': 1.0, 'GBP': 1.0, 'CAD': 1.0}
+
+
 @app.get("/api/prices/current")
 async def get_current_prices(assets: str):
     """
@@ -1450,11 +1596,15 @@ async def get_current_prices(assets: str):
     now = datetime.now(timezone.utc)
     asset_list = [a.strip() for a in assets.split(",") if a.strip()]
 
+    # Registrar assets para el background refresh
+    _tracked_assets.update(asset_list)
+
     # Devolver cache si está fresco
     if _price_cache["fetched_at"]:
         age = (now - _price_cache["fetched_at"]).total_seconds()
         if age < PRICE_CACHE_TTL:
             prices = {a: _price_cache["prices"].get(a) for a in asset_list}
+            print(f"[Prices] Cache hit ({int(age)}s ago) — {len(asset_list)} assets")
             return {
                 "prices": prices,
                 "fetched_at": _price_cache["fetched_at"].isoformat(),
@@ -1464,6 +1614,7 @@ async def get_current_prices(assets: str):
 
     # Fetch fresco desde Kraken
     try:
+        print(f"[Prices] Kraken API call — {len(asset_list)} assets: {', '.join(asset_list)}")
         if AIOHTTP_AVAILABLE:
             fresh_prices = await get_public_kraken_prices_from_pairs_async(asset_list)
         else:
@@ -1471,6 +1622,7 @@ async def get_current_prices(assets: str):
 
         _price_cache["prices"].update(fresh_prices)
         _price_cache["fetched_at"] = now
+        print(f"[Prices] Kraken API OK — {len(fresh_prices)} precios obtenidos")
 
         return {
             "prices": {a: fresh_prices.get(a) for a in asset_list},

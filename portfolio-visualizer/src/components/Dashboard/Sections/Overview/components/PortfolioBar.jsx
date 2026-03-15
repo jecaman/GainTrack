@@ -26,6 +26,7 @@ const PortfolioBar = ({
   excludedOperations = new Set(),
   disabledOps = new Set(),
   sidebarOpen = false,
+  currency = { symbol: '€', multiplier: 1 },
 }) => {
   const [hovered, setHovered] = useState(null);
   // X relativo al contenedor (no al viewport) para position:absolute
@@ -187,7 +188,7 @@ const PortfolioBar = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <Row label="Allocation" value={formatEuropeanPercentage(hovered.percent)} valueColor={color} bold />
-              <Row label="Value"      value={formatEuropeanCurrency(hovered.value)} />
+              <Row label="Value"      value={formatEuropeanCurrency(hovered.value * currency.multiplier, currency.symbol)} />
               <Row label="Holdings"   value={`${formatEuropeanNumber(hovered.qty, 4)} ${ticker}`} dim />
             </div>
           </div>

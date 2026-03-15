@@ -202,7 +202,7 @@ const hoverPlugin = {
         textY = y + 35; // Mover debajo del punto si está muy arriba
       }
       
-      ctx.font = 'bold 16px "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace';
+      ctx.font = 'bold 16px "JetBrains Mono", monospace';
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       
@@ -1930,7 +1930,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const labelFontSize = getTooltipFontSize(mainContentLength, 28); // Tamaño moderado
       const valueFontSize = getTooltipFontSize(mainContentLength, 28); // Tamaño moderado
       
-      content = `<span style="color: #ffffff; font-size: ${mainFontSize}; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${labelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content = `<span style="color: #ffffff; font-size: ${mainFontSize}; font-weight: 400; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${labelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
       
       // Desglose realized / unrealized — siempre acumulado desde el inicio
       let periodRealizedGain, periodUnrealizedGain;
@@ -1948,9 +1948,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const breakdownValueFontSize = valueFontSize; // Mismo tamaño que los valores principales
       
       // Añadir desglose al tooltip
-      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">UNREALIZED P&L</span>&nbsp;<span style="color: ${unrealizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${periodUnrealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodUnrealizedGain)}</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">UNREALIZED P&L</span>&nbsp;<span style="color: ${unrealizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${periodUnrealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodUnrealizedGain)}</span>`;
 
-      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">REALIZED P&L</span>&nbsp;<span style="color: ${realizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${periodRealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodRealizedGain)}</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">REALIZED P&L</span>&nbsp;<span style="color: ${realizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${periodRealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodRealizedGain)}</span>`;
     } else {
       // Full View - mostrar portfolio value primero
       const portfolioLabel = 'PORTFOLIO VALUE';
@@ -1964,7 +1964,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const fullLabelFontSize = fullUniformFontSize; // Mismo tamaño  
       const fullValueFontSize = fullUniformFontSize; // Mismo tamaño
       
-      content = `<span style="color: #ffffff; font-size: ${fullMainFontSize}; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${fullLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${portfolioLabel}</span>&nbsp;<span style="font-size: ${fullValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+      content = `<span style="color: #ffffff; font-size: ${fullMainFontSize}; font-weight: 400; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${fullLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${portfolioLabel}</span>&nbsp;<span style="font-size: ${fullValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     }
     
     if (showTotalInvested && viewMode === 'both') {
@@ -1978,10 +1978,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const bothValueFontSize = getTooltipFontSize(bothContentLength, 28); // Tamaño moderado
       
       // Layout simplificado: PORTFOLIO VALUE ya mostrado + COST BASIS + TOTAL P&L
-      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${costBasisLabel}</span>&nbsp;<span style="font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${costBasisLabel}</span>&nbsp;<span style="font-size: ${bothValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>`;
       
       // Total P&L con porcentaje
-      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${totalLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${totalLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
     }
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
@@ -2002,7 +2002,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         white-space: nowrap;
         display: flex;
         align-items: baseline;
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+        font-family: 'JetBrains Mono', monospace;
         font-size: 22px;
         font-weight: 700;
         opacity: 1;

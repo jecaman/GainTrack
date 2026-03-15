@@ -15,19 +15,37 @@ const Header = ({
   const [refreshState, setRefreshState] = useState('idle');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState('success'); // 'success' | 'warning'
 
   const handleRefresh = async () => {
     if (refreshState === 'loading' || !onRefreshPrices) return;
     setRefreshState('loading');
     const result = await onRefreshPrices();
-    const isLimited = result?.fromCache;
-    setRefreshState(isLimited ? 'limited' : 'success');
+    const isError = result?.error || result == null;
+    const fromCache = result?.fromCache;
+    const cacheAge = result?.cacheAge || 0;
 
-    // Toast message
-    setToastMessage(isLimited ? 'Rate limited — cached prices' : 'Prices updated');
+    let state, msg;
+    if (isError) {
+      state = 'limited';
+      msg = 'Error — backend unreachable';
+    } else if (fromCache && cacheAge < 15) {
+      state = 'success';
+      msg = `Prices up to date (${cacheAge}s ago)`;
+    } else if (fromCache) {
+      state = 'limited';
+      const ttlLeft = Math.max(0, 300 - cacheAge);
+      msg = `Cached — next refresh in ~${ttlLeft}s`;
+    } else {
+      state = 'success';
+      msg = 'Prices updated';
+    }
+
+    setRefreshState(state);
+    setToastMessage(msg);
+    setToastType(state === 'success' ? 'success' : 'warning');
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2200);
-
     setTimeout(() => setRefreshState('idle'), 1800);
   };
 
@@ -186,13 +204,13 @@ const Header = ({
           bottom: '24px',
           right: '24px',
           background: 'rgba(0, 0, 0, 0.92)',
-          border: `1px solid ${toastMessage.includes('limited') ? '#f59e0b' : '#00ff88'}`,
+          border: `1px solid ${toastType === 'warning' ? '#f59e0b' : '#00ff88'}`,
           borderRadius: '8px',
           padding: '10px 18px',
           fontSize: '13px',
           fontFamily: 'monospace',
           fontWeight: '600',
-          color: toastMessage.includes('limited') ? '#f59e0b' : '#00ff88',
+          color: toastType === 'warning' ? '#f59e0b' : '#00ff88',
           whiteSpace: 'nowrap',
           animation: 'toast-slide 2.2s ease-out forwards',
           pointerEvents: 'none',

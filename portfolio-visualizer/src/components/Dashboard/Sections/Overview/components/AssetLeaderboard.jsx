@@ -3,10 +3,11 @@ import { assetLabelMap, makeOpId } from '../../../../../utils/chartUtils';
 import { formatEuropeanNumber, formatEuropeanCurrency, formatEuropeanPercentage, formatEuropeanPrice } from '../../../../../utils/numberFormatter';
 import { getAssetLogo, KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 
-const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false }) => {
+const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false, currency = { symbol: '€', multiplier: 1 } }) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'portfolioPercent', direction: 'desc' });
-  const getFiatSymbol = () => '€';
+  const fmt = (v) => formatEuropeanCurrency(v * currency.multiplier, currency.symbol);
+  const fmtPrice = (v) => formatEuropeanPrice(v * currency.multiplier, currency.symbol);
 
   // Map frontend asset names to backend asset names (same as KPIGrid)
   const mapFrontendToBackend = (frontendAsset) => {
@@ -256,7 +257,6 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
   };
 
   const processedData = processPortfolioData();
-  const symbol = getFiatSymbol();
 
   // Fix: when visible assets change, the table shrinks but the browser can keep a stale
   // scroll position beyond the new content bounds. Force layout recalc + clamp scroll.
@@ -645,7 +645,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                       {/* P&L */}
                       <td style={{ padding: '16px 10px', textAlign: 'right', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>
                         <span style={{ color: plColor, fontSize: '17px', fontWeight: '700' }}>
-                          {row.netProfit >= 0 ? '+' : ''}{formatEuropeanCurrency(row.netProfit)}
+                          {row.netProfit >= 0 ? '+' : ''}{fmt(row.netProfit)}
                         </span>
                       </td>
                       {/* ROI% */}
@@ -762,7 +762,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontWeight: '700',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
-                    {formatEuropeanCurrency(row.fiatValue)}
+                    {fmt(row.fiatValue)}
                   </td>
                   <td style={{
                     padding: '24px 4px',
@@ -782,7 +782,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontWeight: '400',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
-                    {row.marketPrice != null ? formatEuropeanPrice(row.marketPrice) : '—'}
+                    {row.marketPrice != null ? fmtPrice(row.marketPrice) : '—'}
                   </td>
                   <td style={{
                     padding: '24px 4px',
@@ -792,7 +792,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontWeight: '400',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
-                    {row.avgCost != null ? formatEuropeanPrice(row.avgCost) : '—'}
+                    {row.avgCost != null ? fmtPrice(row.avgCost) : '—'}
                   </td>
                   <td style={{
                     padding: '24px 4px',
@@ -802,7 +802,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     fontWeight: '400',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`
                   }}>
-                    {formatEuropeanCurrency(row.avgCost * row.nativeValue)}
+                    {fmt(row.avgCost * row.nativeValue)}
                   </td>
                   <td style={{
                     padding: '20px 10px',
@@ -819,21 +819,21 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                         fontSize: '19px',
                         fontWeight: '700'
                       }}>
-                        {row.netProfit >= 0 ? '+' : ''}{formatEuropeanCurrency(row.netProfit)}
+                        {row.netProfit >= 0 ? '+' : ''}{fmt(row.netProfit)}
                       </div>
                       <div style={{
                         color: row.realizedGains >= 0 ? '#00FF99' : '#ef4444',
                         fontSize: '14px',
                         opacity: 0.9
                       }}>
-                        R: {row.realizedGains >= 0 ? '+' : ''}{formatEuropeanCurrency(row.realizedGains)}
+                        R: {row.realizedGains >= 0 ? '+' : ''}{fmt(row.realizedGains)}
                       </div>
                       <div style={{
                         color: row.unrealizedGains >= 0 ? '#00FF99' : '#ef4444',
                         fontSize: '14px',
                         opacity: 0.9
                       }}>
-                        U: {row.unrealizedGains >= 0 ? '+' : ''}{formatEuropeanCurrency(row.unrealizedGains)}
+                        U: {row.unrealizedGains >= 0 ? '+' : ''}{fmt(row.unrealizedGains)}
                       </div>
                     </div>
                   </td>
