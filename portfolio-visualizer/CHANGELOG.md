@@ -3,6 +3,53 @@
 Este documento explica los cambios funcionales realizados en la aplicación, describiendo
 **qué se pretendía hacer**, **qué estaba mal** y **qué se corrigió**.
 
+## Sesión — 2026-03-16 (API keys + limpieza de tema)
+
+### 1. Decisiones de seguridad: API Keys de Kraken
+
+**Contexto / Problema:**
+La app permite dos métodos de entrada: CSV upload y conexión directa vía API key de Kraken. Kraken solo muestra la clave privada una vez al crearla, lo que hace inviable que el usuario la introduzca en cada sesión. Se evaluaron varias opciones de persistencia.
+
+**Decisión: Password manager del navegador (no localStorage)**
+
+Se descartó `localStorage` porque:
+- Almacena en texto plano, accesible desde JavaScript → vulnerable a XSS
+- Requiere código custom nuestro (guardar, cargar, borrar, checkbox "Recordar")
+- Responsabilidad de seguridad recae en nuestra app
+
+Se optó por habilitar el **gestor de contraseñas nativo del navegador**:
+- Cifrado por el OS/navegador (Chrome, Firefox, Safari)
+- Immune a XSS — JavaScript no puede leer contraseñas guardadas del password manager
+- Sync entre dispositivos si el usuario lo tiene activado (Chrome Sync, iCloud, etc.)
+- Zero código nuestro — el navegador lo gestiona automáticamente
+- UX familiar: el mismo diálogo "¿Guardar contraseña?" que el usuario ya conoce
+
+**Implementación:**
+- El `<div>` contenedor del form card se cambia a `<form onSubmit={handleSubmit}>`
+- Los inputs reciben `autocomplete="username"` (API Key) y `autocomplete="current-password"` (Secret)
+- Se añaden `id` a los inputs para que los password managers los localicen
+- El botón pasa a ser `type="submit"` dentro del `<form>`
+
+**Política de claves en el backend:**
+- Las claves se reciben por request (HTTPS en producción), se usan para llamar a Kraken, y se descartan. El backend NO persiste claves en disco, base de datos, ni logs.
+- Se recomienda al usuario crear claves con permisos mínimos: "Query Funds" + "Query Closed Orders".
+- Disclaimer visible en la UI informando de todo esto.
+
+### 2. Eliminación del modo claro y Theme Toggle
+
+**Contexto / Problema:**
+Se habían empezado cambios para soportar modo claro (light mode) con un toggle en el header y el formulario. La variable `isDarkMode` se usaba en `App.jsx` sin estar declarada como `useState`, lo que causaba un crash en runtime que dejaba la app en blanco.
+
+**Decisión:**
+Se eliminó completamente el modo claro y el Theme Toggle. La app solo usa modo oscuro:
+- `App.jsx`: eliminados `isDarkMode`/`setIsDarkMode`, tema hardcodeado a dark
+- `GainTrackForm.jsx`: eliminado componente `ThemeToggle`, props `isDarkMode`/`onToggleTheme`, tema hardcodeado a dark
+- `Header.jsx`: eliminado botón de toggle de tema, props de tema, colores hardcodeados a dark
+- `Dashboard.jsx`: eliminados props `isDarkMode`/`onToggleTheme`
+- `SectionTabs.jsx`: eliminada variable `isDark`, comportamiento hardcodeado a dark
+
+---
+
 ## Sesión — 2026-03-15 (shared price caching + auto-refresh)
 
 ### 1. Background refresh de precios + feedback inteligente en toast

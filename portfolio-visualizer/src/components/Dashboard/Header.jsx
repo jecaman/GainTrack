@@ -6,7 +6,6 @@ const Header = ({
   activeSection,
   onSectionChange,
   onBackToForm,
-  onToggleTheme,
   sidebarOpen,
   onRefreshPrices,
   priceTimestamp,
@@ -139,7 +138,7 @@ const Header = ({
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              color: refreshState === 'idle' ? '#ffffff' : refreshColor,
+              color: refreshColor,
               transition: 'color 0.2s ease',
             }}
           >
@@ -155,43 +154,6 @@ const Header = ({
             <span style={{ fontSize: '18px', fontFamily: 'monospace', fontWeight: '600', letterSpacing: '0.5px', color: 'inherit' }}>
               {refreshState === 'loading' ? '···' : (priceTime || '--:--')}
             </span>
-          </button>
-
-          {/* Separador */}
-          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.18)' }} />
-
-          {/* Theme Toggle */}
-          <button
-            onClick={onToggleTheme}
-            style={{
-              width: '62px',
-              height: '32px',
-              background: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '20px',
-              cursor: 'pointer',
-              transition: 'border-color 0.2s ease',
-              padding: '3px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
-          >
-            <div style={{
-              width: '24px',
-              height: '24px',
-              background: '#4b5563',
-              borderRadius: '50%',
-              transition: 'transform 0.3s ease',
-              transform: theme.bg === '#000000' ? 'translateX(0)' : 'translateX(28px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '13px',
-            }}>
-              {theme.bg === '#000000' ? '🌙' : '☀️'}
-            </div>
           </button>
 
         </div>

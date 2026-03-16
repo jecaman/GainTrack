@@ -282,19 +282,20 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
     setSortConfig({ key, direction });
   };
 
-  // Color for column header — active sort column gets green accent, others white
-  const thColor = (key) => sortConfig.key === key ? '#00ff99' : '#ffffff';
+  const isDark = theme.bg === '#000000';
+  // Color for column header — active sort column gets green accent
+  const thColor = (key) => sortConfig.key === key ? theme.accentPrimary : theme.textPrimary;
 
   // Render sort arrow — only shown for the active column
   const renderSortArrow = (columnKey) => {
     if (sortConfig.key !== columnKey) return null;
     return (
       <span style={{
-        color: '#00ff99',
+        color: theme.accentPrimary,
         fontSize: '18px',
         marginLeft: '6px',
         fontWeight: '900',
-        textShadow: '0 0 8px rgba(0,255,153,0.8)',
+        textShadow: isDark ? '0 0 8px rgba(0,255,153,0.8)' : 'none',
         verticalAlign: 'middle',
         lineHeight: '1'
       }}>
@@ -371,7 +372,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
               position: 'absolute',
               top: '22px',
               right: '10px',
-              backgroundColor: 'rgba(0, 0, 0, 0.95)',
+              backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(255, 255, 255, 0.97)',
               border: `2px solid ${theme.borderColor}`,
               borderRadius: '0.75rem',
               padding: '1rem',
@@ -424,7 +425,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
             <thead style={{
               position: 'sticky',
               top: 0,
-              backgroundColor: 'rgba(0, 0, 0, 1)', // Fondo sólido sin transparencia
+              backgroundColor: isDark ? 'rgba(0, 0, 0, 1)' : '#f2f2f2',
               backdropFilter: 'none',
               zIndex: 10
             }}>
@@ -435,7 +436,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'left',
                     color: thColor('asset'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -456,7 +457,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     paddingLeft: '5px',
                     color: thColor('portfolioPercent'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -475,7 +476,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'right',
                     color: thColor('fiatValue'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -494,7 +495,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'right',
                     color: thColor('nativeValue'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -513,7 +514,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'right',
                     color: thColor('marketPrice'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -532,7 +533,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'right',
                     color: thColor('avgCost'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -551,7 +552,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'right',
                     color: thColor('costBasis'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -570,7 +571,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'right',
                     color: thColor('netProfit'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -589,7 +590,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                     textAlign: 'right',
                     color: thColor('netProfitPercent'),
                     fontWeight: '700',
-                    borderBottom: `1px solid #d0d0d0`,
+                    borderBottom: `1px solid ${theme.borderColor}`,
                     fontSize: '14px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.8px',
@@ -609,47 +610,47 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
               {processedData.map((row, index) => {
                 // ── Closed positions summary row ──────────────────────────────
                 if (row.isClosed) {
-                  const plColor = row.netProfit >= 0 ? '#00FF99' : '#ef4444';
+                  const plColor = row.netProfit >= 0 ? theme.accentPrimary : '#ef4444';
                   return (
                     <tr key="closed-positions" style={{ opacity: 0.55 }}>
-                      <td style={{ padding: '16px 12px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>
+                      <td style={{ padding: '16px 12px', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <div style={{ width: '38px', height: '38px', flexShrink: 0,
-                            borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.08)',
+                            borderRadius: '50%', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '16px' }}>✕</div>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: '15px', fontWeight: '600', color: 'rgba(255,255,255,0.7)', fontStyle: 'italic' }}>
+                            <span style={{ fontSize: '15px', fontWeight: '600', color: theme.textSecondary, fontStyle: 'italic' }}>
                               Closed Positions
                             </span>
-                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>
+                            <span style={{ fontSize: '12px', color: theme.textMuted, marginTop: '2px' }}>
                               Fully sold assets
                             </span>
                           </div>
                         </div>
                       </td>
                       {/* Portfolio % — empty */}
-                      <td style={{ borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }} />
+                      <td style={{ borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }} />
                       {/* Value — €0 */}
-                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: theme.textMuted, fontSize: '16px', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>
                         —
                       </td>
                       {/* Holdings */}
-                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: theme.textMuted, fontSize: '16px', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>—</td>
                       {/* Price */}
-                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: theme.textMuted, fontSize: '16px', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>—</td>
                       {/* Avg Cost */}
-                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: theme.textMuted, fontSize: '16px', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>—</td>
                       {/* Cost Basis */}
-                      <td style={{ padding: '16px 4px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      <td style={{ padding: '16px 4px', textAlign: 'right', color: theme.textMuted, fontSize: '16px', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>—</td>
                       {/* P&L */}
-                      <td style={{ padding: '16px 10px', textAlign: 'right', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>
+                      <td style={{ padding: '16px 10px', textAlign: 'right', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>
                         <span style={{ color: plColor, fontSize: '17px', fontWeight: '700' }}>
                           {row.netProfit >= 0 ? '+' : ''}{fmt(row.netProfit)}
                         </span>
                       </td>
                       {/* ROI% */}
-                      <td style={{ padding: '16px 35px 16px 8px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: '16px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none' }}>—</td>
+                      <td style={{ padding: '16px 35px 16px 8px', textAlign: 'right', color: theme.textMuted, fontSize: '16px', borderTop: `1px solid ${theme.borderColor}`, borderBottom: 'none' }}>—</td>
                     </tr>
                   );
                 }
@@ -815,21 +816,21 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                   }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                       <div style={{
-                        color: row.netProfit >= 0 ? '#00FF99' : '#ef4444',
+                        color: row.netProfit >= 0 ? theme.accentPrimary : '#ef4444',
                         fontSize: '19px',
                         fontWeight: '700'
                       }}>
                         {row.netProfit >= 0 ? '+' : ''}{fmt(row.netProfit)}
                       </div>
                       <div style={{
-                        color: row.realizedGains >= 0 ? '#00FF99' : '#ef4444',
+                        color: row.realizedGains >= 0 ? theme.accentPrimary : '#ef4444',
                         fontSize: '14px',
                         opacity: 0.9
                       }}>
                         R: {row.realizedGains >= 0 ? '+' : ''}{fmt(row.realizedGains)}
                       </div>
                       <div style={{
-                        color: row.unrealizedGains >= 0 ? '#00FF99' : '#ef4444',
+                        color: row.unrealizedGains >= 0 ? theme.accentPrimary : '#ef4444',
                         fontSize: '14px',
                         opacity: 0.9
                       }}>
@@ -840,7 +841,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
                   <td style={{
                     padding: '24px 35px 24px 8px',
                     textAlign: 'right',
-                    color: row.netProfit >= 0 ? '#00FF99' : '#ef4444',
+                    color: row.netProfit >= 0 ? theme.accentPrimary : '#ef4444',
                     fontSize: '18px',
                     fontWeight: '700',
                     borderBottom: `1px solid rgba(255, 255, 255, 0.2)`

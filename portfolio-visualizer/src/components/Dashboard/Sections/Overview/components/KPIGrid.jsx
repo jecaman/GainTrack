@@ -60,7 +60,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         minWidth: '150px',
         height: '110px', // Altura reducida para menos margen inferior
         overflow: 'hidden', // Contener el contenido dentro del KPI
-        border: `1px solid ${isCardHovered ? '#00ff88' : 'transparent'}`, // Borde verde fosforito en hover
+        border: `1px solid ${isCardHovered ? (theme.accentPrimary || '#00ff88') : 'transparent'}`, // Borde verde fosforito en hover
         borderRadius: '12px', // Bordes redondeados
         padding: '8px 6px', // Padding simétrico: más arriba/abajo, menos laterales
         transition: 'all 0.3s ease', // Transición suave para efectos hover
@@ -80,7 +80,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
             left: '0px', // Alineado con el left del KPI
             width: '100%', // Mismo ancho que el KPI
             height: '100%', // Misma altura que el KPI
-            backgroundColor: 'rgba(0, 0, 0, 0.95)', // Fondo negro
+            backgroundColor: theme.bg === '#000000' ? 'rgba(0, 0, 0, 0.95)' : 'rgba(255, 255, 255, 0.97)',
             border: '1px solid rgba(0, 255, 136, 0.4)',
             borderRadius: '12px', // Mismos bordes redondeados que el KPI
             padding: '8px', // Mismo padding que el KPI
@@ -141,7 +141,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
               width: '16px',
               height: '16px',
               borderRadius: '50%',
-              backgroundColor: isTooltipHovered ? '#00ff88' : 'rgba(255, 255, 255, 0.4)',
+              backgroundColor: isTooltipHovered ? (theme.accentPrimary || '#00ff88') : 'rgba(255, 255, 255, 0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

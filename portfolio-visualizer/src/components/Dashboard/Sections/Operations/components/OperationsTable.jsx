@@ -295,6 +295,30 @@ const OperationsTable = ({
             {fmtDisplay(endDate)}
             {endModified && <div style={greenDotStyle} />}
           </div>
+          {(() => {
+            const enabledCount = sortedOperations.filter(op => !disabledOps.has(op.opId)).length;
+            const totalCount = sortedOperations.length;
+            const hasDisabled = enabledCount < totalCount;
+            return (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: hasDisabled ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.06)',
+                border: hasDisabled ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.12)',
+                borderRadius: '8px',
+                padding: '4px 10px',
+                fontSize: '12px',
+                fontFamily: 'monospace',
+                fontWeight: '700',
+                color: hasDisabled ? '#f59e0b' : 'rgba(255,255,255,0.5)',
+                letterSpacing: '0.5px',
+                marginLeft: '4px',
+                transition: 'all 0.2s ease',
+              }}>
+                {hasDisabled ? `${enabledCount} / ${totalCount}` : `${totalCount} ops`}
+              </span>
+            );
+          })()}
         </div>
 
         {/* Columna derecha: botón i arriba, toggle abajo */}

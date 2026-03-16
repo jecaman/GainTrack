@@ -102,10 +102,10 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount =
                     fontSize: isActive ? '2.6rem' : '2.2rem',
                     fontVariationSettings: `'wght' ${isActive ? 510 : 400}`,
                     fontWeight: 'normal',
-                    color: isActive ? '#ffffff' : theme.textSecondary,
+                    color: isActive ? theme.textPrimary : theme.textSecondary,
                     background: isActive ? 'transparent' : sectionGradient,
                     WebkitBackgroundClip: isActive ? 'initial' : 'text',
-                    WebkitTextFillColor: isActive ? '#ffffff' : 'transparent',
+                    WebkitTextFillColor: isActive ? theme.textPrimary : 'transparent',
                     textShadow: isActive
                       ? '0 0 8px rgba(255,255,255,0.3), 0 0 12px rgba(255,255,255,0.2)'
                       : 'none',
@@ -150,7 +150,7 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount =
                   <div style={{
                     width: '40px',
                     height: '2px',
-                    background: '#00FF99',
+                    background: theme.accentPrimary || '#00FF99',
                     boxShadow: '0 0 10px rgba(0,255,153,0.6), 0 0 16px rgba(0,255,153,0.4), 0 0 22px rgba(0,255,153,0.25)',
                     margin: '0 auto',
                     transition: 'all 1.5s cubic-bezier(0.23, 1, 0.32, 1)',

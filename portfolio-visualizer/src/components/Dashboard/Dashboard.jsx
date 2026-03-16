@@ -10,7 +10,7 @@ import { assetLabelMap } from '../../utils/chartUtils';
 
 const CURRENCY_SYMBOLS = { EUR: '€', USD: '$', GBP: '£', CAD: 'CA$' };
 
-const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, onReprocessCsv, onRefreshPrices, priceTimestamp, userRefreshCount = 0, isVisible = true, fiatRates = {} }) => {
+const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onReprocessCsv, onRefreshPrices, priceTimestamp, userRefreshCount = 0, isVisible = true, fiatRates = {} }) => {
   const [filters, setFilters] = useState({
     dateRange: 'all',
     assetType: 'all',
@@ -532,7 +532,6 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
         onBackToForm={onShowGainTrack || onBackToForm}
-        onToggleTheme={onToggleTheme}
         sidebarOpen={sidebarOpen}
         onRefreshPrices={onRefreshPrices}
         priceTimestamp={priceTimestamp}

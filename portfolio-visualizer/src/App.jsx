@@ -121,14 +121,13 @@ function App() {
       setIsTransitioning(true);
       setTimeout(() => {
         setShowPortfolio(true);
+        setIsLoading(false);
         setTimeout(() => {
           setIsTransitioning(false);
         }, 100);
       }, 150);
     } catch (err) {
       setError('Failed to fetch portfolio data. Make sure the backend is running.');
-      setIsLoading(false);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -297,7 +296,9 @@ function App() {
           onSubmit={handleApiSubmit}
           isLoading={isLoading}
           error={error}
+          isVisible={!showPortfolio && !isTransitioning}
         />
+
       </div>
 
       {/* Portfolio Page */}
