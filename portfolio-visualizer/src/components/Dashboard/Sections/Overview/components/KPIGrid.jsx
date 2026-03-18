@@ -295,11 +295,6 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           const entryDateStr = entry.date.split('T')[0];
           return entryDateStr <= endDateStr; // All data up to end date (for accurate state)
         });
-        
-        // Mark that we're in period mode for special gain calculation
-        window.periodCalculationMode = true;
-        window.periodStartDate = startDateStr;
-        window.periodEndDate = endDateStr;
       }
     }
     

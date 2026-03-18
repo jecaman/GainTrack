@@ -136,11 +136,13 @@ class SupabaseCache:
             # Mapeo de assets a pares de Kraken
             pair_mapping = {
                 'XXBT': 'XXBTZEUR',
-                'XETH': 'XETHZEUR', 
+                'XETH': 'XETHZEUR',
                 'ADA': 'ADAEUR',
                 'SOL': 'SOLEUR',
                 'DOT': 'DOTEUR',
-                'MATIC': 'MATICEUR',
+                'POL': 'POLEUR',
+                'AVAX': 'AVAXEUR',
+                'XDG': 'XDGEUR',
                 'LINK': 'LINKEUR',
                 'UNI': 'UNIEUR',
                 'AAVE': 'AAVEEUR',

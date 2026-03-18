@@ -3,8 +3,8 @@ import { useRef, useLayoutEffect, useState } from 'react';
 const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount = 0 }) => {
   const sections = [
     { id: 'overview', label: 'Overview' },
-    { id: 'operations', label: 'Operations' },
-    { id: 'portfolio', label: 'Portfolio' }
+    { id: 'operations', label: 'Trades' },
+    { id: 'docs', label: 'Docs' }
   ];
 
   const h2Refs = useRef({});
@@ -52,8 +52,8 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount =
       alignItems: 'center',
       position: 'relative'
     }}>
-      <div style={{ height: '80px', overflow: 'visible', marginBottom: '0rem' }}>
-        <div style={{ position: 'relative', width: '900px', height: '80px' }}>
+      <div style={{ height: '50px', overflow: 'visible', marginBottom: '0rem' }}>
+        <div style={{ position: 'relative', width: '900px', height: '50px' }}>
           {sections.map((section) => {
             const isActive = section.id === activeSection;
             const pos = positions[section.id] || { x: CENTER_X, scale: 1, opacity: 0 };
@@ -99,7 +99,7 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount =
                   style={{
                     margin: 0,
                     position: 'relative',
-                    fontSize: isActive ? '2.6rem' : '2.2rem',
+                    fontSize: isActive ? '2.1rem' : '1.7rem',
                     fontVariationSettings: `'wght' ${isActive ? 510 : 400}`,
                     fontWeight: 'normal',
                     color: isActive ? theme.textPrimary : theme.textSecondary,
@@ -122,22 +122,22 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount =
                   {section.id === 'operations' && disabledOpsCount > 0 && (
                     <span style={{
                       position: 'absolute',
-                      top: '-8px',
-                      right: '-18px',
+                      top: '-4px',
+                      right: '-12px',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      minWidth: '20px',
-                      height: '20px',
-                      padding: '0 5px',
+                      minWidth: '14px',
+                      height: '14px',
+                      padding: '0 3px',
                       background: '#00ff88',
-                      borderRadius: '10px',
-                      fontSize: '0.65rem',
+                      borderRadius: '7px',
+                      fontSize: '0.5rem',
                       fontWeight: '800',
                       color: '#000',
                       fontFamily: 'monospace',
                       letterSpacing: '0',
-                      boxShadow: '0 0 12px rgba(0,255,136,0.5), 0 0 24px rgba(0,255,136,0.25)',
+                      boxShadow: '0 0 8px rgba(0,255,136,0.4)',
                       WebkitTextFillColor: '#000',
                       textShadow: 'none',
                     }}>

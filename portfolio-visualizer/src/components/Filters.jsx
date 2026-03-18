@@ -99,13 +99,12 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
   
   // Estados para calendario personalizado
   const [showCustomCalendar, setShowCustomCalendar] = useState(false);
-  const [calendarType, setCalendarType] = useState('start'); // 'start' o 'end'
+  const [calendarType, setCalendarType] = useState('end');
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [showMonthYearSelector, setShowMonthYearSelector] = useState(false);
   const [calendarPosition, setCalendarPosition] = useState({ top: 0, left: 0 });
   
   // Refs para botones de calendario
-  const startCalendarButtonRef = useRef(null);
   const endCalendarButtonRef = useRef(null);
   
   // Helper function to get default date range (min available to max available)
@@ -139,14 +138,6 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     if (isFullDateRange(newRange)) {
       setSelectedTimePreset('All');
     }
-  };
-
-  // Helper function to check if start date has been modified from default
-  const isStartDateModified = () => {
-    if (!portfolioData?.timeline || portfolioData.timeline.length === 0) return false;
-    
-    const defaultStartDate = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
-    return dateRange.from !== defaultStartDate;
   };
 
   // Helper function to check if end date has been modified from default
@@ -242,11 +233,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     }
     
     // Verificar validaciones de rango
-    if (calendarType === 'start' && currentEndDate) {
-      if (!isValidRange(currentDateStr, currentEndDate)) {
-        return 'disabled';
-      }
-    } else if (calendarType === 'end' && currentStartDate) {
+    if (currentStartDate) {
       if (!isValidRange(currentStartDate, currentDateStr)) {
         return 'disabled';
       }
@@ -278,62 +265,23 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
     const month = calendarDate.getMonth();
     const formattedDate = `${year}-${(month + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
     
-    // No permitir seleccionar la misma fecha para start y end
-    if (calendarType === 'start' && dateRange.to === formattedDate) {
+    if (dateRange.from && !isValidRange(dateRange.from, formattedDate)) {
       return;
     }
-    if (calendarType === 'end' && dateRange.from === formattedDate) {
-      return;
+
+    const newRange = { ...dateRange, to: formattedDate };
+    setDateRange(newRange);
+    checkAndSetPresetIfDefault(newRange);
+    updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
+
+    if (onFiltersChange) {
+      onFiltersChange({
+        type: 'dateRange',
+        dateRange: { ...newRange }
+      });
     }
-    
-    if (calendarType === 'start') {
-      if (dateRange.to && !isValidRange(formattedDate, dateRange.to)) {
-        return;
-      }
-      
-      const newRange = { ...dateRange, from: formattedDate };
-      setDateRange(newRange);
-      checkAndSetPresetIfDefault(newRange);
-      updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-      
-      if (onFiltersChange) {
-        // Check if dates are equal (point click scenario) - don't update timeline in this case
-        const isPointClick = newRange.from === newRange.to;
-        onFiltersChange({
-          type: 'dateRange',
-          dateRange: { ...newRange }
-        }, isPointClick); // Pass isPointClick as skipTimelineUpdate
-      }
-      
-      // Transición al calendario de fin
-      setTimeout(() => {
-        setCalendarType('end');
-        if (dateRange.to) {
-          setCalendarDate(new Date(dateRange.to));
-        }
-      }, 150);
-      
-    } else {
-      if (dateRange.from && !isValidRange(dateRange.from, formattedDate)) {
-        return;
-      }
-      
-      const newRange = { ...dateRange, to: formattedDate };
-      setDateRange(newRange);
-      checkAndSetPresetIfDefault(newRange);
-      updateActiveFiltersCount(hiddenAssets, newRange, selectedTimePreset, minAllocation, balanceThreshold, excludedOperations);
-      
-      if (onFiltersChange) {
-        // Check if dates are equal (point click scenario) - don't update timeline in this case
-        const isPointClick = newRange.from === newRange.to;
-        onFiltersChange({
-          type: 'dateRange',
-          dateRange: { ...newRange }
-        }, isPointClick); // Pass isPointClick as skipTimelineUpdate
-      }
-      
-      setShowCustomCalendar(false);
-    }
+
+    setShowCustomCalendar(false);
   };
 
   const changeMonth = (direction) => {
@@ -661,9 +609,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
   const sectionActive = useMemo(() => {
     let dateRangeActive = false;
     if (portfolioData?.timeline?.length > 0) {
-      const defaultStart = new Date(portfolioData.timeline[0].date).toISOString().split('T')[0];
       const defaultEnd = new Date(portfolioData.timeline[portfolioData.timeline.length - 1].date).toISOString().split('T')[0];
-      dateRangeActive = dateRange.from !== defaultStart || dateRange.to !== defaultEnd;
+      dateRangeActive = dateRange.to !== defaultEnd;
     }
     return {
       dateRange: dateRangeActive || (selectedTimePreset && selectedTimePreset !== 'All'),
@@ -742,7 +689,6 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
 
   const sections = [
     { id: 'filters', label: 'FILTERS' },
-    { id: 'analytics', label: 'ANALYTICS' },
     { id: 'config', label: 'CONFIG' }
   ];
 
@@ -1113,104 +1059,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     }}>Date Range{sectionActive.dateRange && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {/* Start Date */}
-                      <div style={{ position: 'relative' }}>
-                        <label style={{
-                          display: 'block',
-                          marginBottom: '6px',
-                          color: theme.textSecondary,
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          fontFamily: "'Inter', sans-serif",
-                          letterSpacing: '0.025em',
-                          textTransform: 'uppercase'
-                        }}>Start Date</label>
-                        <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
-                          <input
-                            type="text"
-                            value={dateRange.from}
-                            placeholder="YYYY-MM-DD"
-                            readOnly
-                            tabIndex="-1"
-                            style={{
-                              flex: '1',
-                              padding: '8px 12px',
-                              border: `1px solid ${isStartDateModified() ? '#00ff99' : theme.borderColor}`,
-                              borderRadius: '4px',
-                              background: theme.bgContainer,
-                              color: theme.textPrimary,
-                              fontSize: '13px',
-                              fontFamily: "'Inter', sans-serif",
-                              fontWeight: '600',
-                              outline: 'none',
-                              transition: 'all 0.2s ease',
-                              cursor: 'default',
-                              pointerEvents: 'none'
-                            }}
-                          />
-                          <div style={{ position: 'relative', width: '36px', height: '36px' }} >
-                            <div 
-                              ref={startCalendarButtonRef}
-                              style={{
-                                width: '36px',
-                                height: '36px',
-                                border: `1px solid ${theme.borderColor}`,
-                                borderRadius: '4px',
-                                background: theme.bgContainer,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
-                              }}
-                              onClick={() => {
-                                setCalendarType('start');
-                                if (dateRange.from) {
-                                  setCalendarDate(new Date(dateRange.from));
-                                }
-                                // Calcular posición del botón
-                                if (startCalendarButtonRef.current) {
-                                  const rect = startCalendarButtonRef.current.getBoundingClientRect();
-                                  setCalendarPosition({
-                                    top: rect.bottom + 75,
-                                    left: rect.left - 220
-                                  });
-                                }
-                                setShowCustomCalendar(true);
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.borderColor = '#00ff99';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.borderColor = theme.borderColor;
-                              }}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={theme.textSecondary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                                <line x1="16" y1="2" x2="16" y2="6"/>
-                                <line x1="8" y1="2" x2="8" y2="6"/>
-                                <line x1="3" y1="10" x2="21" y2="10"/>
-                              </svg>
-                            </div>
-                          </div>
-                        </div>
-                        {isStartDateModified() && (
-                          <div style={{
-                            position: 'absolute',
-                            right: '50px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            marginTop: '10px',
-                            width: '6px',
-                            height: '6px',
-                            background: '#00ff99',
-                            borderRadius: '50%',
-                            boxShadow: '0 0 4px rgba(0, 255, 153, 0.6)'
-                          }}></div>
-                        )}
-                      </div>
-                      
-                      {/* End Date */}
+                      {/* Date */}
                       <div style={{ position: 'relative' }}>
                         <label style={{
                           display: 'block',
@@ -1265,11 +1114,11 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                 if (dateRange.to) {
                                   setCalendarDate(new Date(dateRange.to));
                                 }
-                                // Calcular posición del botón  
-                                if (startCalendarButtonRef.current) {
-                                  const rect = startCalendarButtonRef.current.getBoundingClientRect();
+                                // Calcular posición del botón
+                                if (endCalendarButtonRef.current) {
+                                  const rect = endCalendarButtonRef.current.getBoundingClientRect();
                                   setCalendarPosition({
-                                    top: rect.bottom + 75,
+                                    top: rect.bottom + 8,
                                     left: rect.left - 220
                                   });
                                 }
@@ -1334,7 +1183,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                       )}
 
                       {/* Clear Button - Solo visible si las fechas han sido modificadas */}
-                      {(isStartDateModified() || isEndDateModified()) && (
+                      {isEndDateModified() && (
                         <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-start' }}>
                           <button
                             onClick={() => {
@@ -2075,7 +1924,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                     fontFamily: "'JetBrains Mono', monospace",
                     letterSpacing: '0.5px',
                     textTransform: 'uppercase'
-                  }}>Operations{sectionActive.operations && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
+                  }}>Trades{sectionActive.operations && <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#00ff99', boxShadow: '0 0 7px rgba(0,255,153,0.9)', flexShrink: 0 }} />}</label>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     {displayOperationTypes.map(operation => (
@@ -2252,107 +2101,95 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
               </div>
             )}
 
-            {activeSection === 'analytics' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{
-                  padding: '16px',
-                  background: theme.bgContainer,
-                  borderRadius: '8px',
-                  border: `1px solid ${theme.borderColor}`
-                }}>
-                  <h4 style={{
-                    margin: '0 0 8px 0',
-                    color: theme.textPrimary,
-                    fontSize: '14px',
-                    fontFamily: "'Inter', sans-serif"
-                  }}>Portfolio Metrics</h4>
-                  <div style={{ 
-                    fontSize: '12px', 
-                    color: theme.textSecondary,
-                    fontFamily: "'Inter', sans-serif"
-                  }}>
-                    Advanced analytics coming soon...
-                  </div>
-                </div>
-              </div>
-            )}
-
             {activeSection === 'config' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {/* Base Currency */}
                 <div>
                   <label style={{
                     display: 'block',
-                    marginBottom: '8px',
+                    marginBottom: '12px',
                     color: theme.textSecondary,
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    fontFamily: "'Inter', sans-serif"
+                    fontSize: '10px',
+                    fontWeight: '600',
+                    fontFamily: "'Inter', sans-serif",
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
                   }}>Base Currency</label>
-                  <select
-                    value={baseCurrency}
-                    onChange={(e) => {
-                      setBaseCurrency(e.target.value);
-                      onFiltersChange && onFiltersChange({ type: 'currency', selectedCurrency: e.target.value });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: `1px solid ${theme.borderColor}`,
-                      borderRadius: '6px',
-                      background: theme.bgContainer,
-                      color: theme.textPrimary,
-                      fontSize: '14px',
-                      fontFamily: "'Inter', sans-serif"
-                    }}
-                  >
-                    <option value="EUR">EUR (€)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="GBP">GBP (£)</option>
-                    <option value="CAD">CAD (CA$)</option>
-                  </select>
-                </div>
-
-                {/* Export Options */}
-                <div>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    color: theme.textSecondary,
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    fontFamily: "'Inter', sans-serif"
-                  }}>Export Data</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {['Export as CSV', 'Export as JSON', 'Export Report'].map(option => (
-                      <button
-                        key={option}
-                        style={{
-                          padding: '8px 12px',
-                          background: theme.bgContainer,
-                          border: `1px solid ${theme.borderColor}`,
-                          borderRadius: '6px',
-                          color: theme.textPrimary,
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.2s ease',
-                          fontFamily: "'Inter', sans-serif"
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = '#00ff99';
-                          e.currentTarget.style.backgroundColor = theme.bgElevated;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = theme.borderColor;
-                          e.currentTarget.style.backgroundColor = theme.bgContainer;
-                        }}
-                      >
-                        {option}
-                      </button>
-                    ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {[
+                      { code: 'EUR', symbol: '€', flag: '🇪🇺', name: 'Euro' },
+                      { code: 'USD', symbol: '$', flag: '🇺🇸', name: 'US Dollar' },
+                      { code: 'GBP', symbol: '£', flag: '🇬🇧', name: 'Pound' },
+                      { code: 'CAD', symbol: 'CA$', flag: '🇨🇦', name: 'Canadian' },
+                    ].map(({ code, symbol, flag, name }) => {
+                      const isActive = baseCurrency === code;
+                      return (
+                        <button
+                          key={code}
+                          onClick={() => {
+                            setBaseCurrency(code);
+                            onFiltersChange && onFiltersChange({ type: 'currency', selectedCurrency: code });
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            padding: '12px 14px',
+                            background: isActive ? 'rgba(0,255,136,0.08)' : theme.bgContainer,
+                            border: `1px solid ${isActive ? 'rgba(0,255,136,0.4)' : theme.borderColor}`,
+                            borderRadius: '10px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            fontFamily: "'Inter', sans-serif",
+                            position: 'relative',
+                            overflow: 'hidden',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)';
+                              e.currentTarget.style.background = theme.bgElevated;
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) {
+                              e.currentTarget.style.borderColor = theme.borderColor;
+                              e.currentTarget.style.background = theme.bgContainer;
+                            }
+                          }}
+                        >
+                          <span style={{ fontSize: '20px', lineHeight: 1 }}>{flag}</span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '1px' }}>
+                            <span style={{
+                              fontSize: '13px',
+                              fontWeight: '600',
+                              color: isActive ? '#00ff88' : theme.textPrimary,
+                              fontFamily: "'JetBrains Mono', monospace",
+                              letterSpacing: '0.03em',
+                            }}>{code}</span>
+                            <span style={{
+                              fontSize: '10px',
+                              color: isActive ? 'rgba(0,255,136,0.6)' : theme.textMuted,
+                              fontWeight: '400',
+                            }}>{symbol}</span>
+                          </div>
+                          {isActive && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '8px',
+                              right: '8px',
+                              width: '6px',
+                              height: '6px',
+                              borderRadius: '50%',
+                              background: '#00ff88',
+                              boxShadow: '0 0 6px rgba(0,255,136,0.8)',
+                            }} />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
+
               </div>
             )}
           </div>
@@ -2579,7 +2416,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px'
               }}>
-                {calendarType === 'start' ? 'START DATE' : 'END DATE'}
+                END DATE
               </div>
               <button
                 onClick={() => setShowCustomCalendar(false)}
@@ -2992,16 +2829,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             }}>
               <button
                 onClick={() => {
-                  let newRange;
-                  if (calendarType === 'start') {
-                    // Solo limpiar start date, mantener end date
-                    const defaultRange = getDefaultDateRange();
-                    newRange = { from: defaultRange.from, to: dateRange.to || defaultRange.to };
-                  } else {
-                    // Solo limpiar end date, mantener start date
-                    const defaultRange = getDefaultDateRange();
-                    newRange = { from: dateRange.from || defaultRange.from, to: defaultRange.to };
-                  }
+                  const defaultRange = getDefaultDateRange();
+                  const newRange = { from: dateRange.from || defaultRange.from, to: defaultRange.to };
                   setDateRange(newRange);
                   // Check if this results in the full range
                   const presetToSet = isFullDateRange(newRange) ? 'All' : '';

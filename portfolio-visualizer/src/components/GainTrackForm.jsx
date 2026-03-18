@@ -33,7 +33,7 @@ const BackgroundPattern = React.memo(({ isDark = true }) => {
   );
 });
 
-const GainTrackForm = ({ onSubmit, isLoading, error, isVisible }) => {
+const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) => {
   const [formData, setFormData] = useState({
     apiKey: '',
     secretKey: ''
@@ -550,8 +550,17 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible }) => {
               key: 'demo',
               label: 'Try demo',
               icon: <polygon points="5 3 19 12 5 21 5 3"/>,
-              onClick: () => {
-                // TODO: Load demo CSV and submit
+              onClick: async () => {
+                try {
+                  setIsProcessing(true);
+                  const response = await fetch('/demo_portfolio.json');
+                  if (!response.ok) throw new Error('Failed to load demo');
+                  const data = await response.json();
+                  onSubmit({ csvData: data });
+                } catch (err) {
+                  setValidationError('Could not load demo data. Please try again.');
+                  setIsProcessing(false);
+                }
               },
             },
             {
@@ -559,7 +568,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible }) => {
               label: 'How it works',
               icon: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></>,
               onClick: () => {
-                // TODO: Open documentation
+                if (onOpenDocs) onOpenDocs();
               },
             },
             {
@@ -567,7 +576,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible }) => {
               label: 'Contact us',
               icon: <><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 7L2 7"/></>,
               onClick: () => {
-                window.location.href = 'mailto:contact@gaintrack.app';
+                if (onOpenDocs) onOpenDocs('contact');
               },
             },
           ].map(({ key, label, icon, onClick }) => (

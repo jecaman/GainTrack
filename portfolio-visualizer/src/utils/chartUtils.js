@@ -89,6 +89,11 @@ export const assetLabelMap = {
   'XXRPEUR/': 'XRP',
   'XRP': 'XRP',
 
+  // Dogecoin variants (Kraken uses XDG internally)
+  'XDG': 'DOGE',
+  'XDGEUR': 'DOGE',
+  'XDGZEUR': 'DOGE',
+
   // Fiat currencies
   'ZEUR': 'EUR',
   'ZUSD': 'USD',

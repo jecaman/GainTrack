@@ -17,6 +17,7 @@ function App() {
   const [priceTimestamp, setPriceTimestamp] = useState(null);
   const [userRefreshCount, setUserRefreshCount] = useState(0);
   const [fiatRates, setFiatRates] = useState({ USD: 1.0, GBP: 1.0, CAD: 1.0 });
+  const [initialSection, setInitialSection] = useState(null);
 
   // Function to re-process CSV with date filters
   const reprocessCsvWithFilters = async (startDate, endDate, excludedOperations = []) => {
@@ -117,7 +118,8 @@ function App() {
       setPortfolioData(adaptedData);
       setTimeline(data.timeline || []);
       
-      // Smooth transition
+      // Smooth transition — always start on overview when loading data
+      setInitialSection('overview');
       setIsTransitioning(true);
       setTimeout(() => {
         setShowPortfolio(true);
@@ -252,6 +254,27 @@ function App() {
     }
   }, [fullPortfolioData]);
 
+  const handleOpenDocs = (scrollToId) => {
+    setInitialSection('docs');
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setShowPortfolio(true);
+      setTimeout(() => {
+        setIsTransitioning(false);
+        if (scrollToId) {
+          setTimeout(() => {
+            const el = document.getElementById(scrollToId);
+            const container = document.getElementById('main-scroll');
+            if (el && container) {
+              const elTop = el.getBoundingClientRect().top + container.scrollTop - 120;
+              container.scrollTo({ top: elTop, behavior: 'smooth' });
+            }
+          }, 300);
+        }
+      }, 100);
+    }, 150);
+  };
+
   const handleBackToForm = () => {
     setIsTransitioning(true);
     setTimeout(() => {
@@ -261,6 +284,7 @@ function App() {
       setFullPortfolioData(null);
       setTimeline([]);
       setError('');
+      setInitialSection(null);
       setTimeout(() => {
         setIsTransitioning(false);
       }, 100);
@@ -297,6 +321,7 @@ function App() {
           isLoading={isLoading}
           error={error}
           isVisible={!showPortfolio && !isTransitioning}
+          onOpenDocs={handleOpenDocs}
         />
 
       </div>
@@ -343,6 +368,7 @@ function App() {
             priceTimestamp={priceTimestamp}
             userRefreshCount={userRefreshCount}
             fiatRates={fiatRates}
+            initialSection={initialSection}
           />
         </ErrorBoundary>
       </div>

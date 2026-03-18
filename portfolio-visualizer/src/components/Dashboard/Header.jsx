@@ -9,7 +9,8 @@ const Header = ({
   sidebarOpen,
   onRefreshPrices,
   priceTimestamp,
-  disabledOpsCount = 0
+  disabledOpsCount = 0,
+  hasData = true
 }) => {
   const [refreshState, setRefreshState] = useState('idle');
   const [showToast, setShowToast] = useState(false);
@@ -58,10 +59,12 @@ const Header = ({
   return (
     <>
       <div style={{
-        position: 'relative',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10100,
         width: '100%',
-        height: '130px',
-        background: 'rgba(0,0,0,0.92)',
+        height: '90px',
+        background: '#000000',
         backdropFilter: 'blur(24px)',
         borderBottom: `1px solid ${theme.borderColor}`,
         /* El menú se posiciona con paddingTop para tener margen arriba.
@@ -69,7 +72,7 @@ const Header = ({
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        paddingTop: '68px',   /* margen visible encima del menú */
+        paddingTop: '38px',   /* margen visible encima del menú */
         paddingRight: sidebarOpen ? '350px' : '0',
         transition: 'padding-right 0.45s cubic-bezier(0.4,0,0.2,1)',
         boxSizing: 'border-box',
@@ -108,15 +111,29 @@ const Header = ({
         </button>
 
         {/* Tabs — centro, se posicionan con paddingTop del padre */}
-        <SectionTabs
-          activeSection={activeSection}
-          onSectionChange={onSectionChange}
-          theme={theme}
-          disabledOpsCount={disabledOpsCount}
-        />
+        {hasData ? (
+          <SectionTabs
+            activeSection={activeSection}
+            onSectionChange={onSectionChange}
+            theme={theme}
+            disabledOpsCount={disabledOpsCount}
+          />
+        ) : (
+          <h2 style={{
+            margin: 0,
+            fontSize: '2.1rem',
+            fontWeight: 'normal',
+            fontVariationSettings: "'wght' 510",
+            color: theme.textPrimary,
+            fontFamily: "'Inter', sans-serif",
+            letterSpacing: '1px',
+            textTransform: 'uppercase',
+            textShadow: '0 0 8px rgba(255,255,255,0.3), 0 0 12px rgba(255,255,255,0.2)',
+          }}>Docs</h2>
+        )}
 
-        {/* Derecha — anclado al fondo del header */}
-        <div style={{
+        {/* Derecha — anclado al fondo del header (solo en overview) */}
+        {hasData && activeSection === 'overview' && <div style={{
           position: 'absolute',
           right: sidebarOpen ? '370px' : '2.5rem',
           bottom: '16px',
@@ -156,7 +173,7 @@ const Header = ({
             </span>
           </button>
 
-        </div>
+        </div>}
       </div>
 
       {/* Toast "Prices updated" — fixed bottom-right */}

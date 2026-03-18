@@ -1152,7 +1152,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     // Skip if we're applying from timeline
     if (isApplyingFromTimeline) return;
     
-    // Compare timeline button dates with external filter dates
+    // Compare timeline dates with external filter dates
     const datesAreDifferent = startDate !== externalStartDate || endDate !== externalEndDate;
     
     // Only proceed if dates actually changed from what we last processed OR if we need to hide popup

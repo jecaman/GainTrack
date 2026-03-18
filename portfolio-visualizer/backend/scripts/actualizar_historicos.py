@@ -27,7 +27,14 @@ ASSETS = [
     "XRP",     # XRP
     "LINK",    # LINK
     "HBAR",    # HBAR
-    "TRUMP"    # TRUMP
+    "TRUMP",   # TRUMP
+    "ADA",     # Cardano
+    "DOT",     # Polkadot
+    "AVAX",    # Avalanche
+    "POL",     # Polygon (ex-MATIC)
+    "XDG",     # Dogecoin (DOGE)
+    "ATOM",    # Cosmos
+    "UNI"      # Uniswap
 ]
 
 def main():

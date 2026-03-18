@@ -253,7 +253,7 @@ const OperationsTable = ({
         width: '100%',
         height: 'fit-content',
         position: 'relative',
-        zIndex: 10000,
+        zIndex: 1,
         overflow: 'visible'
       }}>
       
@@ -271,7 +271,7 @@ const OperationsTable = ({
           textTransform: 'uppercase',
           letterSpacing: '1px',
         }}>
-          Operations History
+          Trades History
         </div>
       </div>
 
@@ -315,7 +315,7 @@ const OperationsTable = ({
                 marginLeft: '4px',
                 transition: 'all 0.2s ease',
               }}>
-                {hasDisabled ? `${enabledCount} / ${totalCount}` : `${totalCount} ops`}
+                {hasDisabled ? `${enabledCount} / ${totalCount}` : `${totalCount} trades`}
               </span>
             );
           })()}
@@ -372,14 +372,14 @@ const OperationsTable = ({
               color: '#ffffff',
               fontFamily: 'monospace',
               backdropFilter: 'blur(10px)',
-              zIndex: 10000,
+              zIndex: 500,
               whiteSpace: 'normal',
             }}>
               <div style={{ fontWeight: '700', marginBottom: '0.5rem' }}>
-                Operations History
+                Trades History
               </div>
               <div style={{ fontWeight: '400' }}>
-                Complete history of all buy and sell operations with detailed information including fees, realized gains, and transaction timestamps.
+                Complete history of all buy and sell trades with detailed information including fees, realized gains, and transaction timestamps.
               </div>
             </div>
           )}

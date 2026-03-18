@@ -38,7 +38,7 @@ ALL_KRAKEN_PAIRS_CACHE = {}
 KNOWN_ASSET_MAPPING_KRAKEN = {
     'BTC': 'XXBT',  # Bitcoin se llama XXBT en Kraken
     'ETH': 'XETH',  # Ethereum se llama XETH en Kraken
-    # Otros assets que sabemos que tienen mapeo especial se pueden añadir aquí
+    'DOGE': 'XDG',  # Dogecoin se llama XDG en Kraken
 }
 
 # Cache dinámico para mapeos descubiertos automáticamente
@@ -1169,7 +1169,9 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
         # Mapeo de assets del CSV a assets del cache
         ASSET_MAPPING = {
             'BTC': 'XXBT', 'ETH': 'XETH', 'XRP': 'XRP', 'SOL': 'SOL',
-            'LINK': 'LINK', 'HBAR': 'HBAR', 'TRUMP': 'TRUMP'
+            'LINK': 'LINK', 'HBAR': 'HBAR', 'TRUMP': 'TRUMP',
+            'ADA': 'ADA', 'DOT': 'DOT', 'AVAX': 'AVAX', 'POL': 'POL',
+            'DOGE': 'XDG', 'ATOM': 'ATOM', 'UNI': 'UNI'
         }
         
         # Preparar datos
