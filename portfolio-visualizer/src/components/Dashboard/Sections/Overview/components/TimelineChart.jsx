@@ -2233,6 +2233,15 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
           const costBasisDataset = chart.data.datasets.find(d => d.label === 'Cost Basis');
           
+          // Freeze Y axis bounds before nulling data to prevent scale refit
+          if (chart.scales.y && !chart._yAxisFrozen) {
+            chart._yAxisFrozen = true;
+            chart._savedYMin = chart.scales.y.min;
+            chart._savedYMax = chart.scales.y.max;
+            chart.options.scales.y.min = chart.scales.y.min;
+            chart.options.scales.y.max = chart.scales.y.max;
+          }
+
           // Aplicar efecto de línea progresiva con dos datasets
           if (portfolioDataset && portfolioDataset.originalData) {
             // Dataset principal: mostrar solo hasta el punto actual
@@ -2364,7 +2373,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             // Ocultar completamente el dataset futuro cuando no hay hover
             costBasisFutureDataset.data = costBasisFutureDataset.originalData.map(() => null);
           }
-          
+
+          // Unfreeze Y axis so it auto-fits again with full data
+          if (chart._yAxisFrozen) {
+            chart._yAxisFrozen = false;
+            delete chart.options.scales.y.min;
+            delete chart.options.scales.y.max;
+          }
+
           if (chart && chart.canvas && chart.canvas.ownerDocument) {
             try {
               if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
@@ -2379,7 +2395,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             }
           }
         }
-      }, 10); // Pequeño delay para asegurar que el estado se procese correctamente
+      }, 10);
     };
 
     canvas.addEventListener('mousemove', handleMouseMove);
@@ -2415,6 +2431,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       }
     });
     
+    // Unfreeze Y axis
+    if (chart._yAxisFrozen) {
+      chart._yAxisFrozen = false;
+      delete chart.options.scales.y.min;
+      delete chart.options.scales.y.max;
+    }
+
     setIsTooltipFrozen(false);
     forceHidePopup();
     chart.update('none');
@@ -3280,24 +3303,6 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           },
           border: {
             display: false
-          },
-          afterDataLimits: (scale) => {
-            // Save original Y bounds when no hover is active (full data visible).
-            // During hover, handleMouseMove nulls out future points which shrinks
-            // the data range. Without this guard, Chart.js auto-fits the Y axis
-            // to the reduced range, causing the hover dot to jump to wrong positions.
-            const chart = scale.chart;
-            const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
-            const hasNulls = portfolioDataset?.data?.some(v => v === null);
-            if (!hasNulls) {
-              // Full data — save bounds
-              chart._originalYMin = scale.min;
-              chart._originalYMax = scale.max;
-            } else if (chart._originalYMin !== undefined) {
-              // Hover active (nulled data) — restore saved bounds
-              scale.min = chart._originalYMin;
-              scale.max = chart._originalYMax;
-            }
           },
           ticks: {
             color: '#ffffff',
