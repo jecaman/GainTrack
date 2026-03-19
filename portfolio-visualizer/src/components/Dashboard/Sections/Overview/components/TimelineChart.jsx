@@ -474,6 +474,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   const popupTimeoutRef = useRef(null);
   
   const chartRef = useRef(null);
+  const isTransitioningRef = useRef(false);
   const hasUserInteractedWithTimeline = useRef(false);
   const userClosedPopup = useRef(false);
   
@@ -1352,11 +1353,15 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     if (portfolioData?.timeline) {
       setIsChartLoading(true);
 
-      // Block hover immediately during the entire transition
-      if (chartRef.current && hasUserInteractedWithTimeline.current) {
-        chartRef.current._stabilizing = true;
+      // Block hover immediately during the entire transition via ref (stable across closures)
+      if (hasUserInteractedWithTimeline.current) {
+        isTransitioningRef.current = true;
+        if (chartRef.current) {
+          chartRef.current._stabilizing = true;
+          chartRef.current.hoveredDataIndex = undefined;
+        }
         // Also unfreeze Y axis in case hover was active
-        if (chartRef.current._yAxisFrozen) {
+        if (chartRef.current?._yAxisFrozen) {
           chartRef.current._yAxisFrozen = false;
           if (chartRef.current.options?.scales?.y) {
             delete chartRef.current.options.scales.y.min;
@@ -1368,11 +1373,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       // Delay optimizado para permitir transición visual suave
       const timer = setTimeout(() => {
         setIsChartLoading(false);
-
-        // Unblock hover after chart has settled
-        if (chartRef.current && chartRef.current.canvas && chartRef.current.canvas.ownerDocument && !chartRef.current._isDestroying) {
-          chartRef.current._stabilizing = false;
-        }
+        isTransitioningRef.current = false;
+        if (chartRef.current) chartRef.current._stabilizing = false;
       }, 600);
 
       return () => clearTimeout(timer);
@@ -2067,8 +2069,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         return;
       }
       
-      // No hacer nada si se está haciendo drag, drag zoom, o en período de estabilización
-      if (isDragging || chart._isDragZoom || chart._stabilizing || isChartStabilizing) {
+      // No hacer nada si se está haciendo drag, drag zoom, o en período de estabilización/transición
+      if (isDragging || chart._isDragZoom || chart._stabilizing || isChartStabilizing || isTransitioningRef.current) {
         return;
       }
       
