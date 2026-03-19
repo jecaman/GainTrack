@@ -3281,6 +3281,24 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           border: {
             display: false
           },
+          afterDataLimits: (scale) => {
+            // Save original Y bounds when no hover is active (full data visible).
+            // During hover, handleMouseMove nulls out future points which shrinks
+            // the data range. Without this guard, Chart.js auto-fits the Y axis
+            // to the reduced range, causing the hover dot to jump to wrong positions.
+            const chart = scale.chart;
+            const portfolioDataset = chart.data.datasets.find(d => d.label === 'Portfolio Value' || d.label === 'Total P&L');
+            const hasNulls = portfolioDataset?.data?.some(v => v === null);
+            if (!hasNulls) {
+              // Full data — save bounds
+              chart._originalYMin = scale.min;
+              chart._originalYMax = scale.max;
+            } else if (chart._originalYMin !== undefined) {
+              // Hover active (nulled data) — restore saved bounds
+              scale.min = chart._originalYMin;
+              scale.max = chart._originalYMax;
+            }
+          },
           ticks: {
             color: '#ffffff',
             font: {
