@@ -1351,24 +1351,30 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   useEffect(() => {
     if (portfolioData?.timeline) {
       setIsChartLoading(true);
-      
-      
+
+      // Block hover immediately during the entire transition
+      if (chartRef.current && hasUserInteractedWithTimeline.current) {
+        chartRef.current._stabilizing = true;
+        // Also unfreeze Y axis in case hover was active
+        if (chartRef.current._yAxisFrozen) {
+          chartRef.current._yAxisFrozen = false;
+          if (chartRef.current.options?.scales?.y) {
+            delete chartRef.current.options.scales.y.min;
+            delete chartRef.current.options.scales.y.max;
+          }
+        }
+      }
+
       // Delay optimizado para permitir transición visual suave
       const timer = setTimeout(() => {
         setIsChartLoading(false);
-        
-        // Período de estabilización breve después de cambio de datos
-        // Solo estabilizar si el usuario ha interactuado activamente (no en carga inicial/remount)
-        if (chartRef.current && hasUserInteractedWithTimeline.current) {
-          chartRef.current._stabilizing = true;
-          setTimeout(() => {
-            if (chartRef.current && chartRef.current.canvas && chartRef.current.canvas.ownerDocument && !chartRef.current._isDestroying) {
-              chartRef.current._stabilizing = false;
-            }
-          }, 100);
+
+        // Unblock hover after chart has settled
+        if (chartRef.current && chartRef.current.canvas && chartRef.current.canvas.ownerDocument && !chartRef.current._isDestroying) {
+          chartRef.current._stabilizing = false;
         }
-      }, 500); // 500ms para transición más suave
-      
+      }, 600);
+
       return () => clearTimeout(timer);
     }
   }, [startDate, endDate, portfolioData, periodMode]);
