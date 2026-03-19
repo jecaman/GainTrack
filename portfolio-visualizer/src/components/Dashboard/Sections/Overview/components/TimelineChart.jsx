@@ -1311,17 +1311,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     setStartDate(defaultStartDate);
     setEndDate(defaultEndDate);
     
-    // Período de estabilización breve después del reset (DESPUÉS de unfreezeTooltip)
-    setIsChartStabilizing(true);
-    if (chartRef.current) {
-      chartRef.current._stabilizing = true;
-    }
-    setTimeout(() => {
-      setIsChartStabilizing(false);
-      if (chartRef.current) {
-        chartRef.current._stabilizing = false;
-      }
-    }, 150);
+    // The transition useEffect will handle _stabilizing via isTransitioningRef
+    // when startDate/endDate change triggers it
     setIsZoomed(false);
     setActiveQuickFilter('all');
     
@@ -2494,11 +2485,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     };
 
     const handleMouseUp = () => {
-      // Siempre resetear flags para evitar que queden bloqueados tras drag zoom
+      // Siempre resetear drag flags para evitar que queden bloqueados tras drag zoom
       setIsDragging(false);
       chart.isDragging = false;
       chart._isDragZoom = false;
-      chart._stabilizing = false;
 
       const isFrozenOrFreezing = (chart.frozenTooltip && chart.frozenTooltip.isFrozen) || isTooltipFrozen;
 
@@ -3216,11 +3206,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               // Limpiar flag de drag zoom
               chart._isDragZoom = false;
               
-              // Período de estabilización breve después del zoom
-              chart._stabilizing = true;
-              setTimeout(() => {
-                chart._stabilizing = false;
-              }, 100);
+              // _stabilizing is managed by the transition useEffect when
+              // startDate/endDate change — no separate timer needed here
 
               if (chart && chart.scales && chart.scales.x) {
                 const xScale = chart.scales.x;
