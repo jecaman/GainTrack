@@ -554,7 +554,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
           {[
             {
               key: 'demo',
-              label: 'Try demo',
+              label: 'Try with sample data',
               icon: <polygon points="5 3 19 12 5 21 5 3"/>,
               onClick: async () => {
                 try {
@@ -593,7 +593,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
                 background: 'transparent',
                 border: 'none',
                 color: hoveredLink === key ? theme.greenPrimary : theme.textSecondary,
-                fontSize: '12px',
+                fontSize: '14px',
                 fontWeight: '500',
                 cursor: 'pointer',
                 fontFamily: "'Inter', sans-serif",
@@ -601,12 +601,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '8px',
               }}
               onMouseEnter={() => setHoveredLink(key)}
               onMouseLeave={() => setHoveredLink(null)}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
                 {icon}
               </svg>
               {label}

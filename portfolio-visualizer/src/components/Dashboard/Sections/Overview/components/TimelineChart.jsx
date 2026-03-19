@@ -2459,12 +2459,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     };
 
     const handleMouseUp = () => {
-      // Solo resetear dragging si no estaba congelado (para evitar inconsistencias)
+      // Siempre resetear isDragging para evitar que quede bloqueado tras drag zoom
+      setIsDragging(false);
+      chart.isDragging = false;
+
       const isFrozenOrFreezing = (chart.frozenTooltip && chart.frozenTooltip.isFrozen) || isTooltipFrozen;
-      
+
       if (!isFrozenOrFreezing) {
-        setIsDragging(false);
-        chart.isDragging = false;
         if (chart && !chart._isDestroying && chart.canvas && chart.canvas.ownerDocument) {
           try {
             chart.update('none');
@@ -3178,24 +3179,38 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               // Limpiar flag de drag zoom
               chart._isDragZoom = false;
               
-              // Período de estabilización después del zoom
+              // Período de estabilización breve después del zoom
               chart._stabilizing = true;
               setTimeout(() => {
                 chart._stabilizing = false;
-              }, 700); // 0.6 segundos
-              
+              }, 100);
+
               if (chart && chart.scales && chart.scales.x) {
                 const xScale = chart.scales.x;
                 const startDate = new Date(xScale.min);
                 const endDate = new Date(xScale.max);
-                
-                // Use global formatDate function to maintain consistency (YYYY-MM-DD format)
+
+                // Use local date formatting to avoid UTC truncation issues
                 const formatZoomDate = (date) => {
-                  return date.toISOString().split('T')[0];
+                  const y = date.getFullYear();
+                  const m = String(date.getMonth() + 1).padStart(2, '0');
+                  const d = String(date.getDate()).padStart(2, '0');
+                  return `${y}-${m}-${d}`;
                 };
-                
-                const newStartDate = formatZoomDate(startDate);
-                const newEndDate = formatZoomDate(endDate);
+
+                let newStartDate = formatZoomDate(startDate);
+                let newEndDate = formatZoomDate(endDate);
+
+                // Snap end date to the last real data point within range
+                // to ensure the last day is included when dragging to the edge
+                const labels = chart.data?.labels;
+                if (labels && labels.length > 0) {
+                  const lastLabel = labels[labels.length - 1];
+                  const lastLabelStr = typeof lastLabel === 'string' ? lastLabel : formatZoomDate(new Date(lastLabel));
+                  if (lastLabelStr >= newStartDate && xScale.max >= new Date(lastLabel).getTime() - 12 * 60 * 60 * 1000) {
+                    newEndDate = lastLabelStr > newEndDate ? lastLabelStr : newEndDate;
+                  }
+                }
                 
                 userClosedPopup.current = false; // Reset popup close flag when zoom changes dates
                 
