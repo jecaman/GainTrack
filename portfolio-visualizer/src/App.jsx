@@ -4,9 +4,14 @@ import Dashboard from './components/Dashboard/Dashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import { assetLabelMap } from './utils/chartUtils';
 
+const fetchWithTimeout = (url, options = {}, timeoutMs = 30000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+};
+
 function App() {
   const [isLoading, setIsLoading] = useState(false);
-  const [apiCredentials, setApiCredentials] = useState(null);
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [portfolioData, setPortfolioData] = useState(null);
   const [fullPortfolioData, setFullPortfolioData] = useState(null); // Datos completos del backend
@@ -39,10 +44,10 @@ function App() {
         formData.append('excluded_operations', JSON.stringify(excludedOperations));
       }
 
-      const response = await fetch('http://localhost:8001/api/portfolio/csv', {
+      const response = await fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/portfolio/csv`, {
         method: 'POST',
         body: formData
-      });
+      }, 60000);
 
       const data = await response.json();
 
@@ -57,7 +62,7 @@ function App() {
       setTimeline(data.timeline || []);
 
     } catch (err) {
-      setError('Failed to reprocess CSV data.');
+      setError(err.name === 'AbortError' ? 'Request timed out.' : 'Failed to reprocess CSV data.');
     } finally {
       setIsLoading(false);
     }
@@ -66,8 +71,6 @@ function App() {
   const handleApiSubmit = async (apiData) => {
     setIsLoading(true);
     setError('');
-    setApiCredentials(apiData);
-    
     try {
       let response, data;
       
@@ -81,11 +84,11 @@ function App() {
         }
       } else {
         // Llamada a la API normal
-        response = await fetch('http://localhost:8001/api/portfolio', {
+        response = await fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/portfolio`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ api_key: apiData.apiKey, api_secret: apiData.secretKey })
-        });
+        }, 60000);
         data = await response.json();
       }
       
@@ -151,7 +154,8 @@ function App() {
     });
 
     try {
-      const res = await fetch(`http://localhost:8001/api/prices/current?assets=${displayAssets.join(',')}`);
+      const params = new URLSearchParams({ assets: displayAssets.join(',') });
+      const res = await fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/prices/current?${params}`);
       const data = await res.json();
       if (data.from_cache) {
         const ttlLeft = 60 - (data.cache_age_seconds || 0);
@@ -241,7 +245,7 @@ function App() {
   // Cargar tipos de cambio fiat al mostrar el portfolio
   useEffect(() => {
     if (!showPortfolio) return;
-    fetch('http://localhost:8001/api/forex-rates')
+    fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/forex-rates`)
       .then(r => r.json())
       .then(rates => { if (rates.USD) setFiatRates(rates); })
       .catch(() => {});
@@ -279,7 +283,6 @@ function App() {
     setIsTransitioning(true);
     setTimeout(() => {
       setShowPortfolio(false);
-      setApiCredentials(null);
       setPortfolioData(null);
       setFullPortfolioData(null);
       setTimeline([]);

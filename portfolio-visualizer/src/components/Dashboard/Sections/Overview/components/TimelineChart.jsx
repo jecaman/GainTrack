@@ -8,6 +8,12 @@ import { makeOpId } from '../../../../../utils/chartUtils';
 // Registrar escalas y plugins
 Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler, zoomPlugin);
 
+// Escape HTML to prevent XSS in innerHTML tooltip
+const escapeHtml = (str) => {
+  const s = String(str);
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+};
+
 
 
 // Plugin para mostrar punto y línea en hover con animación al salir
@@ -1882,24 +1888,24 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     }
     
     const formatCurrency = (value) => {
-      return new Intl.NumberFormat('en-US', {
+      return escapeHtml(new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'EUR',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
-      }).format(value);
+      }).format(value));
     };
-    
+
     // Construir el contenido en una sola línea con estilos específicos y buen espaciado
     const profitColor = profit >= 0 ? '#00FF99' : '#ef4444';
     const profitTriangle = profit >= 0 ? '▲' : '▼'; // Mismo triángulo que los KPIs
-    
+
     const formatCurrencyEuroAfter = (value) => {
       const absValue = Math.abs(value);
-      return new Intl.NumberFormat('de-DE', {
+      return escapeHtml(new Intl.NumberFormat('de-DE', {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
-      }).format(absValue) + '€';
+      }).format(absValue) + '€');
     };
     
     // Formatear fecha según el período seleccionado
@@ -1929,7 +1935,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           year: 'numeric'
         });
     }
-    
+    dateFormat = escapeHtml(dateFormat);
+
     let content;
     
     if (viewMode === 'balance') {

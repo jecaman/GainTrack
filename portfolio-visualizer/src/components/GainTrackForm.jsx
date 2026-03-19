@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import './GainTrackForm.css';
 import GainTrackBrand from './GainTrackBrand';
 
+const fetchWithTimeout = (url, options = {}, timeoutMs = 30000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+};
+
 
 
 // Background — Grid pattern with radial fade
@@ -82,10 +88,10 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
       if (startDate) formData.append('start_date', startDate);
       if (endDate) formData.append('end_date', endDate);
 
-      const response = await fetch('http://localhost:8001/api/portfolio/csv', {
+      const response = await fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/portfolio/csv`, {
         method: 'POST',
         body: formData
-      });
+      }, 60000);
 
       const data = await response.json();
 
@@ -96,7 +102,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
 
       onSubmit({ csvData: data, csvFile: file });
     } catch (error) {
-      setValidationError('Error processing CSV file. Please try again.');
+      setValidationError(error.name === 'AbortError' ? 'Request timed out.' : 'Error processing CSV file. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -616,7 +622,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
           margin: 0,
           lineHeight: '1.5',
         }}>
-          Your data is processed locally and never stored on servers.
+          Your data is processed in memory and never stored.
         </p>
       </div>
 

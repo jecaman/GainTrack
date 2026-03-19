@@ -4,6 +4,8 @@ main.py - Servidor Portfolio Visualizer
 Arquitectura modular con funciones independientes para FIFO, precios y timeline.
 """
 
+import os
+import logging
 import pandas as pd
 import time
 import asyncio
@@ -12,11 +14,18 @@ from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Dict, Any, Union
 import io
 import uvicorn
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Importar sistema de cache híbrido
 from supabase_cache import obtener_precios, obtener_precio, stats_cache, get_spain_date
+
+security_log = logging.getLogger("security")
+security_log.setLevel(logging.INFO)
 
 try:
     import aiohttp
@@ -1100,15 +1109,44 @@ async def lifespan(app):
         pass
     print("[BG-Refresh] Tarea de fondo detenida")
 
-app = FastAPI(title="Portfolio Visualizer v2", version="2.0.0", lifespan=lifespan)
+_is_production = os.environ.get("ENV", "development") == "production"
+app = FastAPI(
+    title="Portfolio Visualizer v2",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+)
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Too many requests. Please try again later."}
+    )
+
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if os.environ.get("FORCE_HTTPS", "").lower() == "true":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # =============================================================================
 # ENDPOINTS API
@@ -1158,7 +1196,8 @@ async def get_trades_date_range():
             "total_trades": len(df)
         }
     except Exception as e:
-        return {"error": f"Error obteniendo rango de fechas: {str(e)}"}
+        print(f"❌ [DATE-RANGE] Error: {e}")
+        return {"error": "Error retrieving date range from CSV."}
 
 def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: str = None, fecha_fin: str = None) -> List[Dict[str, Any]]:
     """
@@ -1473,14 +1512,7 @@ def _process_trades_dataframe(df: pd.DataFrame, excluded_ops_set: set, start_dat
     Pipeline compartido: recibe un DataFrame de trades (del CSV o de la API)
     y ejecuta todo el procesamiento FIFO, timeline, KPIs.
     """
-    import signal
     start_time = time.time()
-
-    def timeout_handler(signum, frame):
-        raise TimeoutError("El procesamiento tardó más de 60 segundos")
-
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(60)
 
     try:
         # Generar mapeo dinámico de assets
@@ -1631,18 +1663,17 @@ def _process_trades_dataframe(df: pd.DataFrame, excluded_ops_set: set, start_dat
 
         return response_data
 
-    except TimeoutError as e:
-        signal.alarm(0)
-        raise
     except Exception:
-        signal.alarm(0)
         raise
     finally:
-        signal.alarm(0)
+        elapsed = time.time() - start_time
+        if elapsed > 60:
+            raise TimeoutError("Processing took too long.")
 
 
 @app.post("/api/portfolio")
-async def get_portfolio_from_api(request_data: dict):
+@limiter.limit("10/minute")
+async def get_portfolio_from_api(request: Request, request_data: dict):
     """
     Endpoint que recibe API key + secret, consulta trades de Kraken
     y procesa el portfolio usando el mismo pipeline que el CSV.
@@ -1650,24 +1681,30 @@ async def get_portfolio_from_api(request_data: dict):
     api_key = request_data.get('api_key', '').strip()
     api_secret = request_data.get('api_secret', '').strip()
 
+    client_ip = get_remote_address(request)
     if not api_key or not api_secret:
+        security_log.warning(f"API key submission with missing credentials from {client_ip}")
         return {"error": "API key and secret are required"}
 
     try:
+        security_log.info(f"API key submission from {client_ip}")
         print(f"🔑 [API] Fetching trades from Kraken API...")
         df = await _fetch_kraken_trades(api_key, api_secret)
         result = _process_trades_dataframe(df, set(), None, None)
         result['data_source'] = 'kraken_api'
         return result
     except ValueError as e:
-        return {"error": str(e)}
+        security_log.warning(f"API auth failed from {client_ip}: {e}")
+        return {"error": "Invalid API credentials or request."}
     except Exception as e:
         print(f"❌ [API] Error: {e}")
-        return {"error": f"Error connecting to Kraken: {str(e)}"}
+        return {"error": "Error connecting to Kraken. Please try again later."}
 
 
 @app.post("/api/portfolio/csv")
+@limiter.limit("10/minute")
 async def upload_csv_and_get_portfolio(
+    request: Request,
     csv_file: UploadFile = File(...),
     excluded_operations: Optional[str] = Form(None),
     start_date: Optional[str] = Form(None),
@@ -1676,12 +1713,39 @@ async def upload_csv_and_get_portfolio(
     """
     Endpoint principal que procesa CSV y retorna KPIs usando funciones modulares
     """
+    client_ip = get_remote_address(request)
     print(f"🚀 [ENDPOINT] Received CSV request - start_date: {start_date}, end_date: {end_date}")
+    security_log.info(f"CSV upload from {client_ip} — filename: {csv_file.filename}, content_type: {csv_file.content_type}")
+
+    # Validar tipo de archivo
+    if csv_file.content_type and csv_file.content_type not in ("text/csv", "application/vnd.ms-excel", "application/octet-stream"):
+        security_log.warning(f"CSV upload rejected from {client_ip} — invalid content_type: {csv_file.content_type}")
+        return {"error": "El archivo debe ser un CSV válido."}
 
     try:
-        # 1. Leer CSV
+        # 1. Leer CSV con límite de tamaño (10 MB)
+        MAX_CSV_SIZE = 10 * 1024 * 1024
         contents = await csv_file.read()
-        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
+        if len(contents) > MAX_CSV_SIZE:
+            return {"error": "El archivo CSV excede el límite de 10 MB."}
+
+        try:
+            csv_text = contents.decode('utf-8')
+        except UnicodeDecodeError:
+            return {"error": "El archivo no tiene codificación UTF-8 válida."}
+
+        df = pd.read_csv(io.StringIO(csv_text))
+
+        # Validar columnas requeridas
+        REQUIRED_COLUMNS = {"pair", "time", "type", "cost", "fee", "vol"}
+        missing = REQUIRED_COLUMNS - set(df.columns)
+        if missing:
+            return {"error": f"Columnas faltantes en el CSV: {', '.join(sorted(missing))}"}
+
+        # Validar límite de filas (50k)
+        MAX_ROWS = 50_000
+        if len(df) > MAX_ROWS:
+            return {"error": f"El CSV tiene {len(df)} filas. El límite es {MAX_ROWS}."}
 
         # 1.5. Procesar excluded_operations
         excluded_ops_set = _parse_excluded_operations(excluded_operations)
@@ -1691,13 +1755,15 @@ async def upload_csv_and_get_portfolio(
         result['data_source'] = 'csv_v2'
         return result
 
-    except TimeoutError as e:
-        raise HTTPException(status_code=408, detail=str(e))
+    except TimeoutError:
+        raise HTTPException(status_code=408, detail="Processing timed out. Try a smaller CSV.")
     except Exception as e:
-        return {"error": f"Error procesando CSV: {str(e)}"}
+        print(f"❌ [CSV] Error: {e}")
+        return {"error": "Error processing CSV file. Please check the format and try again."}
 
 @app.get("/api/forex-rates")
-async def get_forex_rates():
+@limiter.limit("30/minute")
+async def get_forex_rates(request: Request):
     """Tipos de cambio EUR→USD/GBP/CAD a tiempo real desde Kraken"""
     try:
         url = "https://api.kraken.com/0/public/Ticker?pair=EURUSD,EURGBP,EURCAD"
@@ -1721,7 +1787,8 @@ async def get_forex_rates():
 
 
 @app.get("/api/prices/current")
-async def get_current_prices(assets: str):
+@limiter.limit("30/minute")
+async def get_current_prices(request: Request, assets: str):
     """
     Precios actuales para los assets solicitados.
     Cache compartido server-side con TTL de 60s — protege la API de Kraken
@@ -1775,12 +1842,15 @@ async def get_current_prices(assets: str):
                 "from_cache": True,
                 "stale": True
             }
-        raise HTTPException(status_code=503, detail=f"Price service unavailable: {str(e)}")
+        print(f"❌ [PRICES] Error: {e}")
+        raise HTTPException(status_code=503, detail="Price service unavailable. Please try again later.")
 
 
 @app.get("/api/test")
 async def test_functions():
     """Endpoint para probar las funciones modulares"""
+    if _is_production:
+        raise HTTPException(status_code=404, detail="Not found")
     try:
         # Ejecutar las pruebas
         df = pd.read_csv('trades.csv')
@@ -1809,5 +1879,6 @@ if __name__ == "__main__":
         ejecutar_todas_las_pruebas()
     else:
         # Modo servidor
-        print("🚀 Iniciando Portfolio Visualizer...")
-        uvicorn.run(app, host="0.0.0.0", port=8001)
+        port = int(os.environ.get("PORT", 8001))
+        print(f"🚀 Iniciando Portfolio Visualizer en puerto {port}...")
+        uvicorn.run(app, host="0.0.0.0", port=port)
