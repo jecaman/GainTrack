@@ -415,7 +415,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
 
   const handleSectionChange = (sectionId) => {
     setActiveSection(sectionId);
-    window.scrollTo(0, 0);
+    const scrollContainer = document.getElementById('main-scroll');
+    if (scrollContainer) scrollContainer.scrollTo(0, 0);
     if (sectionId === 'docs') {
       setSidebarOpen(false);
     }

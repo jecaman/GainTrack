@@ -1306,7 +1306,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     setStartDate(defaultStartDate);
     setEndDate(defaultEndDate);
     
-    // Período de estabilización después del reset (DESPUÉS de unfreezeTooltip)
+    // Período de estabilización breve después del reset (DESPUÉS de unfreezeTooltip)
     setIsChartStabilizing(true);
     if (chartRef.current) {
       chartRef.current._stabilizing = true;
@@ -1316,7 +1316,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       if (chartRef.current) {
         chartRef.current._stabilizing = false;
       }
-    }, 700);
+    }, 150);
     setIsZoomed(false);
     setActiveQuickFilter('all');
     
@@ -1353,7 +1353,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const timer = setTimeout(() => {
         setIsChartLoading(false);
         
-        // Período de estabilización después de cambio de datos
+        // Período de estabilización breve después de cambio de datos
         // Solo estabilizar si el usuario ha interactuado activamente (no en carga inicial/remount)
         if (chartRef.current && hasUserInteractedWithTimeline.current) {
           chartRef.current._stabilizing = true;
@@ -1361,7 +1361,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             if (chartRef.current && chartRef.current.canvas && chartRef.current.canvas.ownerDocument && !chartRef.current._isDestroying) {
               chartRef.current._stabilizing = false;
             }
-          }, 700);
+          }, 100);
         }
       }, 500); // 500ms para transición más suave
       
@@ -2459,9 +2459,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     };
 
     const handleMouseUp = () => {
-      // Siempre resetear isDragging para evitar que quede bloqueado tras drag zoom
+      // Siempre resetear isDragging y _isDragZoom para evitar que queden bloqueados tras drag zoom
       setIsDragging(false);
       chart.isDragging = false;
+      chart._isDragZoom = false;
 
       const isFrozenOrFreezing = (chart.frozenTooltip && chart.frozenTooltip.isFrozen) || isTooltipFrozen;
 

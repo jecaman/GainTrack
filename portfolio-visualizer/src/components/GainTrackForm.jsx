@@ -548,7 +548,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
           display: 'flex',
           alignItems: 'center',
           gap: '20px',
-          flexWrap: 'wrap',
+          flexWrap: 'nowrap',
           justifyContent: 'center',
         }}>
           {[
