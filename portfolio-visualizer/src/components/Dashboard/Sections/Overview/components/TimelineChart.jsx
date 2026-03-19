@@ -46,9 +46,9 @@ const hoverPlugin = {
   afterDraw(chart) {
     const { ctx } = chart;
     
-    // No dibujar durante drag
-    if (chart.isDragging) return;
-    
+    // No dibujar durante drag o transiciones de datos (evita hover line en posición incorrecta)
+    if (chart.isDragging || chart._stabilizing || chart._isInTransition) return;
+
     // Si hay animación de salida de hover activa
     if (chart.exitHoverAnimation.isAnimating) {
       this.drawExitHoverAnimation(chart, ctx);

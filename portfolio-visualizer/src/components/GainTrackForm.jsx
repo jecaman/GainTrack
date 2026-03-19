@@ -562,6 +562,20 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
                   const response = await fetch('/demo_portfolio.json');
                   if (!response.ok) throw new Error('Failed to load demo');
                   const data = await response.json();
+                  // Extend demo timeline to today by duplicating the last entry
+                  if (data.timeline && data.timeline.length > 0) {
+                    const lastEntry = data.timeline[data.timeline.length - 1];
+                    const lastDate = new Date(lastEntry.date + 'T12:00:00');
+                    const today = new Date();
+                    today.setHours(12, 0, 0, 0);
+                    const oneDay = 24 * 60 * 60 * 1000;
+                    let d = new Date(lastDate.getTime() + oneDay);
+                    while (d <= today) {
+                      const dateStr = d.toISOString().split('T')[0];
+                      data.timeline.push({ ...lastEntry, date: dateStr });
+                      d = new Date(d.getTime() + oneDay);
+                    }
+                  }
                   onSubmit({ csvData: data });
                 } catch (err) {
                   setValidationError('Could not load demo data. Please try again.');
