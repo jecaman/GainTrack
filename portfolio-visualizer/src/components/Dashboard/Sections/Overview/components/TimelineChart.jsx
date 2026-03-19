@@ -71,9 +71,13 @@ const hoverPlugin = {
     const meta = chart.getDatasetMeta(chart.data.datasets.indexOf(portfolioDataset));
     const point = meta.data[dataIndex];
     if (!point) return;
-    
+
     const x = point.x;
     const y = point.y;
+
+    // Skip drawing if point is outside chartArea (stale data during transitions)
+    const { chartArea } = chart;
+    if (!chartArea || y <= chartArea.top - 5 || y >= chartArea.bottom + 5 || x < chartArea.left - 5 || x > chartArea.right + 5) return;
     
     // Obtener el valor del P&L para determinar el color
     const currentValue = portfolioDataset.data[dataIndex];
@@ -3260,6 +3264,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           },
           border: {
             display: false
+          },
+          afterDataLimits: (scale) => {
+            // Extend max by half a day so the last data point isn't clipped at the edge
+            if (scale.max) {
+              scale.max += 12 * 60 * 60 * 1000;
+            }
           }
         },
         y: {
