@@ -4,6 +4,8 @@ main.py - Servidor Portfolio Visualizer
 Arquitectura modular con funciones independientes para FIFO, precios y timeline.
 """
 
+import os
+import logging
 import pandas as pd
 import time
 import asyncio
@@ -12,11 +14,18 @@ from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Dict, Any, Union
 import io
 import uvicorn
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Importar sistema de cache híbrido
 from supabase_cache import obtener_precios, obtener_precio, stats_cache, get_spain_date
+
+security_log = logging.getLogger("security")
+security_log.setLevel(logging.INFO)
 
 try:
     import aiohttp
@@ -38,7 +47,7 @@ ALL_KRAKEN_PAIRS_CACHE = {}
 KNOWN_ASSET_MAPPING_KRAKEN = {
     'BTC': 'XXBT',  # Bitcoin se llama XXBT en Kraken
     'ETH': 'XETH',  # Ethereum se llama XETH en Kraken
-    # Otros assets que sabemos que tienen mapeo especial se pueden añadir aquí
+    'DOGE': 'XDG',  # Dogecoin se llama XDG en Kraken
 }
 
 # Cache dinámico para mapeos descubiertos automáticamente
@@ -46,7 +55,10 @@ DYNAMIC_ASSET_MAPPING_CACHE = {}
 
 # Cache compartido de precios actuales (todos los usuarios comparten este cache)
 _price_cache: dict = {"prices": {}, "fetched_at": None}
-PRICE_CACHE_TTL = 60  # segundos mínimos entre llamadas reales a Kraken
+PRICE_CACHE_TTL = 300  # 5 min — alineado con el intervalo del BG task
+
+# Assets rastreados para background refresh (se acumulan con cada request)
+_tracked_assets: set = set()
 
 def get_dynamic_asset_mapping(trades_df):
     """
@@ -342,20 +354,25 @@ def obtener_precios_fallback(assets: List[str]) -> Dict[str, float]:
 
 def extraer_activo_de_par(par):
     """
-    Extrae el activo base del par de trading
+    Extrae el activo base del par de trading.
+    Soporta formato moderno con '/' (BTC/EUR, XRP/ETH) y formato antiguo (XXBTZEUR).
     """
     if not par or pd.isna(par):
         return 'UNKNOWN'
 
     par = str(par).strip()
 
-    # Casos especiales conocidos
+    # Formato moderno Kraken con '/' (ej: BTC/EUR, XRP/ETH, TRUMP/EUR)
+    if '/' in par:
+        return par.split('/')[0]
+
+    # Casos especiales conocidos (formato antiguo)
     if par == 'ZUSD':
         return 'USD'
     if par == 'ZEUR':
         return 'EUR'
 
-    # Lógica para extraer activo
+    # Lógica para extraer activo (formato antiguo sin '/')
     asset = par.replace('ZEUR', '').replace('EUR', '').replace('USD', '').replace('GBP', '').replace('CAD', '').rstrip('/')
 
     # Si el asset queda vacío después de las sustituciones
@@ -376,6 +393,80 @@ def extraer_activo_de_par(par):
         return par
 
     return asset
+
+
+def extraer_quote_de_par(par):
+    """
+    Extrae el activo quote del par de trading.
+    Soporta formato moderno con '/' (BTC/EUR → EUR, XRP/ETH → ETH) y formato antiguo.
+    """
+    if not par or pd.isna(par):
+        return 'UNKNOWN'
+
+    par = str(par).strip()
+
+    # Formato moderno Kraken con '/'
+    if '/' in par:
+        return par.split('/')[1]
+
+    # Formato antiguo: detectar suffix fiat
+    for suffix, fiat in [('ZEUR', 'EUR'), ('ZUSD', 'USD'), ('EUR', 'EUR'), ('USD', 'USD'), ('GBP', 'GBP'), ('CAD', 'CAD')]:
+        if par.endswith(suffix):
+            return fiat
+
+    return 'UNKNOWN'
+
+
+# Mapeo de nombres display a nombres internos Kraken para assets quote en pares crypto/crypto
+_QUOTE_DISPLAY_TO_KRAKEN = {
+    'BTC': 'XXBT',
+    'ETH': 'XETH',
+}
+
+
+def convertir_crypto_quotes_a_eur(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Preprocesa el DataFrame convirtiendo cost y fee a EUR para trades crypto-to-crypto.
+    Ejemplo: XRP/ETH con cost=0.002 ETH → cost = 0.002 * eth_eur_price
+    Los trades contra fiat (BTC/EUR, etc.) no se modifican.
+    """
+    df = df.copy()
+    converted_count = 0
+    skipped_count = 0
+
+    for idx, row in df.iterrows():
+        quote = extraer_quote_de_par(row['pair'])
+
+        # Si el quote es fiat o desconocido, no hay conversión necesaria
+        if quote in FIAT_ASSETS or quote == 'UNKNOWN':
+            continue
+
+        # El quote es crypto — obtener precio EUR en la fecha del trade
+        kraken_quote = _QUOTE_DISPLAY_TO_KRAKEN.get(quote, quote)
+        trade_date = pd.to_datetime(row['time']).date()
+
+        precio_eur = obtener_precio(kraken_quote, trade_date)
+
+        if precio_eur is None:
+            txid = row.get('txid', idx)
+            print(f"⚠️ [C2C] Sin precio EUR para {kraken_quote} en {trade_date} — trade {txid} NO convertido")
+            skipped_count += 1
+            continue
+
+        cost_original = float(row['cost'])
+        fee_original = float(row['fee'])
+        price_original = float(row['price'])
+        df.at[idx, 'cost'] = cost_original * precio_eur
+        df.at[idx, 'fee'] = fee_original * precio_eur
+        df.at[idx, 'price'] = price_original * precio_eur
+
+        converted_count += 1
+        print(f"✅ [C2C] {row['pair']} @ {trade_date}: price {price_original:.7f} {quote} × {precio_eur:.2f} EUR/{quote} = {df.at[idx, 'price']:.4f} EUR/unit, cost {cost_original:.6f} → {df.at[idx, 'cost']:.4f} EUR")
+
+    if converted_count > 0 or skipped_count > 0:
+        print(f"🔄 [C2C] Conversión crypto-to-crypto: {converted_count} convertidos, {skipped_count} omitidos sin precio")
+
+    return df
 
 def calcular_portfolio_value(
     trades_df: pd.DataFrame,
@@ -978,18 +1069,84 @@ def calcular_realized_gains(
 
 
 # =============================================================================
+# BACKGROUND PRICE REFRESH
+# =============================================================================
+
+async def _background_price_refresh():
+    """Refresca el cache de precios cada 55s para que siempre esté caliente."""
+    global _price_cache
+    while True:
+        await asyncio.sleep(295)  # ~5 min (ligeramente menor que TTL de 300s)
+        if not _tracked_assets:
+            continue
+        try:
+            assets_to_refresh = list(_tracked_assets)
+            if AIOHTTP_AVAILABLE:
+                fresh = await get_public_kraken_prices_from_pairs_async(assets_to_refresh)
+            else:
+                fresh = get_public_kraken_prices_from_pairs_sync(assets_to_refresh)
+            _price_cache["prices"].update(fresh)
+            _price_cache["fetched_at"] = datetime.now(timezone.utc)
+            print(f"[BG-Refresh] Kraken API OK — {len(fresh)} assets actualizados")
+        except Exception as e:
+            print(f"[BG-Refresh] Error (no fatal): {e}")
+
+# =============================================================================
 # CONFIGURACIÓN FASTAPI
 # =============================================================================
 
-app = FastAPI(title="Portfolio Visualizer v2", version="2.0.0")
+from contextlib import asynccontextmanager
 
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(_background_price_refresh())
+    print("[BG-Refresh] Tarea de fondo iniciada (cada ~5 min)")
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    print("[BG-Refresh] Tarea de fondo detenida")
+
+_is_production = os.environ.get("ENV", "development") == "production"
+app = FastAPI(
+    title="Portfolio Visualizer v2",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Too many requests. Please try again later."}
+    )
+
+_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if os.environ.get("FORCE_HTTPS", "").lower() == "true":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # =============================================================================
 # ENDPOINTS API
@@ -1039,7 +1196,8 @@ async def get_trades_date_range():
             "total_trades": len(df)
         }
     except Exception as e:
-        return {"error": f"Error obteniendo rango de fechas: {str(e)}"}
+        print(f"❌ [DATE-RANGE] Error: {e}")
+        return {"error": "Error retrieving date range from CSV."}
 
 def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: str = None, fecha_fin: str = None) -> List[Dict[str, Any]]:
     """
@@ -1050,7 +1208,9 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
         # Mapeo de assets del CSV a assets del cache
         ASSET_MAPPING = {
             'BTC': 'XXBT', 'ETH': 'XETH', 'XRP': 'XRP', 'SOL': 'SOL',
-            'LINK': 'LINK', 'HBAR': 'HBAR', 'TRUMP': 'TRUMP'
+            'LINK': 'LINK', 'HBAR': 'HBAR', 'TRUMP': 'TRUMP',
+            'ADA': 'ADA', 'DOT': 'DOT', 'AVAX': 'AVAX', 'POL': 'POL',
+            'DOGE': 'XDG', 'ATOM': 'ATOM', 'UNI': 'UNI'
         }
         
         # Preparar datos
@@ -1228,121 +1388,205 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
         print(f"❌ [TIMELINE] Error: {e}")
         return []
 
-@app.post("/api/portfolio/csv")
-async def upload_csv_and_get_portfolio(
-    csv_file: UploadFile = File(...),
-    excluded_operations: Optional[str] = Form(None),
-    start_date: Optional[str] = Form(None),
-    end_date: Optional[str] = Form(None)
-):
+import hashlib
+import hmac
+import base64
+import urllib.parse
+
+def _kraken_signature(urlpath: str, data: dict, secret: str) -> str:
+    """Genera firma HMAC-SHA512 para la API privada de Kraken."""
+    postdata = urllib.parse.urlencode(data)
+    encoded = (str(data['nonce']) + postdata).encode()
+    message = urlpath.encode() + hashlib.sha256(encoded).digest()
+    mac = hmac.new(base64.b64decode(secret), message, hashlib.sha512)
+    return base64.b64encode(mac.digest()).decode()
+
+async def _fetch_kraken_trades(api_key: str, api_secret: str) -> pd.DataFrame:
     """
-    Endpoint principal que procesa CSV y retorna KPIs usando funciones modulares
+    Llama a Kraken TradesHistory con paginación y devuelve un DataFrame
+    con el mismo schema que el CSV exportado de Kraken.
     """
-    print(f"🚀 [ENDPOINT] Received CSV request - start_date: {start_date}, end_date: {end_date}")
-    if excluded_operations:
-        print(f"❌ [ENDPOINT] Excluded operations: {excluded_operations[:100]}...")  # First 100 chars
-    import time
-    import signal
-    start_time = time.time()
-    
-    # Timeout de 60 segundos para evitar que el endpoint se cuelgue
-    def timeout_handler(signum, frame):
-        raise TimeoutError("El procesamiento del CSV tardó más de 60 segundos")
-    
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.alarm(60)  # 60 segundos timeout
-    
+    import json as _json
+    url = 'https://api.kraken.com/0/private/TradesHistory'
+    urlpath = '/0/private/TradesHistory'
+    all_trades = {}
+    offset = 0
+
+    while True:
+        nonce = str(int(time.time() * 1000))
+        data = {'nonce': nonce, 'ofs': offset}
+        signature = _kraken_signature(urlpath, data, api_secret)
+        headers = {'API-Key': api_key, 'API-Sign': signature}
+
+        resp = requests.post(url, data=data, headers=headers, timeout=15)
+        result = resp.json()
+
+        if result.get('error') and len(result['error']) > 0:
+            error_msg = result['error'][0]
+            raise ValueError(f"Kraken API error: {error_msg}")
+
+        trades = result.get('result', {}).get('trades', {})
+        count = result.get('result', {}).get('count', 0)
+
+        if not trades:
+            break
+
+        all_trades.update(trades)
+        offset += len(trades)
+
+        # Kraken devuelve count = total trades; si ya tenemos todos, parar
+        if offset >= count:
+            break
+
+    if not all_trades:
+        raise ValueError("No trades found in your Kraken account")
+
+    # Construir lookup: nombre interno del par → formato display con '/'
+    # Kraken wsname usa 'XBT' en vez de 'BTC', así que normalizamos también eso.
+    # Ej: "XXBTZEUR" → wsname "XBT/EUR" → normalizado "BTC/EUR"
+    # Ej: "XETHZEUR" → wsname "ETH/EUR" → normalizado "ETH/EUR" (sin cambios)
+    KRAKEN_BASE_DISPLAY = {'XBT': 'BTC', 'XXBT': 'BTC', 'XETH': 'ETH'}
+
+    all_pairs = get_all_kraken_asset_pairs()
+    pair_to_display = {}
+    for pair_key, pair_info in all_pairs.items():
+        wsname = pair_info.get('wsname', '')
+        altname = pair_info.get('altname', '')
+        modern_name = wsname if '/' in wsname else altname
+        if '/' in modern_name:
+            base, quote = modern_name.split('/', 1)
+            base = KRAKEN_BASE_DISPLAY.get(base, base)
+            quote = KRAKEN_BASE_DISPLAY.get(quote, quote)
+            modern_name = f'{base}/{quote}'
+        if modern_name:
+            pair_to_display[pair_key] = modern_name
+
+    # Convertir dict de trades a DataFrame con el mismo schema que el CSV
+    rows = []
+    for txid, t in all_trades.items():
+        raw_pair = t.get('pair', '')
+        # Normalizar par a formato display (BTC/EUR, ETH/EUR, ...)
+        normalized_pair = pair_to_display.get(raw_pair, raw_pair)
+        # Fallback: si el par sin normalizar tiene '/', normalizar igualmente el base
+        if '/' in normalized_pair and normalized_pair == raw_pair:
+            base, quote = normalized_pair.split('/', 1)
+            base = KRAKEN_BASE_DISPLAY.get(base, base)
+            normalized_pair = f'{base}/{quote}'
+        rows.append({
+            'txid': txid,
+            'ordertxid': t.get('ordertxid', ''),
+            'pair': normalized_pair,
+            'time': datetime.fromtimestamp(float(t.get('time', 0)), tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
+            'type': t.get('type', ''),
+            'ordertype': t.get('ordertype', ''),
+            'price': float(t.get('price', 0)),
+            'cost': float(t.get('cost', 0)),
+            'fee': float(t.get('fee', 0)),
+            'vol': float(t.get('vol', 0)),
+            'misc': t.get('misc', ''),
+            'ledgers': '',
+        })
+
+    df = pd.DataFrame(rows)
+    print(f"📊 [KRAKEN API] Fetched {len(df)} trades (paginated from {count} total)")
+    return df
+
+
+def _parse_excluded_operations(excluded_operations: Optional[str]) -> set:
+    """Parsea el string JSON de operaciones excluidas a un set."""
+    if not excluded_operations:
+        return set()
     try:
-        # 1. Leer CSV
-        contents = await csv_file.read()
-        df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
-        
-        # 1.5. Procesar excluded_operations
-        excluded_ops_set = set()
-        if excluded_operations:
-            try:
-                import json
-                excluded_ops_list = json.loads(excluded_operations)
-                excluded_ops_set = set(excluded_ops_list)
-                print(f"🚫 [FILTROS] Operaciones excluidas: {excluded_ops_set}")
-            except Exception as e:
-                print(f"❌ [FILTROS] Error procesando excluded_operations: {e}")
-        
-        # 1.6. Generar mapeo dinámico de assets basado en el CSV
+        import json
+        excluded_ops_list = json.loads(excluded_operations)
+        excluded_ops_set = set(excluded_ops_list)
+        print(f"🚫 [FILTROS] Operaciones excluidas: {excluded_ops_set}")
+        return excluded_ops_set
+    except Exception as e:
+        print(f"❌ [FILTROS] Error procesando excluded_operations: {e}")
+        return set()
+
+
+def _process_trades_dataframe(df: pd.DataFrame, excluded_ops_set: set, start_date: Optional[str], end_date: Optional[str]) -> dict:
+    """
+    Pipeline compartido: recibe un DataFrame de trades (del CSV o de la API)
+    y ejecuta todo el procesamiento FIFO, timeline, KPIs.
+    """
+    start_time = time.time()
+
+    try:
+        # Generar mapeo dinámico de assets
         dynamic_asset_mapping = get_dynamic_asset_mapping(df)
         print(f"🔄 [MAPPING] Mapeo dinámico generado: {dynamic_asset_mapping}")
-        
-        # 2. Calcular Portfolio Value
+
+        # Convertir costes crypto-to-crypto a EUR
+        df = convertir_crypto_quotes_a_eur(df)
+
+        # Calcular Portfolio Value
         portfolio_result = calcular_portfolio_value(
             trades_df=df,
             obtener_precios_externos=True,
             excluded_operations=excluded_ops_set
         )
-        
-        # 3. Calcular Cost Basis
+
+        # Calcular Cost Basis
         cost_basis_result = calcular_cost_basis(
             trades_df=df,
             excluded_operations=excluded_ops_set
         )
-        
-        # 4. Calcular Unrealized Gains
+
+        # Calcular Unrealized Gains
         unrealized_result = calcular_unrealized_gains(portfolio_result, cost_basis_result)
-        
-        # 5. Calcular Realized Gains
+
+        # Calcular Realized Gains
         realized_result = calcular_realized_gains(
             trades_df=df,
             excluded_operations=excluded_ops_set
         )
-        
-        # 6. Extraer totales
+
+        # Extraer totales
         portfolio_value = portfolio_result.get('totales', {}).get('total_portfolio_value', 0)
         total_invested = cost_basis_result.get('totales', {}).get('total_cost_basis', 0)
         unrealized_gains_total = unrealized_result.get('totales', {}).get('total_unrealized_gains', 0)
         realized_gains_total = realized_result.get('totales', {}).get('total_realized_gains', 0)
         total_fees = cost_basis_result.get('totales', {}).get('total_fees', 0)
 
-        # 7. Extraer datos por asset
+        # Datos por asset
         portfolio_assets = portfolio_result.get('assets', {})
         cost_basis_assets = cost_basis_result.get('assets', {})
         unrealized_assets = unrealized_result.get('assets', {})
         realized_assets = realized_result.get('assets', {})
-        
-        # 8. Crear portfolio array compatible con frontend
+
+        # Crear portfolio array
         portfolio_array = []
         all_assets = set()
         all_assets.update(portfolio_assets.keys())
         all_assets.update(cost_basis_assets.keys())
         all_assets.update(unrealized_assets.keys())
         all_assets.update(realized_assets.keys())
-        
+
         for asset in all_assets:
-            # Datos del portfolio value
             portfolio_data = portfolio_assets.get(asset, {})
             current_value = portfolio_data.get('portfolio_value', 0)
             current_price = portfolio_data.get('precio_actual', 0)
             amount = portfolio_data.get('cantidad_actual', 0)
-            
-            # Datos del cost basis
+
             cost_data = cost_basis_assets.get(asset, {})
-            total_invested_asset = cost_data.get('cost_basis', 0)  # Solo activos retenidos
+            total_invested_asset = cost_data.get('cost_basis', 0)
             fees_paid = cost_data.get('fees_incluidos', 0)
-            inversion_historica = cost_data.get('inversion_historica_total', total_invested_asset)  # Inversión histórica total
-            
-            # Datos de gains
+            inversion_historica = cost_data.get('inversion_historica_total', total_invested_asset)
+
             unrealized_data = unrealized_assets.get(asset, {})
             unrealized_gains_asset = unrealized_data.get('unrealized_gains', 0)
-            
+
             realized_data = realized_assets.get(asset, {})
             realized_gains_asset = realized_data.get('realized_gains', 0)
-            
-            # Calcular métricas
+
             net_profit_asset = realized_gains_asset + unrealized_gains_asset
-            pnl_eur = current_value - total_invested_asset  # PnL tradicional (solo activos retenidos)
+            pnl_eur = current_value - total_invested_asset
             pnl_percent = (pnl_eur / total_invested_asset * 100) if total_invested_asset > 0 else 0
-            # ROI corregido: usar inversión histórica total para el net_profit_percent
             net_profit_percent = (net_profit_asset / inversion_historica * 100) if inversion_historica > 0 else 0
-            
-            # Solo incluir assets con datos relevantes
+
             if amount > 0 or total_invested_asset > 0 or realized_gains_asset != 0:
                 portfolio_array.append({
                     'asset': asset,
@@ -1359,21 +1603,21 @@ async def upload_csv_and_get_portfolio(
                     'net_profit': net_profit_asset,
                     'net_profit_percent': net_profit_percent
                 })
-        
-        # 9. Calcular KPIs consolidados
+
+        # KPIs
         crypto_value = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'crypto')
         liquidity = sum(item['current_value'] for item in portfolio_array if item['asset_type'] == 'fiat')
         net_profit = realized_gains_total + unrealized_gains_total
         net_profit_percentage = (net_profit / total_invested * 100) if total_invested > 0 else 0
-        
-        # 10. Generar Timeline usando cache híbrido (optimizado)
+
+        # Timeline
         timeline_start = time.time()
         print(f"📅 [TIMELINE] Iniciando timeline con filtros: {start_date} to {end_date}")
         timeline_data = calcular_timeline_con_cache_hibrido(df, start_date, end_date)
         timeline_time = time.time() - timeline_start
         print(f"⏱️ [TIMELINE] Completado en {timeline_time:.3f}s - {len(timeline_data)} días generados")
-        
-        # Sobreescribir el último entry del timeline con precios reales de Kraken
+
+        # Sobreescribir último entry del timeline con precios reales
         if timeline_data:
             last_entry = timeline_data[-1]
             real_time_assets_con_valor = {}
@@ -1389,24 +1633,18 @@ async def upload_csv_and_get_portfolio(
                     }
             last_entry['assets_con_valor'] = real_time_assets_con_valor
             last_entry['value'] = portfolio_value
-            # Keep last_entry['cost'] as the timeline's own FIFO cost basis (same as what KPIGrid uses)
-            # Compute unrealized using real-time value minus the timeline's FIFO cost basis
-            # This ensures the tooltip matches the KPIGrid which also uses the timeline FIFO
             timeline_cost_basis = last_entry['cost']
-            timeline_realized = last_entry['realized_gain_period']  # from realized_gain_acumulado
+            timeline_realized = last_entry['realized_gain_period']
             timeline_unrealized = portfolio_value - timeline_cost_basis
             last_entry['unrealized_gain'] = timeline_unrealized
             last_entry['total_gain'] = timeline_unrealized + timeline_realized
 
-        # 11. Tiempo total de procesamiento
         total_time = time.time() - start_time
-        # print(f"⏱️ [TOTAL] Endpoint procesado en {total_time:.3f}s")
-        
-        # 12. Respuesta final
+
         response_data = {
             'portfolio_data': portfolio_array,
             'timeline': timeline_data,
-            'asset_mapping': dynamic_asset_mapping,  # Include dynamic asset mapping for frontend
+            'asset_mapping': dynamic_asset_mapping,
             'kpis': {
                 'total_invested': total_invested,
                 'current_value': portfolio_value,
@@ -1418,28 +1656,139 @@ async def upload_csv_and_get_portfolio(
                 'unrealized_gains': unrealized_gains_total,
                 'unrealized_percentage': (unrealized_gains_total / total_invested * 100) if total_invested > 0 else 0
             },
-            'data_source': 'csv_v2',
+            'data_source': 'processed',
             'version': '2.0.0',
             'price_captured_at': datetime.now(timezone.utc).isoformat()
         }
-        
-        # Añadir información de tipos de operaciones si está disponible
-        if 'operation_types_info' in globals() and operation_types_info:
-            response_data['operation_types'] = operation_types_info
-            
+
         return response_data
-        
-    except TimeoutError as e:
-        signal.alarm(0)  # Cancelar timeout
-        raise HTTPException(status_code=408, detail=str(e))
-    except Exception as e:
-        signal.alarm(0)  # Cancelar timeout
-        return {"error": f"Error procesando CSV: {str(e)}"}
+
+    except Exception:
+        raise
     finally:
-        signal.alarm(0)  # Asegurar que se cancele el timeout
+        elapsed = time.time() - start_time
+        if elapsed > 60:
+            raise TimeoutError("Processing took too long.")
+
+
+@app.post("/api/portfolio")
+@limiter.limit("10/minute")
+async def get_portfolio_from_api(request: Request, request_data: dict):
+    """
+    Endpoint que recibe API key + secret, consulta trades de Kraken
+    y procesa el portfolio usando el mismo pipeline que el CSV.
+    """
+    api_key = request_data.get('api_key', '').strip()
+    api_secret = request_data.get('api_secret', '').strip()
+
+    client_ip = get_remote_address(request)
+    if not api_key or not api_secret:
+        security_log.warning(f"API key submission with missing credentials from {client_ip}")
+        return {"error": "API key and secret are required"}
+
+    try:
+        security_log.info(f"API key submission from {client_ip}")
+        print(f"🔑 [API] Fetching trades from Kraken API...")
+        df = await _fetch_kraken_trades(api_key, api_secret)
+        result = _process_trades_dataframe(df, set(), None, None)
+        result['data_source'] = 'kraken_api'
+        return result
+    except ValueError as e:
+        security_log.warning(f"API auth failed from {client_ip}: {e}")
+        return {"error": "Invalid API credentials or request."}
+    except Exception as e:
+        print(f"❌ [API] Error: {e}")
+        return {"error": "Error connecting to Kraken. Please try again later."}
+
+
+@app.post("/api/portfolio/csv")
+@limiter.limit("10/minute")
+async def upload_csv_and_get_portfolio(
+    request: Request,
+    csv_file: UploadFile = File(...),
+    excluded_operations: Optional[str] = Form(None),
+    start_date: Optional[str] = Form(None),
+    end_date: Optional[str] = Form(None)
+):
+    """
+    Endpoint principal que procesa CSV y retorna KPIs usando funciones modulares
+    """
+    client_ip = get_remote_address(request)
+    print(f"🚀 [ENDPOINT] Received CSV request - start_date: {start_date}, end_date: {end_date}")
+    security_log.info(f"CSV upload from {client_ip} — filename: {csv_file.filename}, content_type: {csv_file.content_type}")
+
+    # Validar tipo de archivo
+    if csv_file.content_type and csv_file.content_type not in ("text/csv", "application/vnd.ms-excel", "application/octet-stream"):
+        security_log.warning(f"CSV upload rejected from {client_ip} — invalid content_type: {csv_file.content_type}")
+        return {"error": "El archivo debe ser un CSV válido."}
+
+    try:
+        # 1. Leer CSV con límite de tamaño (10 MB)
+        MAX_CSV_SIZE = 10 * 1024 * 1024
+        contents = await csv_file.read()
+        if len(contents) > MAX_CSV_SIZE:
+            return {"error": "El archivo CSV excede el límite de 10 MB."}
+
+        try:
+            csv_text = contents.decode('utf-8')
+        except UnicodeDecodeError:
+            return {"error": "El archivo no tiene codificación UTF-8 válida."}
+
+        df = pd.read_csv(io.StringIO(csv_text))
+
+        # Validar columnas requeridas
+        REQUIRED_COLUMNS = {"pair", "time", "type", "cost", "fee", "vol"}
+        missing = REQUIRED_COLUMNS - set(df.columns)
+        if missing:
+            return {"error": f"Columnas faltantes en el CSV: {', '.join(sorted(missing))}"}
+
+        # Validar límite de filas (50k)
+        MAX_ROWS = 50_000
+        if len(df) > MAX_ROWS:
+            return {"error": f"El CSV tiene {len(df)} filas. El límite es {MAX_ROWS}."}
+
+        # 1.5. Procesar excluded_operations
+        excluded_ops_set = _parse_excluded_operations(excluded_operations)
+
+        # Procesar con pipeline compartido
+        result = _process_trades_dataframe(df, excluded_ops_set, start_date, end_date)
+        result['data_source'] = 'csv_v2'
+        return result
+
+    except TimeoutError:
+        raise HTTPException(status_code=408, detail="Processing timed out. Try a smaller CSV.")
+    except Exception as e:
+        print(f"❌ [CSV] Error: {e}")
+        return {"error": "Error processing CSV file. Please check the format and try again."}
+
+@app.get("/api/forex-rates")
+@limiter.limit("30/minute")
+async def get_forex_rates(request: Request):
+    """Tipos de cambio EUR→USD/GBP/CAD a tiempo real desde Kraken"""
+    try:
+        url = "https://api.kraken.com/0/public/Ticker?pair=EURUSD,EURGBP,EURCAD"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        rates = {}
+        if 'result' in data:
+            for pair_key, ticker in data['result'].items():
+                price = float(ticker['c'][0])
+                pk = pair_key.upper()
+                if 'USD' in pk:
+                    rates['USD'] = price
+                elif 'GBP' in pk:
+                    rates['GBP'] = price
+                elif 'CAD' in pk:
+                    rates['CAD'] = price
+        return rates
+    except Exception as e:
+        print(f"❌ [FOREX] Error obteniendo tipos de cambio: {e}")
+        return {'USD': 1.0, 'GBP': 1.0, 'CAD': 1.0}
+
 
 @app.get("/api/prices/current")
-async def get_current_prices(assets: str):
+@limiter.limit("30/minute")
+async def get_current_prices(request: Request, assets: str):
     """
     Precios actuales para los assets solicitados.
     Cache compartido server-side con TTL de 60s — protege la API de Kraken
@@ -1450,11 +1799,15 @@ async def get_current_prices(assets: str):
     now = datetime.now(timezone.utc)
     asset_list = [a.strip() for a in assets.split(",") if a.strip()]
 
+    # Registrar assets para el background refresh
+    _tracked_assets.update(asset_list)
+
     # Devolver cache si está fresco
     if _price_cache["fetched_at"]:
         age = (now - _price_cache["fetched_at"]).total_seconds()
         if age < PRICE_CACHE_TTL:
             prices = {a: _price_cache["prices"].get(a) for a in asset_list}
+            print(f"[Prices] Cache hit ({int(age)}s ago) — {len(asset_list)} assets")
             return {
                 "prices": prices,
                 "fetched_at": _price_cache["fetched_at"].isoformat(),
@@ -1464,6 +1817,7 @@ async def get_current_prices(assets: str):
 
     # Fetch fresco desde Kraken
     try:
+        print(f"[Prices] Kraken API call — {len(asset_list)} assets: {', '.join(asset_list)}")
         if AIOHTTP_AVAILABLE:
             fresh_prices = await get_public_kraken_prices_from_pairs_async(asset_list)
         else:
@@ -1471,6 +1825,7 @@ async def get_current_prices(assets: str):
 
         _price_cache["prices"].update(fresh_prices)
         _price_cache["fetched_at"] = now
+        print(f"[Prices] Kraken API OK — {len(fresh_prices)} precios obtenidos")
 
         return {
             "prices": {a: fresh_prices.get(a) for a in asset_list},
@@ -1487,12 +1842,15 @@ async def get_current_prices(assets: str):
                 "from_cache": True,
                 "stale": True
             }
-        raise HTTPException(status_code=503, detail=f"Price service unavailable: {str(e)}")
+        print(f"❌ [PRICES] Error: {e}")
+        raise HTTPException(status_code=503, detail="Price service unavailable. Please try again later.")
 
 
 @app.get("/api/test")
 async def test_functions():
     """Endpoint para probar las funciones modulares"""
+    if _is_production:
+        raise HTTPException(status_code=404, detail="Not found")
     try:
         # Ejecutar las pruebas
         df = pd.read_csv('trades.csv')
@@ -1521,5 +1879,6 @@ if __name__ == "__main__":
         ejecutar_todas_las_pruebas()
     else:
         # Modo servidor
-        print("🚀 Iniciando Portfolio Visualizer...")
-        uvicorn.run(app, host="0.0.0.0", port=8001)
+        port = int(os.environ.get("PORT", 8001))
+        print(f"🚀 Iniciando Portfolio Visualizer en puerto {port}...")
+        uvicorn.run(app, host="0.0.0.0", port=port)

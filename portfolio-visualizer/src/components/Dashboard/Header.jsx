@@ -6,28 +6,46 @@ const Header = ({
   activeSection,
   onSectionChange,
   onBackToForm,
-  onToggleTheme,
   sidebarOpen,
   onRefreshPrices,
   priceTimestamp,
-  disabledOpsCount = 0
+  disabledOpsCount = 0,
+  hasData = true
 }) => {
   const [refreshState, setRefreshState] = useState('idle');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState('success'); // 'success' | 'warning'
 
   const handleRefresh = async () => {
     if (refreshState === 'loading' || !onRefreshPrices) return;
     setRefreshState('loading');
     const result = await onRefreshPrices();
-    const isLimited = result?.fromCache;
-    setRefreshState(isLimited ? 'limited' : 'success');
+    const isError = result?.error || result == null;
+    const fromCache = result?.fromCache;
+    const cacheAge = result?.cacheAge || 0;
 
-    // Toast message
-    setToastMessage(isLimited ? 'Rate limited — cached prices' : 'Prices updated');
+    let state, msg;
+    if (isError) {
+      state = 'limited';
+      msg = 'Error — backend unreachable';
+    } else if (fromCache && cacheAge < 15) {
+      state = 'success';
+      msg = `Prices up to date (${cacheAge}s ago)`;
+    } else if (fromCache) {
+      state = 'limited';
+      const ttlLeft = Math.max(0, 300 - cacheAge);
+      msg = `Cached — next refresh in ~${ttlLeft}s`;
+    } else {
+      state = 'success';
+      msg = 'Prices updated';
+    }
+
+    setRefreshState(state);
+    setToastMessage(msg);
+    setToastType(state === 'success' ? 'success' : 'warning');
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2200);
-
     setTimeout(() => setRefreshState('idle'), 1800);
   };
 
@@ -41,10 +59,12 @@ const Header = ({
   return (
     <>
       <div style={{
-        position: 'relative',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10100,
         width: '100%',
-        height: '130px',
-        background: 'rgba(0,0,0,0.92)',
+        height: '90px',
+        background: '#000000',
         backdropFilter: 'blur(24px)',
         borderBottom: `1px solid ${theme.borderColor}`,
         /* El menú se posiciona con paddingTop para tener margen arriba.
@@ -52,7 +72,7 @@ const Header = ({
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        paddingTop: '68px',   /* margen visible encima del menú */
+        paddingTop: '38px',   /* margen visible encima del menú */
         paddingRight: sidebarOpen ? '350px' : '0',
         transition: 'padding-right 0.45s cubic-bezier(0.4,0,0.2,1)',
         boxSizing: 'border-box',
@@ -91,15 +111,29 @@ const Header = ({
         </button>
 
         {/* Tabs — centro, se posicionan con paddingTop del padre */}
-        <SectionTabs
-          activeSection={activeSection}
-          onSectionChange={onSectionChange}
-          theme={theme}
-          disabledOpsCount={disabledOpsCount}
-        />
+        {hasData ? (
+          <SectionTabs
+            activeSection={activeSection}
+            onSectionChange={onSectionChange}
+            theme={theme}
+            disabledOpsCount={disabledOpsCount}
+          />
+        ) : (
+          <h2 style={{
+            margin: 0,
+            fontSize: '2.1rem',
+            fontWeight: 'normal',
+            fontVariationSettings: "'wght' 510",
+            color: theme.textPrimary,
+            fontFamily: "'Inter', sans-serif",
+            letterSpacing: '1px',
+            textTransform: 'uppercase',
+            textShadow: '0 0 8px rgba(255,255,255,0.3), 0 0 12px rgba(255,255,255,0.2)',
+          }}>Docs</h2>
+        )}
 
-        {/* Derecha — anclado al fondo del header */}
-        <div style={{
+        {/* Derecha — anclado al fondo del header (solo en overview) */}
+        {hasData && activeSection === 'overview' && <div style={{
           position: 'absolute',
           right: sidebarOpen ? '370px' : '2.5rem',
           bottom: '16px',
@@ -121,7 +155,7 @@ const Header = ({
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              color: refreshState === 'idle' ? '#ffffff' : refreshColor,
+              color: refreshColor,
               transition: 'color 0.2s ease',
             }}
           >
@@ -139,44 +173,7 @@ const Header = ({
             </span>
           </button>
 
-          {/* Separador */}
-          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.18)' }} />
-
-          {/* Theme Toggle */}
-          <button
-            onClick={onToggleTheme}
-            style={{
-              width: '62px',
-              height: '32px',
-              background: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '20px',
-              cursor: 'pointer',
-              transition: 'border-color 0.2s ease',
-              padding: '3px',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
-          >
-            <div style={{
-              width: '24px',
-              height: '24px',
-              background: '#4b5563',
-              borderRadius: '50%',
-              transition: 'transform 0.3s ease',
-              transform: theme.bg === '#000000' ? 'translateX(0)' : 'translateX(28px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '13px',
-            }}>
-              {theme.bg === '#000000' ? '🌙' : '☀️'}
-            </div>
-          </button>
-
-        </div>
+        </div>}
       </div>
 
       {/* Toast "Prices updated" — fixed bottom-right */}
@@ -186,13 +183,13 @@ const Header = ({
           bottom: '24px',
           right: '24px',
           background: 'rgba(0, 0, 0, 0.92)',
-          border: `1px solid ${toastMessage.includes('limited') ? '#f59e0b' : '#00ff88'}`,
+          border: `1px solid ${toastType === 'warning' ? '#f59e0b' : '#00ff88'}`,
           borderRadius: '8px',
           padding: '10px 18px',
           fontSize: '13px',
           fontFamily: 'monospace',
           fontWeight: '600',
-          color: toastMessage.includes('limited') ? '#f59e0b' : '#00ff88',
+          color: toastType === 'warning' ? '#f59e0b' : '#00ff88',
           whiteSpace: 'nowrap',
           animation: 'toast-slide 2.2s ease-out forwards',
           pointerEvents: 'none',

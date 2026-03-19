@@ -10,7 +10,8 @@ const ASSET_LOGO_COLORS = {
   SOL: '#9945FF', // Solana Purple
   DOT: '#E6007A', // Polkadot Pink
   LINK: '#375BD2', // Chainlink Blue
-  MATIC: '#8247E5', // Polygon Purple
+  MATIC: '#8247E5', // Polygon Purple (legacy)
+  POL: '#8247E5', // Polygon Purple
   AVAX: '#E84142', // Avalanche Red
   ATOM: '#2E3148', // Cosmos Dark Blue
   UNI: '#FF007A', // Uniswap Pink
@@ -90,8 +91,15 @@ export const KRAKEN_ASSETS = {
   },
   'MATIC': {
     name: 'Polygon',
-    symbol: 'MATIC', 
+    symbol: 'MATIC',
     color: ASSET_LOGO_COLORS.MATIC,
+    category: 'cryptocurrency',
+    logo: 'matic.png'
+  },
+  'POL': {
+    name: 'Polygon',
+    symbol: 'POL',
+    color: ASSET_LOGO_COLORS.POL,
     category: 'cryptocurrency',
     logo: 'matic.png'
   },
@@ -278,6 +286,7 @@ export const getAssetLogo = (symbol, size = 'small') => {
     'DOT': 'https://coin-images.coingecko.com/coins/images/12171/small/polkadot.png',
     'LINK': 'https://coin-images.coingecko.com/coins/images/877/small/chainlink-new-logo.png',
     'MATIC': 'https://coin-images.coingecko.com/coins/images/4713/small/matic-token-icon.png',
+    'POL': 'https://coin-images.coingecko.com/coins/images/4713/small/matic-token-icon.png',
     'AVAX': 'https://coin-images.coingecko.com/coins/images/12559/small/avalanche-avax-logo.png',
     'ATOM': 'https://coin-images.coingecko.com/coins/images/1481/small/cosmos_hub.png',
     'UNI': 'https://coin-images.coingecko.com/coins/images/12504/small/uniswap-uni.png',

@@ -60,7 +60,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         minWidth: '150px',
         height: '110px', // Altura reducida para menos margen inferior
         overflow: 'hidden', // Contener el contenido dentro del KPI
-        border: `1px solid ${isCardHovered ? '#00ff88' : 'transparent'}`, // Borde verde fosforito en hover
+        border: `1px solid ${isCardHovered ? (theme.accentPrimary || '#00ff88') : 'transparent'}`, // Borde verde fosforito en hover
         borderRadius: '12px', // Bordes redondeados
         padding: '8px 6px', // Padding simétrico: más arriba/abajo, menos laterales
         transition: 'all 0.3s ease', // Transición suave para efectos hover
@@ -80,7 +80,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
             left: '0px', // Alineado con el left del KPI
             width: '100%', // Mismo ancho que el KPI
             height: '100%', // Misma altura que el KPI
-            backgroundColor: 'rgba(0, 0, 0, 0.95)', // Fondo negro
+            backgroundColor: theme.bg === '#000000' ? 'rgba(0, 0, 0, 0.95)' : 'rgba(255, 255, 255, 0.97)',
             border: '1px solid rgba(0, 255, 136, 0.4)',
             borderRadius: '12px', // Mismos bordes redondeados que el KPI
             padding: '8px', // Mismo padding que el KPI
@@ -141,7 +141,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
               width: '16px',
               height: '16px',
               borderRadius: '50%',
-              backgroundColor: isTooltipHovered ? '#00ff88' : 'rgba(255, 255, 255, 0.4)',
+              backgroundColor: isTooltipHovered ? (theme.accentPrimary || '#00ff88') : 'rgba(255, 255, 255, 0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -235,7 +235,7 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
 };
 
 // Main KPI Grid Component (LIMPIO)
-const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false }) => {
+const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false, currency = { symbol: '€', multiplier: 1 } }) => {
   
   // Estado para controlar el tamaño de la ventana
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -295,11 +295,6 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           const entryDateStr = entry.date.split('T')[0];
           return entryDateStr <= endDateStr; // All data up to end date (for accurate state)
         });
-        
-        // Mark that we're in period mode for special gain calculation
-        window.periodCalculationMode = true;
-        window.periodStartDate = startDateStr;
-        window.periodEndDate = endDateStr;
       }
     }
     
@@ -519,34 +514,36 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
     const unrealizedPercentText = `${formatEuropeanPercentage(Math.abs(unrealizedPercentage), 1)}`;
     const totalGainsPercentText = `${formatEuropeanPercentage(Math.abs(totalGainsPercentage), 1)}`;
 
+    const fmt = (v) => formatEuropeanCurrency(v * currency.multiplier, currency.symbol);
+
     // Datos estructurados para el hover del Net Profit
     const realizedData = {
-      value: `${realizedIsPositive ? '+' : ''}${formatEuropeanCurrency(realizedGains)}`,
+      value: `${realizedIsPositive ? '+' : ''}${fmt(realizedGains)}`,
       percent: realizedPercentText,
       isPositive: realizedIsPositive
     };
 
     const unrealizedData = {
-      value: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanCurrency(unrealizedGains)}`,
+      value: `${unrealizedIsPositive ? '+' : ''}${fmt(unrealizedGains)}`,
       percent: unrealizedPercentText,
       isPositive: unrealizedIsPositive
     };
 
     return {
-      totalInvested: formatEuropeanCurrency(kpis.total_invested),
-      currentValue: formatEuropeanCurrency(kpis.current_value),
-      profit: `${totalGainsIsPositive ? '+' : ''}${formatEuropeanCurrency(totalGains)}`, // Use totalGains instead of kpis.profit
-      profitPercent: totalGainsPercentText, // Use calculated total gains percentage
+      totalInvested: fmt(kpis.total_invested),
+      currentValue: fmt(kpis.current_value),
+      profit: `${totalGainsIsPositive ? '+' : ''}${fmt(totalGains)}`,
+      profitPercent: totalGainsPercentText,
       isPositive: totalGainsIsPositive,
-      liquidity: kpis.liquidity > 0 ? formatEuropeanCurrency(kpis.liquidity) : 'N/A',
-      fees: formatEuropeanCurrency(kpis.fees),
+      liquidity: kpis.liquidity > 0 ? fmt(kpis.liquidity) : 'N/A',
+      fees: fmt(kpis.fees),
       // Nuevos KPIs
-      realizedGains: `${realizedIsPositive ? '+' : ''}${formatEuropeanCurrency(realizedGains)}`,
+      realizedGains: `${realizedIsPositive ? '+' : ''}${fmt(realizedGains)}`,
       realizedIsPositive,
-      unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanCurrency(unrealizedGains)}`,
+      unrealizedGains: `${unrealizedIsPositive ? '+' : ''}${fmt(unrealizedGains)}`,
       unrealizedIsPositive,
       unrealizedPercent: `${unrealizedIsPositive ? '+' : ''}${formatEuropeanPercentage(unrealizedPercentage, 1)}`,
-      totalGains: `${totalGainsIsPositive ? '+' : ''}${formatEuropeanCurrency(totalGains)}`,
+      totalGains: `${totalGainsIsPositive ? '+' : ''}${fmt(totalGains)}`,
       totalGainsIsPositive,
       realizedData,
       unrealizedData

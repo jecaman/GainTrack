@@ -8,6 +8,12 @@ import { makeOpId } from '../../../../../utils/chartUtils';
 // Registrar escalas y plugins
 Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler, zoomPlugin);
 
+// Escape HTML to prevent XSS in innerHTML tooltip
+const escapeHtml = (str) => {
+  const s = String(str);
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+};
+
 
 
 // Plugin para mostrar punto y línea en hover con animación al salir
@@ -202,7 +208,7 @@ const hoverPlugin = {
         textY = y + 35; // Mover debajo del punto si está muy arriba
       }
       
-      ctx.font = 'bold 16px "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace';
+      ctx.font = 'bold 16px "JetBrains Mono", monospace';
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
       
@@ -383,11 +389,22 @@ Chart.register(hoverPlugin, hideGrayLinesPlugin, splitLinePlugin);
 
 const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, buttonStartDate, buttonEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, isInPointClickMode, setIsInPointClickMode, onFilterReset, isApplyingFromTimeline, viewMode: viewModeProp = 'both', onViewModeChange, showTotalInvested: showTotalInvestedProp = false, onShowTotalInvestedChange, periodMode: periodModeProp = 'day', onPeriodModeChange }) => {
   // Constantes de estilo reutilizables
+  const isDark = theme.bg === '#000000';
   const COLORS = {
-    HOVER_LIGHT: 'rgba(255, 255, 255, 0.12)',
-    HOVER_DEFAULT: 'rgba(255, 255, 255, 0.08)',
-    BACKGROUND_GLASS: 'rgba(255, 255, 255, 0.1)',
-    BACKGROUND_DARK: 'rgba(0, 0, 0, 0.4)'
+    HOVER_LIGHT: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+    HOVER_DEFAULT: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
+    BACKGROUND_GLASS: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    BACKGROUND_DARK: isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.85)',
+    TEXT: isDark ? '#ffffff' : '#111111',
+    TEXT_DIM: isDark ? 'rgba(245, 245, 245, 0.8)' : 'rgba(0, 0, 0, 0.6)',
+    TEXT_MUTED: isDark ? 'rgba(245, 245, 245, 0.6)' : 'rgba(0, 0, 0, 0.4)',
+    BORDER: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)',
+    BORDER_HOVER: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.2)',
+    BORDER_STRONG: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)',
+    BTN_INACTIVE: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+    BTN_INACTIVE_SM: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+    SHADOW: isDark ? '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)' : '0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.1)',
+    SHADOW_SM: isDark ? '0 2px 8px rgba(0, 0, 0, 0.1)' : '0 1px 4px rgba(0, 0, 0, 0.06)',
   };
 
   // Función centralizada para formatear fechas
@@ -449,6 +466,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
   const [isTooltipFrozen, setIsTooltipFrozen] = useState(false);
   const [isChartStabilizing, setIsChartStabilizing] = useState(false);
   const [popupBlocked, setPopupBlocked] = useState(false);
+  const [showFill, setShowFill] = useState(false);
   const popupTimeoutRef = useRef(null);
   
   const chartRef = useRef(null);
@@ -1140,7 +1158,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     // Skip if we're applying from timeline
     if (isApplyingFromTimeline) return;
     
-    // Compare timeline button dates with external filter dates
+    // Compare timeline dates with external filter dates
     const datesAreDifferent = startDate !== externalStartDate || endDate !== externalEndDate;
     
     // Only proceed if dates actually changed from what we last processed OR if we need to hide popup
@@ -1870,24 +1888,24 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     }
     
     const formatCurrency = (value) => {
-      return new Intl.NumberFormat('en-US', {
+      return escapeHtml(new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'EUR',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
-      }).format(value);
+      }).format(value));
     };
-    
+
     // Construir el contenido en una sola línea con estilos específicos y buen espaciado
     const profitColor = profit >= 0 ? '#00FF99' : '#ef4444';
     const profitTriangle = profit >= 0 ? '▲' : '▼'; // Mismo triángulo que los KPIs
-    
+
     const formatCurrencyEuroAfter = (value) => {
       const absValue = Math.abs(value);
-      return new Intl.NumberFormat('de-DE', {
+      return escapeHtml(new Intl.NumberFormat('de-DE', {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0
-      }).format(absValue) + '€';
+      }).format(absValue) + '€');
     };
     
     // Formatear fecha según el período seleccionado
@@ -1917,7 +1935,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           year: 'numeric'
         });
     }
-    
+    dateFormat = escapeHtml(dateFormat);
+
     let content;
     
     if (viewMode === 'balance') {
@@ -1930,7 +1949,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const labelFontSize = getTooltipFontSize(mainContentLength, 28); // Tamaño moderado
       const valueFontSize = getTooltipFontSize(mainContentLength, 28); // Tamaño moderado
       
-      content = `<span style="color: #ffffff; font-size: ${mainFontSize}; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${labelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content = `<span style="color: #ffffff; font-size: ${mainFontSize}; font-weight: 400; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${labelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profitLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${valueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
       
       // Desglose realized / unrealized — siempre acumulado desde el inicio
       let periodRealizedGain, periodUnrealizedGain;
@@ -1948,9 +1967,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const breakdownValueFontSize = valueFontSize; // Mismo tamaño que los valores principales
       
       // Añadir desglose al tooltip
-      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">UNREALIZED P&L</span>&nbsp;<span style="color: ${unrealizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${periodUnrealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodUnrealizedGain)}</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">UNREALIZED P&L</span>&nbsp;<span style="color: ${unrealizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${periodUnrealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodUnrealizedGain)}</span>`;
 
-      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">REALIZED P&L</span>&nbsp;<span style="color: ${realizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${periodRealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodRealizedGain)}</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(140, 140, 140, 0.7); font-size: ${breakdownLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">REALIZED P&L</span>&nbsp;<span style="color: ${realizedColor}; font-size: ${breakdownValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${periodRealizedGain >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(periodRealizedGain)}</span>`;
     } else {
       // Full View - mostrar portfolio value primero
       const portfolioLabel = 'PORTFOLIO VALUE';
@@ -1964,7 +1983,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const fullLabelFontSize = fullUniformFontSize; // Mismo tamaño  
       const fullValueFontSize = fullUniformFontSize; // Mismo tamaño
       
-      content = `<span style="color: #ffffff; font-size: ${fullMainFontSize}; font-weight: 400; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${fullLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${portfolioLabel}</span>&nbsp;<span style="font-size: ${fullValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
+      content = `<span style="color: #ffffff; font-size: ${fullMainFontSize}; font-weight: 400; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${dateFormat}</span>&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${fullLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${portfolioLabel}</span>&nbsp;<span style="font-size: ${fullValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(marketValue)}</span>`;
     }
     
     if (showTotalInvested && viewMode === 'both') {
@@ -1978,10 +1997,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       const bothValueFontSize = getTooltipFontSize(bothContentLength, 28); // Tamaño moderado
       
       // Layout simplificado: PORTFOLIO VALUE ya mostrado + COST BASIS + TOTAL P&L
-      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${costBasisLabel}</span>&nbsp;<span style="font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${costBasisLabel}</span>&nbsp;<span style="font-size: ${bothValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${formatCurrencyEuroAfter(investedValue)}</span>`;
       
       // Total P&L con porcentaje
-      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${totalLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
+      content += `&nbsp;&nbsp;<span style="color: rgba(160, 160, 160, 0.8); font-size: ${bothLabelFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${totalLabel}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profit >= 0 ? '+' : '-'}${formatCurrencyEuroAfter(profit)}</span>&nbsp;<span style="color: ${profitColor}; font-size: ${bothValueFontSize}; font-family: 'JetBrains Mono', monospace; vertical-align: baseline;">${profitTriangle}&nbsp;${Math.abs(profitPct).toFixed(1)}%</span>`;
     }
     // Las ventas ahora se muestran en tooltip separado al hacer hover sobre los puntos
     
@@ -2002,7 +2021,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         white-space: nowrap;
         display: flex;
         align-items: baseline;
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+        font-family: 'JetBrains Mono', monospace;
         font-size: 22px;
         font-weight: 700;
         opacity: 1;
@@ -2649,7 +2668,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         data: positiveData,
         borderColor: 'transparent',
         borderWidth: 0,
-        backgroundColor: 'transparent',
+        backgroundColor: showFill ? function(context) {
+          const chart = context.chart;
+          const { ctx, chartArea, scales } = chart;
+          if (!chartArea) return 'transparent';
+          // Gradiente desde la línea hacia y=0 (no todo el chartArea)
+          const yZero = scales.y ? scales.y.getPixelForValue(0) : chartArea.bottom;
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, yZero);
+          gradient.addColorStop(0, 'rgba(34, 197, 94, 0.28)');
+          gradient.addColorStop(0.7, 'rgba(34, 197, 94, 0.12)');
+          gradient.addColorStop(1, 'rgba(34, 197, 94, 0)');
+          return gradient;
+        } : 'transparent',
         fill: 'origin',
         tension: 0.15,
         pointRadius: 0,
@@ -2660,7 +2690,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         originalData: [...positiveData],
         spanGaps: false, // No conectar líneas cuando hay gaps (null values)
         animation: {
-          backgroundColor: false // Deshabilitar animación de gradiente en reset
+          backgroundColor: false
         }
       });
 
@@ -2670,7 +2700,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         data: negativeData,
         borderColor: 'transparent',
         borderWidth: 0,
-        backgroundColor: 'transparent',
+        backgroundColor: showFill ? function(context) {
+          const chart = context.chart;
+          const { ctx, chartArea, scales } = chart;
+          if (!chartArea) return 'transparent';
+          // Gradiente desde y=0 hacia abajo
+          const yZero = scales.y ? scales.y.getPixelForValue(0) : chartArea.top;
+          const gradient = ctx.createLinearGradient(0, yZero, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(239, 68, 68, 0)');
+          gradient.addColorStop(0.3, 'rgba(239, 68, 68, 0.12)');
+          gradient.addColorStop(1, 'rgba(239, 68, 68, 0.28)');
+          return gradient;
+        } : 'transparent',
         fill: 'origin',
         tension: 0.15,
         pointRadius: 0,
@@ -2681,7 +2722,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         originalData: [...negativeData],
         spanGaps: false, // No conectar líneas cuando hay gaps (null values)
         animation: {
-          backgroundColor: false // Deshabilitar animación de gradiente en reset
+          backgroundColor: false
         }
       });
 
@@ -2787,14 +2828,23 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     } else {
       // Modo normal: líneas con sombreado simple pero visible
       
-      // Cost Basis Shadow (área) - siempre completa cuando está visible
+      // Cost Basis Shadow (área) - siempre completa cuando está visible, blanco
       if (showTotalInvested) {
         datasets.push({
           label: 'Cost Basis Shadow',
           data: investedValues, // Siempre datos completos
           borderColor: 'transparent', // Sin línea
           borderWidth: 0,
-          backgroundColor: 'transparent',
+          backgroundColor: showFill ? function(context) {
+            const chart = context.chart;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return 'transparent';
+            const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
+            gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.08)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0.01)');
+            return gradient;
+          } : 'transparent',
           fill: 'origin',
           tension: 0.05,
           pointRadius: 0,
@@ -2806,7 +2856,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           order: 3, // Render detrás de ambas líneas
           skipDuringMouseMove: true, // No modificar durante el hover para mayor fluidez
           animation: {
-            backgroundColor: false // Deshabilitar animación de gradiente en reset
+            backgroundColor: false
           }
         });
       }
@@ -2858,13 +2908,22 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         });
       }
       
-      // Dataset para la sombra (área) - siempre completa, datos fijos para evitar líneas fantasma
+      // Dataset para la sombra (área) - siempre verde, datos fijos para evitar líneas fantasma
       datasets.push({
         label: 'Portfolio Shadow',
-        data: [...portfolioValues], // Copia fija de los datos completos
-        borderColor: 'transparent', // Sin línea visible
+        data: [...portfolioValues],
+        borderColor: 'transparent',
         borderWidth: 0,
-        backgroundColor: 'transparent',
+        backgroundColor: showFill ? function(context) {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'transparent';
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(34, 197, 94, 0.35)');
+          gradient.addColorStop(0.5, 'rgba(34, 197, 94, 0.18)');
+          gradient.addColorStop(1, 'rgba(34, 197, 94, 0.03)');
+          return gradient;
+        } : 'transparent',
         fill: 'origin',
         tension: 0.1,
         pointRadius: 0,
@@ -2873,11 +2932,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
         pointBorderColor: 'transparent',
         pointBorderWidth: 0,
         pointHoverBorderWidth: 0,
-        order: 2, // Render detrás de la línea
-        skipDuringMouseMove: true, // Marcar para no modificar durante mouse move
-        animation: {
-          backgroundColor: false // Deshabilitar animación de gradiente en reset
-        }
+        order: 2,
+        skipDuringMouseMove: true,
+        animation: { backgroundColor: false }
       });
 
       // Dataset para la línea principal - se corta dinámicamente
@@ -2938,7 +2995,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       return chartRef.current.data;
     }
     return createTimelineData();
-  }, [portfolioData, startDate, endDate, processedTimelineData, viewMode, showTotalInvested, isTooltipFrozen, excludedOperations, disabledOps]);
+  }, [portfolioData, startDate, endDate, processedTimelineData, viewMode, showTotalInvested, isTooltipFrozen, excludedOperations, disabledOps, showFill]);
   
   const getDynamicTimelineOptions = () => {
     return {
@@ -3294,9 +3351,9 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             background: COLORS.BACKGROUND_DARK,
             borderRadius: '14px',
             padding: '6px',
-            border: '2px solid rgba(255, 255, 255, 0.2)',
+            border: `2px solid ${COLORS.BORDER_STRONG}`,
             backdropFilter: 'blur(20px)',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.1)',
+            boxShadow: COLORS.SHADOW,
             minWidth: 'fit-content',
             flexShrink: 0
           }}>
@@ -3314,111 +3371,169 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               <button
                 onClick={() => setViewMode('both')}
                 style={{
-                  background: viewMode === 'both' 
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
-                    : 'rgba(255, 255, 255, 0.08)',
-                  border: viewMode === 'both' 
-                    ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '2px solid rgba(255, 255, 255, 0.15)',
+                  background: viewMode === 'both'
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))'
+                    : COLORS.BTN_INACTIVE,
+                  border: viewMode === 'both'
+                    ? '2px solid rgba(34, 197, 94, 0.7)'
+                    : `2px solid ${COLORS.BORDER}`,
                   borderRadius: '10px',
                   padding: '6px 10px',
-                  color: viewMode === 'both' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  color: viewMode === 'both' ? '#ffffff' : COLORS.TEXT_DIM,
                   fontSize: '13px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
                   backdropFilter: 'blur(10px)',
-                  boxShadow: viewMode === 'both' 
-                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
-                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                  boxShadow: viewMode === 'both'
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+                    : COLORS.SHADOW_SM
                 }}
                 onMouseEnter={(e) => {
                   if (viewMode !== 'both') {
-                    e.currentTarget.style.color = '#ffffff';
+                    e.currentTarget.style.color = COLORS.TEXT;
                     e.currentTarget.style.background = COLORS.HOVER_LIGHT;
-                    e.currentTarget.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                    e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                    e.currentTarget.style.borderColor = COLORS.BORDER_HOVER;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (viewMode !== 'both') {
-                    e.currentTarget.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.currentTarget.style.color = COLORS.TEXT_DIM;
                     e.currentTarget.style.background = COLORS.HOVER_DEFAULT;
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                    e.currentTarget.style.borderColor = COLORS.BORDER;
                   }
                 }}
               >
-                Full View
+                FULL VIEW
               </button>
-              
+
               <button
                 onClick={() => setViewMode('balance')}
                 style={{
-                  background: viewMode === 'balance' 
-                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))' 
-                    : 'rgba(255, 255, 255, 0.08)',
-                  border: viewMode === 'balance' 
-                    ? '2px solid rgba(34, 197, 94, 0.7)' 
-                    : '2px solid rgba(255, 255, 255, 0.15)',
+                  background: viewMode === 'balance'
+                    ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))'
+                    : COLORS.BTN_INACTIVE,
+                  border: viewMode === 'balance'
+                    ? '2px solid rgba(34, 197, 94, 0.7)'
+                    : `2px solid ${COLORS.BORDER}`,
                   borderRadius: '10px',
                   padding: '6px 10px',
-                  color: viewMode === 'balance' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  color: viewMode === 'balance' ? '#ffffff' : COLORS.TEXT_DIM,
                   fontSize: '13px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
                   backdropFilter: 'blur(10px)',
-                  boxShadow: viewMode === 'balance' 
-                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)' 
-                    : '0 2px 8px rgba(0, 0, 0, 0.1)'
+                  boxShadow: viewMode === 'balance'
+                    ? '0 4px 20px rgba(34, 197, 94, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.2)'
+                    : COLORS.SHADOW_SM
                 }}
                 onMouseEnter={(e) => {
                   if (viewMode !== 'balance') {
-                    e.currentTarget.style.color = '#ffffff';
+                    e.currentTarget.style.color = COLORS.TEXT;
                     e.currentTarget.style.background = COLORS.HOVER_LIGHT;
-                    e.currentTarget.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                    e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                    e.currentTarget.style.borderColor = COLORS.BORDER_HOVER;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (viewMode !== 'balance') {
-                    e.currentTarget.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.currentTarget.style.color = COLORS.TEXT_DIM;
                     e.currentTarget.style.background = COLORS.HOVER_DEFAULT;
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                    e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                    e.currentTarget.style.borderColor = COLORS.BORDER;
                   }
                 }}
               >
-                P&L View
+                P&L VIEW
               </button>
             </div>
             
-            {/* Botón para mostrar/ocultar Total Invested - con transición suave */}
+            {/* Cost Basis + Fill */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              opacity: viewMode === 'both' ? 1 : 0,
-              width: viewMode === 'both' ? '140px' : '0px',
-              overflow: 'hidden',
-              transition: 'all 0.25s ease-out',
-              pointerEvents: viewMode === 'both' ? 'auto' : 'none',
+              gap: '4px',
               marginRight: '10px'
             }}>
+              {/* Cost Basis — se oculta en P&L View */}
+              <div style={{
+                overflow: 'hidden',
+                opacity: viewMode === 'both' ? 1 : 0,
+                width: viewMode === 'both' ? 'auto' : '0px',
+                transition: 'all 0.25s ease-out',
+                pointerEvents: viewMode === 'both' ? 'auto' : 'none',
+              }}>
+                <button
+                  onClick={handleInvestedToggle}
+                  style={{
+                    background: showTotalInvested
+                      ? COLORS.HOVER_LIGHT
+                      : COLORS.BTN_INACTIVE_SM,
+                    border: showTotalInvested
+                      ? `1px solid ${COLORS.BORDER_HOVER}`
+                      : `1px solid ${COLORS.BORDER}`,
+                    borderRadius: '8px',
+                    padding: '5px 8px',
+                    color: showTotalInvested ? COLORS.TEXT : COLORS.TEXT_MUTED,
+                    fontSize: '13px',
+                    fontFamily: 'monospace',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    transition: 'all 0.25s ease-out',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: showTotalInvested
+                      ? '0 3px 12px rgba(255, 255, 255, 0.1)'
+                      : '0 1px 4px rgba(0, 0, 0, 0.1)',
+                    whiteSpace: 'nowrap'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = COLORS.HOVER_LIGHT;
+                    e.currentTarget.style.color = COLORS.TEXT;
+                    e.currentTarget.style.borderColor = COLORS.BORDER_HOVER;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = showTotalInvested ? COLORS.HOVER_LIGHT : COLORS.BTN_INACTIVE_SM;
+                    e.currentTarget.style.color = showTotalInvested ? COLORS.TEXT : COLORS.TEXT_MUTED;
+                    e.currentTarget.style.borderColor = showTotalInvested ? COLORS.BORDER_HOVER : COLORS.BORDER;
+                  }}
+                >
+                  <span style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: showTotalInvested
+                      ? 'linear-gradient(45deg, rgba(0, 255, 136, 1), rgba(34, 197, 94, 0.9))'
+                      : 'rgba(120, 120, 120, 0.5)',
+                    transition: 'all 0.3s ease',
+                    boxShadow: showTotalInvested
+                      ? '0 2px 8px rgba(0, 255, 136, 0.3), inset 0 1px 2px rgba(0, 255, 136, 0.5)'
+                      : 'none'
+                  }}></span>
+                  COST BASIS
+                </button>
+              </div>
+
+              {/* Fill */}
               <button
-                onClick={handleInvestedToggle}
+                onClick={() => setShowFill(prev => !prev)}
                 style={{
-                  background: showTotalInvested 
-                    ? 'rgba(255, 255, 255, 0.15)' 
-                    : 'rgba(255, 255, 255, 0.05)',
-                  border: showTotalInvested 
-                    ? '1px solid rgba(255, 255, 255, 0.3)' 
-                    : '1px solid rgba(255, 255, 255, 0.1)',
+                  background: showFill
+                    ? COLORS.HOVER_LIGHT
+                    : COLORS.BTN_INACTIVE_SM,
+                  border: showFill
+                    ? `1px solid ${COLORS.BORDER_HOVER}`
+                    : `1px solid ${COLORS.BORDER}`,
                   borderRadius: '8px',
                   padding: '5px 8px',
-                  color: showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)',
+                  color: showFill ? COLORS.TEXT : COLORS.TEXT_MUTED,
                   fontSize: '13px',
                   fontFamily: 'monospace',
                   fontWeight: '600',
@@ -3428,47 +3543,35 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                   alignItems: 'center',
                   gap: '6px',
                   backdropFilter: 'blur(10px)',
-                  boxShadow: showTotalInvested 
-                    ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
+                  boxShadow: showFill
+                    ? '0 3px 12px rgba(255, 255, 255, 0.1)'
                     : '0 1px 4px rgba(0, 0, 0, 0.1)',
                   whiteSpace: 'nowrap'
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = showTotalInvested 
-                    ? 'rgba(255, 255, 255, 0.18)' 
-                    : 'rgba(255, 255, 255, 0.1)';
-                  e.currentTarget.style.color = '#ffffff';
-                  e.currentTarget.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.12)';
-                  e.currentTarget.style.borderColor = showTotalInvested 
-                    ? 'rgba(255, 255, 255, 0.4)' 
-                    : 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.background = COLORS.HOVER_LIGHT;
+                  e.currentTarget.style.color = COLORS.TEXT;
+                  e.currentTarget.style.borderColor = COLORS.BORDER_HOVER;
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = showTotalInvested 
-                    ? 'rgba(255, 255, 255, 0.15)' 
-                    : 'rgba(255, 255, 255, 0.05)';
-                  e.currentTarget.style.color = showTotalInvested ? '#ffffff' : 'rgba(245, 245, 245, 0.6)';
-                  e.currentTarget.style.boxShadow = showTotalInvested 
-                    ? '0 3px 12px rgba(255, 255, 255, 0.1)' 
-                    : '0 1px 4px rgba(0, 0, 0, 0.1)';
-                  e.currentTarget.style.borderColor = showTotalInvested 
-                    ? 'rgba(255, 255, 255, 0.3)' 
-                    : 'rgba(255, 255, 255, 0.1)';
+                  e.currentTarget.style.background = showFill ? COLORS.HOVER_LIGHT : COLORS.BTN_INACTIVE_SM;
+                  e.currentTarget.style.color = showFill ? COLORS.TEXT : COLORS.TEXT_MUTED;
+                  e.currentTarget.style.borderColor = showFill ? COLORS.BORDER_HOVER : COLORS.BORDER;
                 }}
               >
                 <span style={{
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
-                  background: showTotalInvested 
-                    ? 'linear-gradient(45deg, rgba(200, 200, 200, 1), rgba(255, 255, 255, 0.9))' 
+                  background: showFill
+                    ? 'linear-gradient(45deg, rgba(0, 255, 136, 1), rgba(34, 197, 94, 0.9))'
                     : 'rgba(120, 120, 120, 0.5)',
                   transition: 'all 0.3s ease',
-                  boxShadow: showTotalInvested 
-                    ? '0 2px 8px rgba(255, 255, 255, 0.3), inset 0 1px 2px rgba(255, 255, 255, 0.5)' 
+                  boxShadow: showFill
+                    ? '0 2px 8px rgba(0, 255, 136, 0.3), inset 0 1px 2px rgba(0, 255, 136, 0.5)'
                     : 'none'
                 }}></span>
-                COST BASIS
+                FILL
               </button>
             </div>
 
@@ -3484,13 +3587,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 style={{
                   background: periodMode === 'day' 
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
-                    : 'rgba(255, 255, 255, 0.06)',
+                    : COLORS.BTN_INACTIVE_SM,
                   border: periodMode === 'day' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
-                    : '1px solid rgba(255, 255, 255, 0.12)',
+                    : `1px solid ${COLORS.BORDER}`,
                   borderRadius: '8px',
                   padding: '4px 8px',
-                  color: periodMode === 'day' ? '#ffffff' : 'rgba(245, 245, 245, 0.8)',
+                  color: periodMode === 'day' ? '#ffffff' : COLORS.TEXT_DIM,
                   fontSize: '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
@@ -3500,14 +3603,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 }}
                 onMouseEnter={(e) => {
                   if (periodMode !== 'day') {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                    e.currentTarget.style.color = '#ffffff';
+                    e.currentTarget.style.background = COLORS.HOVER_LIGHT;
+                    e.currentTarget.style.color = COLORS.TEXT;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (periodMode !== 'day') {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                    e.currentTarget.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.currentTarget.style.background = COLORS.BTN_INACTIVE_SM;
+                    e.currentTarget.style.color = COLORS.TEXT_DIM;
                   }
                 }}
               >
@@ -3526,19 +3629,19 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
                     : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
                       ? 'rgba(255, 255, 255, 0.02)' 
-                      : 'rgba(255, 255, 255, 0.06)',
+                      : COLORS.BTN_INACTIVE_SM,
                   border: periodMode === 'week' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
                     : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
-                      ? '1px solid rgba(255, 255, 255, 0.04)' 
-                      : '1px solid rgba(255, 255, 255, 0.12)',
+                      ? `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`
+                      : `1px solid ${COLORS.BORDER}`,
                   borderRadius: '8px',
                   padding: '4px 8px',
                   color: periodMode === 'week' 
                     ? '#ffffff' 
                     : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
-                      ? 'rgba(245, 245, 245, 0.3)' 
-                      : 'rgba(245, 245, 245, 0.8)',
+                      ? COLORS.TEXT_MUTED
+                      : COLORS.TEXT_DIM,
                   fontSize: '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
@@ -3549,14 +3652,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 }}
                 onMouseEnter={(e) => {
                   if (periodMode !== 'week' && canAggregate('week') && isAggregationCompatible('week', activeQuickFilter)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                    e.currentTarget.style.color = '#ffffff';
+                    e.currentTarget.style.background = COLORS.HOVER_LIGHT;
+                    e.currentTarget.style.color = COLORS.TEXT;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (periodMode !== 'week' && canAggregate('week') && isAggregationCompatible('week', activeQuickFilter)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                    e.currentTarget.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.currentTarget.style.background = COLORS.BTN_INACTIVE_SM;
+                    e.currentTarget.style.color = COLORS.TEXT_DIM;
                   }
                 }}
               >
@@ -3575,19 +3678,19 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
                     : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
                       ? 'rgba(255, 255, 255, 0.02)' 
-                      : 'rgba(255, 255, 255, 0.06)',
+                      : COLORS.BTN_INACTIVE_SM,
                   border: periodMode === 'month' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
                     : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
-                      ? '1px solid rgba(255, 255, 255, 0.04)' 
-                      : '1px solid rgba(255, 255, 255, 0.12)',
+                      ? `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`
+                      : `1px solid ${COLORS.BORDER}`,
                   borderRadius: '8px',
                   padding: '4px 8px',
                   color: periodMode === 'month' 
                     ? '#ffffff' 
                     : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
-                      ? 'rgba(245, 245, 245, 0.3)' 
-                      : 'rgba(245, 245, 245, 0.8)',
+                      ? COLORS.TEXT_MUTED
+                      : COLORS.TEXT_DIM,
                   fontSize: '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
@@ -3598,14 +3701,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 }}
                 onMouseEnter={(e) => {
                   if (periodMode !== 'month' && canAggregate('month') && isAggregationCompatible('month', activeQuickFilter)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                    e.currentTarget.style.color = '#ffffff';
+                    e.currentTarget.style.background = COLORS.HOVER_LIGHT;
+                    e.currentTarget.style.color = COLORS.TEXT;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (periodMode !== 'month' && canAggregate('month') && isAggregationCompatible('month', activeQuickFilter)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                    e.currentTarget.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.currentTarget.style.background = COLORS.BTN_INACTIVE_SM;
+                    e.currentTarget.style.color = COLORS.TEXT_DIM;
                   }
                 }}
               >
@@ -3624,19 +3727,19 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.6), rgba(16, 185, 129, 0.7))' 
                     : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
                       ? 'rgba(255, 255, 255, 0.02)' 
-                      : 'rgba(255, 255, 255, 0.06)',
+                      : COLORS.BTN_INACTIVE_SM,
                   border: periodMode === 'year' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
                     : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
-                      ? '1px solid rgba(255, 255, 255, 0.04)' 
-                      : '1px solid rgba(255, 255, 255, 0.12)',
+                      ? `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`
+                      : `1px solid ${COLORS.BORDER}`,
                   borderRadius: '8px',
                   padding: '4px 8px',
                   color: periodMode === 'year' 
                     ? '#ffffff' 
                     : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
-                      ? 'rgba(245, 245, 245, 0.3)' 
-                      : 'rgba(245, 245, 245, 0.8)',
+                      ? COLORS.TEXT_MUTED
+                      : COLORS.TEXT_DIM,
                   fontSize: '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
@@ -3647,14 +3750,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 }}
                 onMouseEnter={(e) => {
                   if (periodMode !== 'year' && canAggregate('year') && isAggregationCompatible('year', activeQuickFilter)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
-                    e.currentTarget.style.color = '#ffffff';
+                    e.currentTarget.style.background = COLORS.HOVER_LIGHT;
+                    e.currentTarget.style.color = COLORS.TEXT;
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (periodMode !== 'year' && canAggregate('year') && isAggregationCompatible('year', activeQuickFilter)) {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                    e.currentTarget.style.color = 'rgba(245, 245, 245, 0.8)';
+                    e.currentTarget.style.background = COLORS.BTN_INACTIVE_SM;
+                    e.currentTarget.style.color = COLORS.TEXT_DIM;
                   }
                 }}
               >
@@ -3680,7 +3783,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                   boxShadow: '0 0 8px rgba(34, 197, 94, 0.4)'
                 }}></div>
                 <span style={{ 
-                  color: '#f5f5f5', 
+                  color: COLORS.TEXT,
                   fontWeight: '600',
                   fontSize: '15px'
                 }}>PORTFOLIO VALUE</span>
@@ -3701,7 +3804,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                   borderRadius: '2px'
                 }}></div>
                 <span style={{ 
-                  color: '#f5f5f5', 
+                  color: COLORS.TEXT,
                   fontWeight: '600',
                   fontSize: '15px'
                 }}>COST BASIS</span>
@@ -3723,7 +3826,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                   boxShadow: '0 0 8px rgba(34, 197, 94, 0.4)'
                 }}></div>
                 <span style={{ 
-                  color: '#f5f5f5', 
+                  color: COLORS.TEXT,
                   fontWeight: '600',
                   fontSize: '15px'
                 }}>TOTAL P&L</span>
@@ -3744,8 +3847,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             {/* Botón fecha inicio */}
             <div style={{ position: 'relative' }} data-calendar id="start-date-container">
               <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
+                background: COLORS.BTN_INACTIVE,
+                border: `1px solid ${COLORS.BORDER}`,
                 borderRadius: '10px',
                 padding: (() => {
                   const { defaultStartDate } = getDefaultDates();
@@ -3753,7 +3856,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 })(),
                 height: '37px',
                 boxSizing: 'border-box',
-                color: '#ffffff',
+                color: COLORS.TEXT,
                 fontSize: '13px',
                 fontFamily: 'monospace',
                 fontWeight: '700',
@@ -3775,14 +3878,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.02)';
                 e.currentTarget.style.background = COLORS.HOVER_LIGHT;
-                e.currentTarget.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                e.currentTarget.style.borderColor = COLORS.BORDER_HOVER;
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.background = COLORS.BTN_INACTIVE;
+                e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                e.currentTarget.style.borderColor = COLORS.BORDER;
               }}
               onClick={() => {
                 setCalendarType('start');
@@ -4319,19 +4422,19 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             
             {/* TO separador */}
             <span style={{
-              color: '#ffffff',
+              color: COLORS.TEXT,
               fontSize: '11px',
               fontFamily: 'monospace',
               letterSpacing: '1.5px',
               fontWeight: '600',
               margin: '0 4px'
             }}>TO</span>
-            
+
             {/* Botón fecha fin */}
             <div style={{ position: 'relative' }} data-calendar>
               <div style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
+                background: COLORS.BTN_INACTIVE,
+                border: `1px solid ${COLORS.BORDER}`,
                 borderRadius: '10px',
                 padding: (() => {
                   const { defaultEndDate } = getDefaultDates();
@@ -4339,14 +4442,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 })(),
                 height: '37px',
                 boxSizing: 'border-box',
-                color: '#ffffff',
+                color: COLORS.TEXT,
                 fontSize: '13px',
                 fontFamily: 'monospace',
                 fontWeight: '700',
                 cursor: 'pointer',
                 transition: 'all 0.25s ease-out',
                 backdropFilter: 'blur(10px)',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                boxShadow: COLORS.SHADOW_SM,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
@@ -4361,14 +4464,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.02)';
                 e.currentTarget.style.background = COLORS.HOVER_LIGHT;
-                e.currentTarget.style.boxShadow = '0 3px 12px rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+                e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                e.currentTarget.style.borderColor = COLORS.BORDER_HOVER;
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.background = COLORS.BTN_INACTIVE;
+                e.currentTarget.style.boxShadow = COLORS.SHADOW_SM;
+                e.currentTarget.style.borderColor = COLORS.BORDER;
               }}
               onClick={() => {
                 setCalendarType('end');
@@ -4470,12 +4573,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           zIndex: 10
         }}>
           {[
-            { key: 'all', label: 'All Time' },
-            { key: '1y', label: '1 Year' },
-            { key: '6m', label: '6 Months' },
-            { key: '3m', label: '3 Months' },
-            { key: '1m', label: '1 Month' },
-            { key: '1w', label: '1 Week' }
+            { key: 'all', label: 'ALL TIME' },
+            { key: '1y', label: '1 YEAR' },
+            { key: '6m', label: '6 MONTHS' },
+            { key: '3m', label: '3 MONTHS' },
+            { key: '1m', label: '1 MONTH' },
+            { key: '1w', label: '1 WEEK' }
           ].map(({ key, label }) => (
             <button
               key={key}

@@ -1,0 +1,29 @@
+name: Daily Price Update
+
+on:
+  schedule:
+    # 01:00 AM UTC daily (02:00/03:00 AM Spain time)
+    - cron: '0 1 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: portfolio-visualizer/backend
+        run: pip install -r requirements.txt
+
+      - name: Run daily price update
+        working-directory: portfolio-visualizer/backend
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scripts/actualizar_historicos.py

@@ -4,9 +4,14 @@ import Dashboard from './components/Dashboard/Dashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import { assetLabelMap } from './utils/chartUtils';
 
+const fetchWithTimeout = (url, options = {}, timeoutMs = 30000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+};
+
 function App() {
   const [isLoading, setIsLoading] = useState(false);
-  const [apiCredentials, setApiCredentials] = useState(null);
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [portfolioData, setPortfolioData] = useState(null);
   const [fullPortfolioData, setFullPortfolioData] = useState(null); // Datos completos del backend
@@ -15,6 +20,9 @@ function App() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [csvFile, setCsvFile] = useState(null); // Store CSV file for re-processing
   const [priceTimestamp, setPriceTimestamp] = useState(null);
+  const [userRefreshCount, setUserRefreshCount] = useState(0);
+  const [fiatRates, setFiatRates] = useState({ USD: 1.0, GBP: 1.0, CAD: 1.0 });
+  const [initialSection, setInitialSection] = useState(null);
 
   // Function to re-process CSV with date filters
   const reprocessCsvWithFilters = async (startDate, endDate, excludedOperations = []) => {
@@ -36,10 +44,10 @@ function App() {
         formData.append('excluded_operations', JSON.stringify(excludedOperations));
       }
 
-      const response = await fetch('http://localhost:8001/api/portfolio/csv', {
+      const response = await fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/portfolio/csv`, {
         method: 'POST',
         body: formData
-      });
+      }, 60000);
 
       const data = await response.json();
 
@@ -54,7 +62,7 @@ function App() {
       setTimeline(data.timeline || []);
 
     } catch (err) {
-      setError('Failed to reprocess CSV data.');
+      setError(err.name === 'AbortError' ? 'Request timed out.' : 'Failed to reprocess CSV data.');
     } finally {
       setIsLoading(false);
     }
@@ -63,8 +71,6 @@ function App() {
   const handleApiSubmit = async (apiData) => {
     setIsLoading(true);
     setError('');
-    setApiCredentials(apiData);
-    
     try {
       let response, data;
       
@@ -78,11 +84,11 @@ function App() {
         }
       } else {
         // Llamada a la API normal
-        response = await fetch('http://localhost:8001/api/portfolio', {
+        response = await fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/portfolio`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ api_key: apiData.apiKey, api_secret: apiData.secretKey })
-        });
+        }, 60000);
         data = await response.json();
       }
       
@@ -115,18 +121,18 @@ function App() {
       setPortfolioData(adaptedData);
       setTimeline(data.timeline || []);
       
-      // Smooth transition
+      // Smooth transition — always start on overview when loading data
+      setInitialSection('overview');
       setIsTransitioning(true);
       setTimeout(() => {
         setShowPortfolio(true);
+        setIsLoading(false);
         setTimeout(() => {
           setIsTransitioning(false);
         }, 100);
       }, 150);
     } catch (err) {
       setError('Failed to fetch portfolio data. Make sure the backend is running.');
-      setIsLoading(false);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -148,7 +154,8 @@ function App() {
     });
 
     try {
-      const res = await fetch(`http://localhost:8001/api/prices/current?assets=${displayAssets.join(',')}`);
+      const params = new URLSearchParams({ assets: displayAssets.join(',') });
+      const res = await fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/prices/current?${params}`);
       const data = await res.json();
       if (data.from_cache) {
         const ttlLeft = 60 - (data.cache_age_seconds || 0);
@@ -175,6 +182,9 @@ function App() {
           });
 
           // Actualizar último punto del timeline con los nuevos precios
+          // portfolio_data usa keys del CSV (BTC, ETH) pero el timeline usa
+          // keys de Kraken (XXBT, XETH). Usar asset_mapping para traducir.
+          const assetMapping = prev.asset_mapping || {};
           let updatedTimeline = prev.timeline;
           if (prev.timeline && prev.timeline.length > 0) {
             updatedTimeline = [...prev.timeline];
@@ -182,12 +192,14 @@ function App() {
             const updatedAssets = { ...lastDay.assets_con_valor };
             let newValue = 0;
 
-            for (const [backendKey, price] of Object.entries(pricesByBackendKey)) {
-              if (updatedAssets[backendKey]) {
-                updatedAssets[backendKey] = {
-                  ...updatedAssets[backendKey],
+            for (const [csvKey, price] of Object.entries(pricesByBackendKey)) {
+              // Mapear key del CSV → key del timeline (e.g. BTC → XXBT)
+              const timelineKey = assetMapping[csvKey] || csvKey;
+              if (updatedAssets[timelineKey]) {
+                updatedAssets[timelineKey] = {
+                  ...updatedAssets[timelineKey],
                   precio: price,
-                  valor: price * updatedAssets[backendKey].cantidad
+                  valor: price * updatedAssets[timelineKey].cantidad
                 };
               }
             }
@@ -212,20 +224,32 @@ function App() {
           };
         });
         setPriceTimestamp(data.fetched_at);
+        if (!data.from_cache) {
+          setUserRefreshCount(c => c + 1);
+        }
       }
-      return { fromCache: !!data.from_cache };
+      return { fromCache: !!data.from_cache, cacheAge: data.cache_age_seconds || 0 };
     } catch (err) {
       console.error('[Prices] ❌ Error:', err);
-      return { fromCache: false };
+      return { fromCache: false, cacheAge: 0, error: true };
     }
   };
 
-  // Auto-refresh precios cada 5 minutos
+  // Auto-refresh precios cada ~5 min (alineado con BG task del backend)
   useEffect(() => {
     if (!showPortfolio) return;
-    const interval = setInterval(refreshPrices, 5 * 60 * 1000);
+    const interval = setInterval(refreshPrices, 310 * 1000);
     return () => clearInterval(interval);
   }, [showPortfolio, fullPortfolioData]);
+
+  // Cargar tipos de cambio fiat al mostrar el portfolio
+  useEffect(() => {
+    if (!showPortfolio) return;
+    fetchWithTimeout(`${import.meta.env.VITE_API_URL}/api/forex-rates`)
+      .then(r => r.json())
+      .then(rates => { if (rates.USD) setFiatRates(rates); })
+      .catch(() => {});
+  }, [showPortfolio]);
 
   // Inicializar timestamp cuando llegan los datos del backend
   useEffect(() => {
@@ -234,15 +258,36 @@ function App() {
     }
   }, [fullPortfolioData]);
 
+  const handleOpenDocs = (scrollToId) => {
+    setInitialSection('docs');
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setShowPortfolio(true);
+      setTimeout(() => {
+        setIsTransitioning(false);
+        if (scrollToId) {
+          setTimeout(() => {
+            const el = document.getElementById(scrollToId);
+            const container = document.getElementById('main-scroll');
+            if (el && container) {
+              const elTop = el.getBoundingClientRect().top + container.scrollTop - 120;
+              container.scrollTo({ top: elTop, behavior: 'smooth' });
+            }
+          }, 300);
+        }
+      }, 100);
+    }, 150);
+  };
+
   const handleBackToForm = () => {
     setIsTransitioning(true);
     setTimeout(() => {
       setShowPortfolio(false);
-      setApiCredentials(null);
       setPortfolioData(null);
       setFullPortfolioData(null);
       setTimeline([]);
       setError('');
+      setInitialSection(null);
       setTimeout(() => {
         setIsTransitioning(false);
       }, 100);
@@ -278,7 +323,10 @@ function App() {
           onSubmit={handleApiSubmit}
           isLoading={isLoading}
           error={error}
+          isVisible={!showPortfolio && !isTransitioning}
+          onOpenDocs={handleOpenDocs}
         />
+
       </div>
 
       {/* Portfolio Page */}
@@ -321,6 +369,9 @@ function App() {
             onReprocessCsv={reprocessCsvWithFilters}
             onRefreshPrices={refreshPrices}
             priceTimestamp={priceTimestamp}
+            userRefreshCount={userRefreshCount}
+            fiatRates={fiatRates}
+            initialSection={initialSection}
           />
         </ErrorBoundary>
       </div>

@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import OverviewSection from './Sections/Overview/OverviewSection';
 import OperationsSection from './Sections/Operations/OperationsSection';
-import PortfolioSection from './Sections/Portfolio/PortfolioSection';
+import DocumentationSection from './Sections/Docs/DocumentationSection';
 import Filters from '../Filters';
 import Header from './Header';
 import { assetLabelMap } from '../../utils/chartUtils';
 
 
 
-const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onToggleTheme, onReprocessCsv, onRefreshPrices, priceTimestamp, isVisible = true }) => {
+const CURRENCY_SYMBOLS = { EUR: '€', USD: '$', GBP: '£', CAD: 'CA$' };
+
+const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onReprocessCsv, onRefreshPrices, priceTimestamp, userRefreshCount = 0, isVisible = true, fiatRates = {}, initialSection }) => {
   const [filters, setFilters] = useState({
     dateRange: 'all',
     assetType: 'all',
@@ -18,6 +20,7 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   const [hiddenAssets, setHiddenAssets] = useState(new Set());
   const [excludedOperations, setExcludedOperations] = useState(new Set());
   const [disabledOps, setDisabledOps] = useState(new Set()); // IDs únicos de operaciones individuales desactivadas
+  const [selectedCurrency, setSelectedCurrency] = useState('EUR');
 
   const handleToggleAsset = (displaySymbol) => {
     setHiddenAssets(prev => {
@@ -46,8 +49,15 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     setDisabledOps(includeAll ? new Set() : new Set(opIds));
   };
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState('overview');
-  
+  const [activeSection, setActiveSection] = useState(initialSection || 'overview');
+
+  // Sync activeSection when initialSection changes (e.g. opening docs from form)
+  useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [initialSection]);
+
   const [showApplyPopup, setShowApplyPopup] = useState(false);
   const [popupSource, setPopupSource] = useState('filter'); // 'filter' or 'timeline'
   // Dates for filters (can be point click dates)
@@ -133,6 +143,12 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
   const handleFiltersChange = (newFilters, skipTimelineUpdate = false) => {
     setFilters(newFilters);
     
+    // Handle currency changes
+    if (newFilters.type === 'currency' && newFilters.selectedCurrency) {
+      setSelectedCurrency(newFilters.selectedCurrency);
+      return;
+    }
+
     // Handle asset filter changes
     if (newFilters.type === 'assetFilter' && newFilters.hiddenAssets !== undefined) {
       setHiddenAssets(newFilters.hiddenAssets);
@@ -344,9 +360,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       return;
     }
     
-    // Only show popup if timeline dates are different from filter dates
-    if (timelineDates && 
-        (timelineDates.startDate !== startDate || timelineDates.endDate !== endDate)) {
+    // Only show popup if timeline end date is different from filter end date
+    if (timelineDates && timelineDates.endDate !== endDate) {
       
       // Create a unique key for this popup request
       const popupKey = `${timelineDates.startDate}-${timelineDates.endDate}`;
@@ -393,11 +408,23 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
     }
   };
 
+  const currency = {
+    symbol: CURRENCY_SYMBOLS[selectedCurrency] || '€',
+    multiplier: selectedCurrency === 'EUR' ? 1 : (fiatRates[selectedCurrency] || 1),
+  };
+
   const handleSectionChange = (sectionId) => {
     setActiveSection(sectionId);
+    if (sectionId === 'docs') {
+      setSidebarOpen(false);
+    }
   };
 
   const renderCurrentSection = () => {
+    // Overview and Operations require portfolioData
+    if (!portfolioData && (activeSection === 'overview' || activeSection === 'operations')) {
+      return null;
+    }
     switch (activeSection) {
       case 'overview':
         return (
@@ -435,6 +462,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             timelinePeriodMode={timelinePeriodMode}
             setTimelinePeriodMode={setTimelinePeriodMode}
             priceTimestamp={priceTimestamp}
+            userRefreshCount={userRefreshCount}
+            currency={currency}
           />
         );
       case 'operations':
@@ -469,14 +498,14 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
             onToggleAllAssets={handleToggleAllAssets}
             onToggleOperation={handleToggleOperation}
             onToggleAllOperations={handleToggleAllOperations}
+            currency={currency}
           />
         );
-      case 'portfolio':
+      case 'docs':
         return (
-          <PortfolioSection
-            portfolioData={portfolioData}
+          <DocumentationSection
             theme={theme}
-            filters={filters}
+            sidebarOpen={sidebarOpen}
           />
         );
       default:
@@ -491,8 +520,8 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
       fontFamily: "'Inter', sans-serif",
       position: 'relative'
     }}>
-      {/* Global Filters Component - Only render when dashboard is visible */}
-      {isVisible && (
+      {/* Global Filters Component - Only render when dashboard is visible and not in docs */}
+      {isVisible && activeSection !== 'docs' && (
         <Filters
           theme={theme}
           onFiltersChange={handleFiltersChange}
@@ -515,11 +544,11 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
         onBackToForm={onShowGainTrack || onBackToForm}
-        onToggleTheme={onToggleTheme}
         sidebarOpen={sidebarOpen}
         onRefreshPrices={onRefreshPrices}
         priceTimestamp={priceTimestamp}
         disabledOpsCount={disabledOps.size}
+        hasData={!!portfolioData}
       />
 
       {/* Main Content Area — se desplaza cuando abre el sidebar */}

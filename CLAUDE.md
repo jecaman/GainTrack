@@ -208,6 +208,72 @@ Siempre usar `assetLabelMap[asset] || asset` para convertir antes de mostrar.
 
 ---
 
+## Cache de Precios Actuales
+
+Hay **dos sistemas de cache** independientes:
+
+| Sistema | Qué cachea | Dónde vive | Persistencia |
+|---------|-----------|------------|-------------|
+| **Supabase cache** (`supabase_cache.py`) | Precios **históricos** (por día) | Supabase (PostgreSQL remoto) | Permanente |
+| **Price cache** (`_price_cache` en `main.py`) | Precios **actuales** (real-time) | RAM del proceso Python | Se pierde al reiniciar |
+
+### Price cache — arquitectura
+
+```
+_price_cache = {
+    "prices": {"BTC": 76543.2, "ETH": 1823.4, ...},
+    "fetched_at": <datetime UTC>
+}
+```
+
+- **Dict en memoria RAM** del proceso `main.py`. No usa Redis, disco ni base de datos.
+- **Compartido** entre todos los usuarios (mismo proceso Python → misma variable global).
+- **TTL: 300s (5 min)** — cualquier request dentro de esos 5 min recibe cache hit sin llamar a Kraken.
+- **Se pierde** al reiniciar el servidor. El primer request tras reinicio es lento (cache frío → llama a Kraken).
+
+### Flujo de refresh
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Backend (main.py)                                               │
+│                                                                 │
+│  BG Task (cada ~5 min) ──→ Kraken API ──→ _price_cache (RAM)   │
+│                                                                 │
+│  GET /api/prices/current ──→ lee _price_cache ──→ responde      │
+│    (nunca llama a Kraken si el cache está fresco)                │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Frontend (App.jsx)                                              │
+│                                                                 │
+│  Auto-refresh (cada ~5 min) ──→ GET /api/prices/current         │
+│  Botón manual (Header.jsx)  ──→ GET /api/prices/current         │
+│    → Ambos reciben cache hit → actualizan UI                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Llamadas a Kraken**: solo las hace el BG task (~288/día). El endpoint y el frontend nunca llaman a Kraken directamente (salvo cache frío tras reinicio).
+
+### Intervalos
+
+| Componente | Intervalo | Propósito |
+|-----------|-----------|-----------|
+| BG task (`_background_price_refresh`) | 295s (~5 min) | Mantener el cache caliente llamando a Kraken |
+| Cache TTL (`PRICE_CACHE_TTL`) | 300s (5 min) | Tiempo mínimo antes de considerar el cache expirado |
+| Auto-refresh frontend (`App.jsx`) | 310s (~5.1 min) | Actualizar la UI con datos del cache |
+
+### Tracked assets
+
+`_tracked_assets: set` acumula los assets solicitados por cualquier cliente. El BG task refresca solo estos assets. Se llena automáticamente con cada request a `/api/prices/current` y nunca se vacía (hasta reinicio del servidor).
+
+### Para hosting barato
+
+- No requiere Redis, Memcached ni servicios externos para el cache real-time.
+- ~288 llamadas/día a Kraken API (pública, sin auth) — muy por debajo de cualquier rate limit.
+- Memoria: negligible (~pocos KB para el dict de precios).
+
+---
+
 ## Trampas Conocidas
 
 1. **FIFO y fechas**: Si el FIFO empieza desde `startDate` (no desde el inicio del histórico), los valores de unrealized y cost basis son incorrectos. El FIFO siempre debe procesar desde la primera operación.

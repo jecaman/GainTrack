@@ -30,6 +30,7 @@ const OperationsSection = ({
   onToggleAllAssets,
   onToggleOperation,
   onToggleAllOperations,
+  currency = { symbol: '€', multiplier: 1 },
 }) => {
 
   if (isLoading) {
@@ -104,6 +105,7 @@ const OperationsSection = ({
           onToggleAllAssets={onToggleAllAssets}
           onToggleOperation={onToggleOperation}
           onToggleAllOperations={onToggleAllOperations}
+          currency={currency}
         />
       </div>
     </section>

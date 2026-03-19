@@ -119,10 +119,10 @@ const GainTrackLogo = ({
     <div style={{ 
       position: 'relative', 
       display: 'inline-block',
-      transform: sloganGlow && !isDarkMode ? 'scale(1.2)' : 'scale(1)',
+      transform: 'scale(1)',
       transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
     }}>
-      <svg width={size} height={size} viewBox="0 0 32 24" fill="none" style={{ position: 'relative', zIndex: 1 }}>
+      <svg width={size} height={Math.round(size * 24 / 32)} viewBox="0 0 32 24" fill="none" style={{ position: 'relative', zIndex: 1 }}>
         {/* GainTrack logo - tres segmentos con primero y tercero idénticos */}
         <path
           d="M2 20L10 8L18 16L26 4"
@@ -133,7 +133,7 @@ const GainTrackLogo = ({
         />
       </svg>
       {/* Moving bright point - only in dark mode */}
-      {visible && isDarkMode && (
+      {visible && (
         <div
           style={{
             position: 'absolute',
@@ -206,11 +206,11 @@ const GainTrackBrand = ({
         fontWeight: '700',
         color: titleColor,
         fontFamily: "'Inter', sans-serif",
-        letterSpacing: 'normal',
+        letterSpacing: '-0.02em',
         textAlign: 'center',
-        textShadow: isDarkMode 
-          ? '0 0 12px rgba(255,255,255,0.25), 0 0 18px rgba(0,255,153,0.12), 0 0 28px rgba(0,255,153,0.08)' 
-          : '0 0 8px rgba(0,0,0,0.08), 0 0 14px rgba(0,0,0,0.05)'
+        textShadow: isDarkMode
+          ? '0 0 20px rgba(255,255,255,0.12), 0 0 30px rgba(0,255,153,0.06)'
+          : '0 0 8px rgba(0,0,0,0.06)'
       }}>
         GainTrack
       </h1>
