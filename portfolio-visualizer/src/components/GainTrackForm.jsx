@@ -602,6 +602,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
+                whiteSpace: 'nowrap',
               }}
               onMouseEnter={() => setHoveredLink(key)}
               onMouseLeave={() => setHoveredLink(null)}

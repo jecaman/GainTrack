@@ -2459,10 +2459,11 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     };
 
     const handleMouseUp = () => {
-      // Siempre resetear isDragging y _isDragZoom para evitar que queden bloqueados tras drag zoom
+      // Siempre resetear flags para evitar que queden bloqueados tras drag zoom
       setIsDragging(false);
       chart.isDragging = false;
       chart._isDragZoom = false;
+      chart._stabilizing = false;
 
       const isFrozenOrFreezing = (chart.frozenTooltip && chart.frozenTooltip.isFrozen) || isTooltipFrozen;
 
@@ -2511,19 +2512,19 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
     };
 
     canvas.addEventListener('mousedown', handleMouseDown);
-    canvas.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('mousemove', handleDocumentMouseMove);
 
     return () => {
       if (canvas && canvas.ownerDocument && !chartRef.current?._isDestroying) {
         try {
           canvas.removeEventListener('mousedown', handleMouseDown);
-          canvas.removeEventListener('mouseup', handleMouseUp);
         } catch (e) {
           console.warn('Error removing canvas event listeners:', e);
         }
       }
       try {
+        document.removeEventListener('mouseup', handleMouseUp);
         document.removeEventListener('mousemove', handleDocumentMouseMove);
       } catch (e) {
         console.warn('Error removing document event listener:', e);
