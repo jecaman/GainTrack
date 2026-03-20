@@ -276,8 +276,8 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
                 animation: 'fadeIn 0.5s ease',
               }}>
                 {loadingElapsed < 15
-                  ? 'The server is waking up — this usually takes a few seconds on the first request.'
-                  : 'Still working — the server may need up to 30s to start from a cold state.'}
+                  ? 'First request of the day takes a moment — the server is spinning up.'
+                  : 'Almost there — free-tier hosting needs a few extra seconds on initial load.'}
               </p>
             )}
           </div>
@@ -364,19 +364,6 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             </span>
           </div>
         </div>
-
-        {/* ── Descriptor ── */}
-        <p style={{
-          fontFamily: 'monospace',
-          fontSize: '11px',
-          letterSpacing: '1.5px',
-          textTransform: 'uppercase',
-          color: 'rgba(255,255,255,0.25)',
-          margin: '4px 0 0 0',
-          textAlign: 'center',
-        }}>
-          FIFO engine &middot; daily time-series &middot; real-time prices
-        </p>
 
         {/* ── Form Card ── */}
         <div style={{
@@ -682,15 +669,24 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
           })}
         </div>
 
-        {/* ── Privacy footer ── */}
+        {/* ── Footer ── */}
         <p style={{
           fontSize: '12px',
           color: theme.textSecondary,
           textAlign: 'center',
           margin: 0,
-          lineHeight: '1.5',
+          lineHeight: '1.8',
         }}>
           Your data is processed in memory and never stored.
+          <br />
+          <span style={{
+            fontFamily: 'monospace',
+            fontSize: '10px',
+            letterSpacing: '1px',
+            color: 'rgba(255,255,255,0.3)',
+          }}>
+            FIFO engine &middot; daily time-series &middot; real-time prices
+          </span>
         </p>
       </div>
 

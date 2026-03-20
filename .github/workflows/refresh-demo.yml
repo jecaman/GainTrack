@@ -1,0 +1,61 @@
+name: Refresh Demo Portfolio
+
+on:
+  schedule:
+    # 00:15 AM UTC daily (after price update at 00:05)
+    - cron: '15 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  refresh-demo:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Send demo CSV to backend and save response
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+        run: |
+          CSV_PATH="portfolio-visualizer/public/demo_trades.csv"
+          JSON_PATH="portfolio-visualizer/public/demo_portfolio.json"
+
+          echo "Sending demo CSV to backend at $BACKEND_URL..."
+
+          # POST the CSV to the backend (same endpoint the frontend uses)
+          HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" \
+            -X POST "${BACKEND_URL}/api/portfolio/csv" \
+            -F "csv_file=@${CSV_PATH}" \
+            --max-time 120)
+
+          echo "HTTP response code: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Error: backend returned $HTTP_CODE"
+            cat response.json
+            exit 1
+          fi
+
+          # Validate response has expected fields
+          if ! python3 -c "import json; d=json.load(open('response.json')); assert 'timeline' in d and 'portfolio_data' in d, 'Invalid response'"; then
+            echo "Error: response missing expected fields"
+            exit 1
+          fi
+
+          # Pretty-print and save
+          python3 -c "import json; d=json.load(open('response.json')); json.dump(d, open('${JSON_PATH}', 'w'), separators=(',', ':'))"
+
+          TIMELINE_DAYS=$(python3 -c "import json; print(len(json.load(open('${JSON_PATH}'))['timeline']))")
+          echo "Demo portfolio refreshed: ${TIMELINE_DAYS} timeline days"
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add portfolio-visualizer/public/demo_portfolio.json
+          if git diff --cached --quiet; then
+            echo "No changes to demo_portfolio.json"
+          else
+            git commit -m "chore: refresh demo portfolio data (automated)"
+            git push
+          fi
