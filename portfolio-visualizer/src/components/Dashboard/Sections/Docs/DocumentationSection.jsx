@@ -1,41 +1,33 @@
 import { useState, useEffect, useRef } from 'react';
 
 const TOC_ITEMS = [
+  // ── Technical ──
   { id: 'about', label: 'About', subs: [
     { id: 'about-problem', label: 'The Problem' },
     { id: 'about-what', label: 'What GainTrack Does' },
-    { id: 'about-docs', label: 'This Documentation' },
   ]},
+  { id: 'architecture', label: 'Architecture', subs: [
+    { id: 'arch-flow', label: 'Data Flow' },
+    { id: 'arch-diagram', label: 'System Diagram' },
+  ]},
+  { id: 'pipeline', label: 'Data Pipeline', subs: [
+    { id: 'pl-ingestion', label: 'Data Ingestion' },
+    { id: 'pl-fifo', label: 'FIFO Engine' },
+    { id: 'pl-storage', label: 'Storage Layer' },
+    { id: 'pl-cache', label: 'Caching System' },
+    { id: 'pl-serving', label: 'Serving Layer' },
+  ]},
+  { id: 'decisions', label: 'Design Decisions', subs: [] },
+  // ── Functional ──
   { id: 'getting-started', label: 'Getting Started', subs: [
-    { id: 'gs-form', label: 'Import Method' },
     { id: 'gs-api', label: 'API Connection' },
     { id: 'gs-csv', label: 'CSV Upload' },
   ]},
-  { id: 'overview', label: 'Overview', subs: [
-    { id: 'ov-kpi', label: 'KPI Grid' },
-    { id: 'ov-timeline', label: 'Timeline Chart' },
-    { id: 'ov-bar', label: 'Portfolio Bar' },
-    { id: 'ov-leaderboard', label: 'Asset Leaderboard' },
-    { id: 'ov-ticker', label: 'Price Ticker' },
-  ]},
-  { id: 'operations', label: 'Trades', subs: [
-    { id: 'tr-table', label: 'Trades Table' },
-    { id: 'tr-toggle', label: 'Toggle Trades' },
-    { id: 'tr-filter', label: 'Type Filter' },
-  ]},
-  { id: 'filters', label: 'Filters', subs: [
-    { id: 'fl-date', label: 'Date Range' },
-    { id: 'fl-assets', label: 'Asset Visibility' },
-    { id: 'fl-threshold', label: 'Threshold Filters' },
-    { id: 'fl-ops', label: 'Operation Type Filters' },
-  ]},
-  { id: 'how-it-works', label: 'How It Works', subs: [
-    { id: 'hw-flow', label: 'Data Flow' },
-    { id: 'hw-dates', label: 'Dual Date System' },
-    { id: 'hw-kpi', label: 'Frontend-First KPIs' },
-    { id: 'hw-fifo', label: 'FIFO Engine' },
-    { id: 'hw-cache', label: 'Price Caching' },
-    { id: 'hw-summary', label: 'Full Architecture' },
+  { id: 'dashboard', label: 'Dashboard Guide', subs: [
+    { id: 'db-kpi', label: 'KPI Grid' },
+    { id: 'db-timeline', label: 'Timeline Chart' },
+    { id: 'db-components', label: 'Other Components' },
+    { id: 'db-trades', label: 'Trades & Filters' },
   ]},
   { id: 'security', label: 'Security', subs: [] },
   { id: 'contact', label: 'Contact', subs: [] },
@@ -135,11 +127,13 @@ const AboutSection = ({ s }) => (
     <div style={s.greenBar} />
 
     <p style={s.body}>
-      GainTrack is a crypto portfolio analytics tool that gives you an accurate, real-time view
-      of your investment performance. Connect your Kraken account or upload your trade history,
-      and get instant access to precise P&L calculations, FIFO-based cost tracking, realized
-      and unrealized gains, per-asset breakdowns, and interactive charts — all processed
-      securely with zero data storage.
+      GainTrack is a data pipeline that processes cryptocurrency trade history through a
+      FIFO (First In, First Out) accounting engine, reconstructs daily portfolio state as a
+      time-series, and serves pre-computed snapshots to an interactive frontend. The backend
+      ingests raw trade data (via CSV or authenticated API), runs a full-history FIFO pass,
+      fetches historical prices from a persistent Supabase cache, and returns a complete daily
+      timeline. The frontend then operates entirely from this in-memory dataset — all filtering,
+      date changes, and KPI recalculations happen client-side with zero network requests.
     </p>
     <div style={s.callout}>
       <strong>Currently Kraken-only.</strong> GainTrack works exclusively with trade data from Kraken
@@ -148,56 +142,32 @@ const AboutSection = ({ s }) => (
 
     <h3 id="about-problem" style={s.subsectionTitle}>The Problem with Exchange Data</h3>
     <p style={s.body}>
-      GainTrack was born out of a simple frustration: Kraken — and most crypto exchanges — don't
-      give you a clear picture of your actual portfolio performance. They show you trades, but not
-      the full story: how much you've really gained or lost across all your positions, accounting
-      for fees, cost basis, and realized vs unrealized gains.
+      Kraken — and most crypto exchanges — don't give you an accurate picture of portfolio
+      performance. They show trades, but not the full story: true cost basis, realized vs
+      unrealized gains, and proper FIFO accounting. Kraken's own portfolio page uses a
+      simplified weighted-average method instead of FIFO, leading to cost basis discrepancies
+      of up to 20% on real gains — confirmed by their support team. If you've been trading
+      actively, the numbers on your exchange dashboard are likely wrong.
     </p>
     <p style={s.body}>
-      Even Kraken's own reported performance numbers can be significantly off. Their portfolio page uses
-      a simplified weighted-average method instead of true FIFO (First In, First Out) accounting, which
-      can lead to cost basis discrepancies of up to 20% on real gains — confirmed by their own support
-      team. If you've been trading actively, the numbers you see on your exchange dashboard are likely
-      not reflecting your actual profit or loss.
+      On top of that, assets moved to private wallets or other exchanges simply disappear from
+      the exchange's view. GainTrack solves this: as long as the original purchase was on Kraken,
+      the full trade history is preserved regardless of where those assets live now.
     </p>
-    <p style={s.body}>
-      On top of that, if you've ever moved assets to a private wallet or another exchange, most platforms
-      simply lose track of them. Your portfolio view becomes incomplete, and any performance metrics are
-      based on partial data. GainTrack solves this: as long as the original purchase was made on Kraken,
-      your full trade history is preserved regardless of where those assets live now — giving you a
-      complete, accurate picture of your investment performance.
-    </p>
-    <div style={s.callout}>
-      Future roadmap: support for additional exchanges (Binance, Coinbase, etc.), so it won't matter
-      where you originally bought — GainTrack will consolidate all your trading history into a single,
-      unified analysis.
-    </div>
 
     <h3 id="about-what" style={s.subsectionTitle}>What GainTrack Does</h3>
     <p style={s.body}>
       Import your trade history (CSV or API), and GainTrack processes it through a proper FIFO engine
-      to give you accurate, real metrics about your investment. At a glance, you can see the true state
-      of your entire portfolio — not approximations. Combine multiple filters (dates, assets, trade
+      to give you accurate, real metrics about your investment. Combine filters (dates, assets, trade
       types) to identify your best and worst performers, spot patterns, and drill down into specific
       time periods. Toggle individual trades on and off to explore "what if" scenarios — what would your
       P&L look like if you hadn't made that one trade?
     </p>
-
     <p style={s.body}>
-      There are no user accounts, no registration, no login. GainTrack is fully stateless — your
-      data is processed server-side and never stored. API keys are used for a single request and
-      discarded. CSV files are parsed in memory and not saved to disk. When you close the tab,
-      everything is gone. This is intentional: there is nothing to hack, nothing to leak, and
-      nothing to maintain. You bring your data, you get your analysis, and you leave.
-    </p>
-
-    <h3 id="about-docs" style={s.subsectionTitle}>This Documentation</h3>
-    <p style={s.body}>
-      The following sections walk through each part of the application: how to get started, what each
-      dashboard component shows and how it works, the filter system, the underlying architecture
-      (dual-date system, frontend-first calculations, FIFO engine, caching layers), and the security
-      model. It serves both as a user guide and as a technical deep-dive into the design decisions
-      behind the project.
+      There are no user accounts, no registration, no login. User data is fully stateless — trade
+      history and API keys are processed in memory and never stored. The only persistent storage
+      is a Supabase PostgreSQL database containing public market prices (daily closing prices for
+      each asset), which is independent of any user data.
     </p>
 
     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '1rem' }}>
@@ -212,316 +182,50 @@ const AboutSection = ({ s }) => (
   </div>
 );
 
-const GettingStartedSection = ({ s }) => (
-  <div id="getting-started">
-    <h2 style={s.sectionTitle}>Getting Started</h2>
-    <div style={s.greenBar} />
-
-    <h3 id="gs-form" style={s.subsectionTitle}>Choosing Your Import Method</h3>
-    <p style={s.body}>
-      GainTrack supports two ways to import your trading history, each suited to different use cases:
-    </p>
-    <div style={{ display: 'flex', gap: '16px', marginBottom: '1.2rem' }}>
-      <div style={{ ...s.card, flex: 1 }}>
-        <div style={s.label}>API Connection (recommended)</div>
-        <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-          Best if you plan to use GainTrack regularly. Once set up, your data loads automatically
-          with up-to-date trades every time — no manual exports needed. Prices refresh in real time
-          and your dashboard is always current.
-        </p>
-      </div>
-      <div style={{ ...s.card, flex: 1 }}>
-        <div style={s.label}>CSV Upload</div>
-        <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-          Best for a one-time analysis or if you prefer not to share API credentials. You export
-          your trade history from Kraken, upload the file, and get instant results. The trade-off
-          is that you'll need to re-export a new CSV each time you want fresh data.
-        </p>
-      </div>
-    </div>
-
-    <h3 id="gs-api" style={s.subsectionTitle}>Setting Up API Access</h3>
-    <p style={s.body}>
-      Head to{' '}
-      <a href="https://pro.kraken.com/app/settings/api" target="_blank" rel="noopener noreferrer"
-        style={{ color: '#00ff88', textDecoration: 'none', borderBottom: '1px solid rgba(0,255,136,0.3)' }}>
-        Kraken API Settings
-      </a>{' '}
-      and click the <span style={s.inlineCode}>Create API Key</span> button in the top right.
-      You'll see a permissions panel — the critical step here is selecting the absolute minimum
-      permissions. This way, even in the worst-case scenario where someone obtains your keys,
-      they can only read your trade history and nothing else:
-    </p>
-    <div style={{ ...s.card, marginBottom: '1.2rem' }}>
-      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        1. In the <span style={s.inlineCode}>Funds Permissions</span> section, check only{' '}
-        <strong>Query</strong> — leave everything else unchecked
-      </p>
-      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        2. In the <span style={s.inlineCode}>Orders and Trades</span> section, check only{' '}
-        <strong>Query closed orders & trades</strong> — this gives GainTrack read-only access
-        to your completed trades
-      </p>
-      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        3. Leave all other permission sections (Staking, WebSockets, etc.) completely unchecked
-      </p>
-      <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-        4. Enter a descriptive name (e.g. "GainTrack read-only") and click{' '}
-        <span style={s.inlineCode}>Generate Key</span>
-      </p>
-    </div>
-    <p style={s.body}>
-      After creating the key, Kraken will display your <strong>API Key</strong> and{' '}
-      <strong>Private Key</strong> exactly once — this is the only time you'll ever see them.
-      Copy both and paste them into the GainTrack form. If you plan to use GainTrack regularly,
-      let your browser's password manager save the credentials when prompted, since Kraken
-      provides no way to view the keys again — you'd need to create new ones.
-    </p>
-    <div style={s.callout}>
-      GainTrack never stores, logs, or persists your API keys. They are used for a single read-only
-      request to fetch your trade history, then discarded from memory. There is no database, no
-      session, no server-side record of your credentials.
-    </div>
-
-    <h3 id="gs-csv" style={s.subsectionTitle}>Exporting a CSV from Kraken</h3>
-    <p style={s.body}>
-      If you prefer the CSV route, go to{' '}
-      <a href="https://pro.kraken.com/app/statements" target="_blank" rel="noopener noreferrer"
-        style={{ color: '#00ff88', textDecoration: 'none', borderBottom: '1px solid rgba(0,255,136,0.3)' }}>
-        Kraken Statements
-      </a>{' '}
-      and follow these steps:
-    </p>
-    <div style={{ ...s.card, marginBottom: '1.2rem' }}>
-      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        1. Click the <span style={s.inlineCode}>Export Statement</span> button at the top of the page
-      </p>
-      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        2. In the export dialog, set the statement type to <span style={s.inlineCode}>Trades</span>
-      </p>
-      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        3. Select the date range you want to analyze — for a full picture, choose the earliest
-        available start date through today
-      </p>
-      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        4. Leave <strong>All Pairs</strong> and <strong>All Fields</strong> selected — GainTrack
-        needs the complete dataset to calculate FIFO correctly
-      </p>
-      <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-        5. Set the format to <span style={s.inlineCode}>CSV</span>, then click{' '}
-        <span style={s.inlineCode}>Submit</span> to generate and download the file
-      </p>
-    </div>
-    <p style={s.body}>
-      Once downloaded, drag and drop the file into the GainTrack form or click to browse. The CSV
-      is parsed server-side, processed through the FIFO engine, and immediately discarded — it is
-      never written to disk.
-    </p>
-
-  </div>
-);
-
-const OverviewDocsSection = ({ s }) => (
-  <div id="overview">
-    <h2 style={s.sectionTitle}>Overview</h2>
+const ArchitectureSection = ({ s }) => (
+  <div id="architecture">
+    <h2 style={s.sectionTitle}>Architecture</h2>
     <div style={s.greenBar} />
 
     <p style={s.body}>
-      The Overview is the main dashboard view, showing your portfolio's performance at a glance
-      through five interconnected components.
+      The system separates into two phases: a <strong>batch processing phase</strong> (backend
+      computes the full timeline once per request) and a <strong>near real-time phase</strong> (background
+      price refresh every ~5 minutes). User interactions after the initial load are entirely
+      client-side — no backend round-trips for filtering, zooming, or KPI recalculation.
     </p>
 
-    <h3 id="ov-kpi" style={s.subsectionTitle}>KPI Grid</h3>
-    <p style={s.body}>
-      Four key performance indicators calculated using FIFO (First In, First Out) accounting:
-    </p>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
-      {[
-        { name: 'Total Invested', desc: 'Sum of all buy costs minus sell proceeds (your net cash outflow)' },
-        { name: 'Portfolio Value', desc: 'Current market value of all held positions at live prices' },
-        { name: 'Total P&L', desc: 'Combined realized gains (from sells) + unrealized gains (from current holdings)' },
-        { name: 'Realized P&L', desc: 'Profit/loss from completed sell transactions, calculated via FIFO cost basis' },
-      ].map(kpi => (
-        <div key={kpi.name} style={s.card}>
-          <div style={s.label}>{kpi.name}</div>
-          <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>{kpi.desc}</p>
-        </div>
-      ))}
-    </div>
-    <div style={s.callout}>
-      KPIs always show the cumulative state of your portfolio from your very first trade up to the
-      selected end date. This ensures your cost basis and realized gains are always accurate, since
-      FIFO must process the full history.
-    </div>
-
-    <h3 id="ov-timeline" style={s.subsectionTitle}>Timeline Chart</h3>
-    <p style={s.body}>
-      The centerpiece of the dashboard. An interactive Chart.js line chart with two view modes:
-    </p>
-    <div style={{ ...s.card, marginBottom: '1.2rem' }}>
-      <p style={{ ...s.body, marginBottom: '0.6rem' }}>
-        <span style={s.inlineCode}>FULL VIEW</span> — Shows your portfolio's market value over time.
-        A <span style={s.inlineCode}>COST BASIS</span> toggle overlays your total invested amount as a
-        dashed line, showing where you break even.
-      </p>
-      <p style={{ ...s.body, marginBottom: '0.6rem' }}>
-        <span style={s.inlineCode}>P&L VIEW</span> — Shows cumulative profit/loss over time, with
-        the line colored green (profit) or red (loss) as it crosses the zero axis.
-      </p>
-      <p style={{ ...s.body, marginBottom: 0 }}>
-        <span style={s.inlineCode}>FILL</span> — Toggles a gradient area fill under the lines for
-        a more visual representation of the data volume.
-      </p>
-    </div>
-    <p style={s.body}>
-      <strong>Interactions:</strong> Drag to zoom into a date range. Click a point to freeze the
-      tooltip and see the exact snapshot for that day. Use the quick filters (1W, 1M, 3M, 6M, 1Y,
-      ALL TIME) to jump to preset ranges. The period aggregation buttons (D/W/M/Y) control data
-      granularity. Changes to the end date can be propagated to the rest of the page via the
-      "Apply to All" popup.
-    </p>
-
-    <h3 id="ov-bar" style={s.subsectionTitle}>Portfolio Bar</h3>
-    <p style={s.body}>
-      A proportional bar showing each asset's weight in your portfolio by current market value.
-      Hover over any segment to see the asset name, value, and percentage. Colors are consistent
-      with the Asset Leaderboard.
-    </p>
-
-    <h3 id="ov-leaderboard" style={s.subsectionTitle}>Asset Leaderboard</h3>
-    <p style={s.body}>
-      A sortable table showing per-asset FIFO breakdown: current value, cost basis, unrealized gain,
-      realized gain, and allocation percentage. Click column headers to sort. Assets can be
-      hidden/shown via the Filters sidebar, which removes them from all calculations and charts.
-    </p>
-
-    <h3 id="ov-ticker" style={s.subsectionTitle}>Price Ticker</h3>
-    <p style={s.body}>
-      A scrolling ticker at the top of the dashboard showing live prices for all your held assets.
-      The percentage shown is the change compared to yesterday's closing price. Prices auto-refresh
-      every ~5 minutes from the backend cache (which itself refreshes from Kraken's public API).
-    </p>
-  </div>
-);
-
-const OperationsDocsSection = ({ s }) => (
-  <div id="operations">
-    <h2 style={s.sectionTitle}>Trades</h2>
-    <div style={s.greenBar} />
-
-    <p style={s.body}>
-      A complete history of every operation in your portfolio. Each trade is classified not only
-      as a buy or sell, but also by its execution type — maker, taker, or other order types — giving
-      you full visibility into how each position was entered or exited.
-    </p>
-
-    <h3 id="tr-table" style={s.subsectionTitle}>Trades Table</h3>
-    <p style={s.body}>
-      Each row shows: date, asset, type (buy/sell + maker/taker), amount, price, total value, fee,
-      and realized P&L (for sells). All columns are sortable.
-    </p>
-
-    <h3 id="tr-toggle" style={s.subsectionTitle}>Toggle Trades</h3>
-    <p style={s.body}>
-      Click any row to toggle that trade on/off. Disabled trades are excluded from all
-      KPI calculations, charts, and the asset leaderboard — effectively running a "what if"
-      scenario. The trades counter next to the date range shows how many trades are currently active.
-    </p>
-    <div style={s.callout}>
-      This is a local-only feature — toggling operations does NOT call the backend. The FIFO
-      recalculation happens entirely in the frontend from the in-memory timeline data.
-    </div>
-
-    <h3 id="tr-filter" style={s.subsectionTitle}>Type Filter</h3>
-    <p style={s.body}>
-      Quick filter buttons (ALL / BUY / SELL) above the table let you focus on specific operation
-      types without affecting calculations.
-    </p>
-  </div>
-);
-
-const FiltersDocsSection = ({ s }) => (
-  <div id="filters">
-    <h2 style={s.sectionTitle}>Filters</h2>
-    <div style={s.greenBar} />
-
-    <p style={s.body}>
-      The left sidebar (toggled via the filter icon) provides global controls that affect the
-      entire dashboard. All filters in this panel apply to every element on the page — KPIs,
-      charts, leaderboard, and portfolio bar — and override any existing selections.
-    </p>
-
-    <h3 id="fl-date" style={s.subsectionTitle}>Date Range</h3>
-    <p style={s.body}>
-      Set a custom end date or use time presets (All, This Month, Last 3 Months, etc.).
-      Date changes update both the KPIs and the timeline chart simultaneously.
-    </p>
-
-    <h3 id="fl-assets" style={s.subsectionTitle}>Asset Visibility</h3>
-    <p style={s.body}>
-      Toggle individual assets on/off. Hidden assets are completely excluded from all calculations —
-      KPIs, charts, leaderboard, and portfolio bar. This lets you analyze subsets of your portfolio.
-    </p>
-
-    <h3 id="fl-threshold" style={s.subsectionTitle}>Threshold Filters</h3>
-    <p style={s.body}>
-      Filter assets by minimum allocation percentage or minimum balance value. Assets that don't
-      meet the thresholds are automatically hidden from all calculations and views, helping you
-      focus on your most significant positions.
-    </p>
-
-    <h3 id="fl-ops" style={s.subsectionTitle}>Operation Type Filters</h3>
-    <p style={s.body}>
-      Exclude entire operation types (e.g., all sells, all buys). Like the per-operation toggle
-      in the Trades tab, excluded operations are filtered client-side from the in-memory timeline
-      data — no backend call is needed.
-    </p>
-  </div>
-);
-
-const HowItWorksSection = ({ s }) => (
-  <div id="how-it-works">
-    <h2 style={s.sectionTitle}>How It Works</h2>
-    <div style={s.greenBar} />
-
-    <p style={s.body}>
-      GainTrack follows a compute-once, interact-forever approach. The backend does the heavy
-      lifting once — parsing trades, running FIFO, building a daily timeline, and fetching prices —
-      then hands everything to the frontend. From that point on, every interaction (filtering,
-      zooming, toggling assets) happens instantly from cached data, with zero network requests.
-    </p>
-
-    <h3 id="hw-flow" style={s.subsectionTitle}>Data Flow</h3>
+    <h3 id="arch-flow" style={s.subsectionTitle}>Data Flow</h3>
     <p style={s.body}>
       Regardless of the import method (CSV or API), the processing pipeline is the same:
     </p>
     <div style={s.codeBlock}>{
 `CSV / API Keys
       │
-      ▼
-┌──────────────────────────────────────────────────┐
-│  Backend (FastAPI)                               │
-│                                                  │
-│  1. Parse trades from CSV or Kraken API          │
-│  2. Detect crypto-to-crypto trades, convert costs│
-│  3. Run FIFO engine over all trades              │
-│  4. Fetch historical prices from Supabase cache  │
-│  5. Build daily timeline (one snapshot per day)  │
-│  6. Fetch current prices from Kraken API         │
-│                                                  │
-│  Returns: timeline[] + portfolio_data[] + kpis{} │
-└───────────────────────┬──────────────────────────┘
-                        │
-                        ▼
-┌──────────────────────────────────────────────────┐
-│  Frontend (React)                                │
-│                                                  │
-│  • Stores full timeline in memory (~1000+ days)  │
-│  • KPIs recalculated from timeline via useMemo   │
-│  • Charts rendered directly from timeline data   │
-│  • Prices auto-refresh every ~5 min (cache hit)  │
-│  • All filtering happens client-side             │
-└──────────────────────────────────────────────────┘`
+      ▼                                        ┌─────────────────┐
+┌──────────────────────────────────────────────┤   BATCH          │
+│  Backend (FastAPI)                           │   (per request)  │
+│                                              └─────────────────┘
+│  1. Parse trades from CSV or Kraken API
+│  2. Detect crypto-to-crypto trades, convert costs
+│  3. Run FIFO engine over full trade history
+│  4. Fetch historical prices from Supabase    ← PERSISTENT
+│  5. Build daily timeline (one snapshot/day)
+│  6. Fetch current prices from Kraken API
+│
+│  Returns: timeline[] + portfolio_data[] + kpis{}
+└────────────────────────┬─────────────────────┘
+                         │
+                         ▼
+┌──────────────────────────────────────────────┐
+│  Frontend (React)                            │
+│                                              │
+│  • Stores full timeline in memory (~1000+ d) │
+│  • KPIs recalculated via useMemo (~50ms)     │
+│  • Charts rendered from timeline data        │
+│  • All filtering happens client-side         │
+│  • Prices auto-refresh every ~5 min          │  ← NEAR REAL-TIME
+│    (hits backend RAM cache, not Kraken)       │
+└──────────────────────────────────────────────┘`
     }</div>
     <p style={s.body}>
       The daily timeline is the central data structure. Each entry contains a complete portfolio
@@ -530,66 +234,87 @@ const HowItWorksSection = ({ s }) => (
       recalculation possible — all the raw data is already there.
     </p>
 
-    <h3 id="hw-dates" style={s.subsectionTitle}>Dual Date System</h3>
+    <h3 id="arch-diagram" style={s.subsectionTitle}>System Diagram</h3>
     <p style={s.body}>
-      There are two independent pairs of dates, each controlling a different part of the UI:
+      The complete system with every component, data flow, and storage persistence:
+    </p>
+    <div style={s.codeBlock}>{
+`┌─────────┐    CSV/API     ┌────────────────────────────────────┐
+│  User   │ ──────────────→│  Backend (FastAPI, port 8001)       │
+│  Input  │                │                                     │
+└─────────┘                │  Parse trades                       │
+                           │       ↓                             │
+                           │  FIFO engine (full history)         │
+                           │       ↓                             │
+                           │  Build daily timeline               │
+                           │    ├─ Supabase ← historical prices  │
+                           │    └─ Kraken API ← today's price    │
+                           │       ↓                             │
+                           │  Return: timeline[] + portfolio[]   │
+                           └────────────────┬────────────────────┘
+                                            │
+                    ┌──────────────────────┐ │ ┌──────────────────┐
+                    │  Supabase            │ │ │  Kraken API      │
+                    │  (PostgreSQL)        │ │ │  (public)        │
+                    │                      │ │ │                  │
+                    │  Historical prices   │ │ │  Current prices  │
+                    │  Daily cron update   │ │ │  BG refresh ~5m  │
+                    │  PERSISTENT          │ │ │  ~288 calls/day  │
+                    └──────────────────────┘ │ └──────────────────┘
+                                             │
+                                             ▼
+                           ┌────────────────────────────────────┐
+                           │  Frontend (React + Vite)            │
+                           │                                     │
+                           │  Timeline stored in memory          │
+                           │  KPIs via useMemo (FIFO replay)     │
+                           │  Charts from timeline snapshots     │
+                           │  Price refresh every ~5 min         │
+                           │  All filtering is client-side       │
+                           │  VOLATILE (session lifetime)        │
+                           └────────────────────────────────────┘`
+    }</div>
+    <div style={s.callout}>
+      The backend is stateless for user data — it doesn't store trades, API keys, or CSV files.
+      The only persistent storage is the Supabase price cache, which contains public market prices
+      (not user data) and is shared across all requests.
+    </div>
+  </div>
+);
+
+const PipelineSection = ({ s }) => (
+  <div id="pipeline">
+    <h2 style={s.sectionTitle}>Data Pipeline</h2>
+    <div style={s.greenBar} />
+
+    <h3 id="pl-ingestion" style={s.subsectionTitle}>Data Ingestion</h3>
+    <p style={s.body}>
+      Trade data enters the system through two paths, both producing the same normalized format:
     </p>
     <div style={{ display: 'flex', gap: '16px', marginBottom: '1.2rem' }}>
       <div style={{ ...s.card, flex: 1 }}>
-        <div style={s.label}>Filter Dates</div>
+        <div style={s.label}>CSV Import</div>
         <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-          Control KPI calculations, the asset leaderboard, and the portfolio bar. Changed by the
-          sidebar date filter and "Apply to All".
+          Kraken's standard trade export. Parsed in memory — never written to disk. Supports
+          the full Kraken CSV schema including all pair formats and order types.
         </p>
       </div>
       <div style={{ ...s.card, flex: 1 }}>
-        <div style={s.label}>Timeline Dates</div>
+        <div style={s.label}>Kraken API</div>
         <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-          Control the visible zoom range of the timeline chart only. Changed by drag-zoom and
-          quick filters (1W, 1M, 3M, etc.).
+          Authenticated via HMAC-SHA512. Read-only keys fetch the complete trade history in a
+          single paginated request. Keys are used once and discarded from memory.
         </p>
       </div>
     </div>
     <p style={s.body}>
-      When you zoom the timeline, only the chart range changes — KPIs stay stable. If the end date
-      differs from the current filter, an "Apply to All" popup lets you propagate the change to the
-      rest of the page. Point-clicking a date shows a snapshot of the portfolio at that exact point.
-    </p>
-    <div style={s.callout}>
-      This separation exists because zooming is exploratory — you want to look closer at a period
-      without your KPIs jumping around. Applying the zoom to KPIs is always an explicit choice.
-    </div>
-
-    <h3 id="hw-kpi" style={s.subsectionTitle}>Frontend-First KPIs</h3>
-    <p style={s.body}>
-      After the initial load, KPIs are never fetched from the backend. The frontend replays FIFO
-      logic over the in-memory timeline, filtering by the selected end date, hidden assets, and
-      disabled operations. This happens inside a <span style={s.inlineCode}>useMemo</span> hook that
-      recalculates only when its dependencies change — making every interaction instant.
-    </p>
-    <div style={s.codeBlock}>{
-`User changes end date / hides an asset / toggles a trade
-      │
-      ▼
-Dashboard.jsx updates state
-      │
-      ▼
-KPIGrid.jsx useMemo recalculates:
-      │  • Iterates timeline entries up to endDate
-      │  • Replays FIFO over each day's operations
-      │  • Skips hidden assets and disabled trades
-      │  • Computes: value, cost basis, unrealized, realized
-      │  • No HTTP request — pure in-memory computation
-      ▼
-UI updates instantly (~50ms)`
-    }</div>
-    <p style={s.body}>
-      The same approach applies to the Asset Leaderboard and Portfolio Bar — they recalculate
-      from the same timeline data, ensuring all components stay perfectly in sync without any
-      backend coordination.
+      During ingestion, the system detects <strong>crypto-to-crypto trades</strong> (e.g. BTC→ETH)
+      and converts costs through EUR equivalents using the historical price at the trade date. Kraken
+      uses internal asset names (XXBT for BTC, XETH for ETH, XDG for DOGE) — the backend normalizes
+      these before processing.
     </p>
 
-    <h3 id="hw-fifo" style={s.subsectionTitle}>FIFO Engine</h3>
+    <h3 id="pl-fifo" style={s.subsectionTitle}>FIFO Engine</h3>
     <p style={s.body}>
       The core of GainTrack's accuracy. All trades are processed chronologically using First In,
       First Out accounting — the same method used for tax reporting in most jurisdictions. When you
@@ -617,26 +342,57 @@ Sell 1.2 BTC @ €15,000
       where most exchanges get it wrong — and why their numbers can differ by up to 20%.
     </div>
 
-    <h3 id="hw-cache" style={s.subsectionTitle}>Price Caching</h3>
+    <h3 id="pl-storage" style={s.subsectionTitle}>Storage Layer</h3>
+    <p style={s.body}>
+      Historical prices are stored in a <strong>Supabase PostgreSQL</strong> database — the only
+      persistent storage in the system. This is not a cache in the traditional sense; it's the
+      authoritative source for all historical price data used in timeline construction.
+    </p>
+    <div style={s.card}>
+      <div style={s.label}>Supabase — PostgreSQL</div>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        <strong>Schema:</strong> One table with (asset, date, price) rows. Daily closing prices
+        for every tracked asset, from 2020 to present.
+      </p>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        <strong>Population:</strong> A daily cron job runs at 01:00 AM and writes yesterday's closing
+        price. The job is idempotent (uses upsert) and includes exponential backoff for transient
+        failures.
+      </p>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        <strong>Batch optimization:</strong> When building a timeline spanning 1,000 days across
+        10 assets, the backend issues ~4 batch queries (grouped by asset) instead of 36,500
+        individual lookups — reducing query count by 99.99%.
+      </p>
+      <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
+        <strong>Today's price protection:</strong> The cron job never writes today's price to
+        Supabase. Today's price comes exclusively from the real-time Kraken API layer, ensuring
+        that partially-formed daily candles don't contaminate the historical record.
+      </p>
+    </div>
+    <p style={s.body}>
+      User data (trades, API keys, CSV files) is never persisted — it exists only in server
+      memory during a single request lifecycle.
+    </p>
+
+    <h3 id="pl-cache" style={s.subsectionTitle}>Caching System</h3>
     <p style={s.body}>
       Three independent caching layers keep the app fast, accurate, and cheap to run:
     </p>
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '1.2rem' }}>
       <div style={s.card}>
-        <div style={s.label}>Layer 1 — Supabase (Historical Prices)</div>
+        <div style={s.label}>Layer 1 — Supabase (Historical Prices) — PERSISTENT</div>
         <p style={{ ...s.body, marginBottom: '0.4rem', fontSize: '15px' }}>
-          A PostgreSQL database hosted on Supabase stores daily closing prices for every asset,
-          permanently. When the backend builds the timeline, it fetches all historical prices in a
-          single batch query instead of calling Kraken for each day.
+          PostgreSQL database storing daily closing prices permanently. When the backend builds
+          the timeline, it fetches all historical prices in a single batch query instead of calling
+          Kraken for each day. Populated by a daily cron job and a one-time backfill script.
         </p>
         <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-          Populated by a daily cron job (runs at 01:00 AM, stores yesterday's closing price) and
-          a one-time backfill script for initial setup. Today's price is never cached here — it
-          always comes from the real-time layer.
+          Today's price is never cached here — it always comes from the real-time layer.
         </p>
       </div>
       <div style={s.card}>
-        <div style={s.label}>Layer 2 — In-Memory Cache (Current Prices)</div>
+        <div style={s.label}>Layer 2 — In-Memory Cache (Current Prices) — VOLATILE</div>
         <p style={{ ...s.body, marginBottom: '0.4rem', fontSize: '15px' }}>
           A simple Python dict in server RAM, shared across all requests. A background task
           refreshes it every ~5 minutes by calling the Kraken public API — keeping it warm so user
@@ -649,7 +405,7 @@ Sell 1.2 BTC @ €15,000
         </p>
       </div>
       <div style={s.card}>
-        <div style={s.label}>Layer 3 — Frontend Timeline (In-Browser)</div>
+        <div style={s.label}>Layer 3 — Frontend Timeline (In-Browser) — VOLATILE</div>
         <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
           The complete daily timeline (~1000+ snapshots) lives in React state after the initial
           load. Every KPI, chart, and table renders from this data. Prices for the last day are
@@ -659,80 +415,247 @@ Sell 1.2 BTC @ €15,000
       </div>
     </div>
     <div style={s.codeBlock}>{
-`
-┌───────────────────────────────────────────────────-─┐
-│  Supabase (PostgreSQL)         Permanent storage    │
-│                                                     │
-│  Daily cron → Kraken API → INSERT closing price     │
-│  Timeline build → batch SELECT by asset + dates     │
-│  Protection: today's price never written here       │
-└──────────────────────────┬──────────────────────────┘
+`┌────────────────────────────────────────────────────┐
+│  Supabase (PostgreSQL)         PERSISTENT          │
+│                                                    │
+│  Daily cron → Kraken API → INSERT closing price    │  ← BATCH
+│  Timeline build → batch SELECT by asset + dates    │
+│  Protection: today's price never written here      │
+└──────────────────────────┬─────────────────────────┘
                            │ historical prices
                            ▼
-┌─────────────────────────────────────────────────────┐
-│  Backend RAM Cache         TTL: 300s (5 min)        │
-│                                                     │
-│  BG Task (295s) → Kraken API → _price_cache{}       │ 
-│  GET /api/prices → read cache → respond             │
-│  (never calls Kraken if cache is fresh)             │
-└──────────────────────────┬──────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│  Backend RAM Cache         TTL: 300s (5 min)       │
+│                            VOLATILE                │
+│                                                    │
+│  BG Task (295s) → Kraken API → _price_cache{}      │  ← NEAR REAL-TIME
+│  GET /api/prices → read cache → respond            │
+│  (never calls Kraken if cache is fresh)            │
+└──────────────────────────┬─────────────────────────┘
                            │ current prices
                            ▼
-┌─────────────────────────────────────────────────────┐
-│  Frontend (React State)    Session lifetime         │
-│                                                     │
-│  Auto-refresh (310s) → GET /api/prices/current      │
-│  Updates last day of timeline with fresh prices     │
-│  All KPIs/charts recalculate from this data         │
-└─────────────────────────────────────────────────────┘`
+┌────────────────────────────────────────────────────┐
+│  Frontend (React State)    VOLATILE                │
+│                            Session lifetime        │
+│                                                    │
+│  Auto-refresh (310s) → GET /api/prices/current     │
+│  Updates last day of timeline with fresh prices    │
+│  All KPIs/charts recalculate from this data        │
+└────────────────────────────────────────────────────┘`
     }</div>
 
-    <h3 id="hw-summary" style={s.subsectionTitle}>Full Architecture</h3>
+    <h3 id="pl-serving" style={s.subsectionTitle}>Serving Layer</h3>
     <p style={s.body}>
-      Putting it all together — the complete system with every component and data flow:
+      After the initial load, the frontend never calls the backend for KPI recalculation. Instead,
+      it replays FIFO logic over the in-memory timeline, filtering by the selected end date, hidden
+      assets, and disabled operations. This happens inside
+      a <span style={s.inlineCode}>useMemo</span> hook that recalculates only when its dependencies
+      change:
     </p>
     <div style={s.codeBlock}>{
-`
-┌─────────┐    CSV/API     ┌───────────────────────────────────-┐
-│  User   │ ──────────────→│  Backend (FastAPI, port 8001)      │
-│  Input  │                │                                    │
-└─────────┘                │  Parse trades                      │
-                           │       ↓                            │
-                           │  FIFO engine (full history)        │
-                           │       ↓                            │
-                           │  Build daily timeline              │
-                           │    ├─ Supabase ← historical prices │
-                           │    └─ Kraken API ← today's price   │
-                           │       ↓                            │
-                           │  Return: timeline[] + portfolio[]  │
-                           └───────────────-┬───────────────────┘
-                                            │
-                    ┌──────────────────────┐│┌──────────────────┐
-                    │  Supabase            │││  Kraken API      │
-                    │  (PostgreSQL)        │││  (public)        │
-                    │                      │││                  │
-                    │  Historical prices   │││  Current prices  │
-                    │  Daily cron update   │││  BG refresh ~5m  │
-                    │  Permanent storage   │││  ~288 calls/day  │
-                    └──────────────────────┘│└──────────────────┘
-                                            │
-                                            ▼
-                           ┌───────────────────────────────────┐
-                           │  Frontend (React + Vite)          │
-                           │                                   │
-                           │  Timeline stored in memory        │
-                           │  KPIs via useMemo (FIFO replay)   │
-                           │  Charts from timeline snapshots   │
-                           │  Price refresh every ~5 min       │
-                           │  All filtering is client-side     │
-                           └───────────────────────────────────┘`
+`User changes end date / hides an asset / toggles a trade
+      │
+      ▼
+Dashboard.jsx updates state
+      │
+      ▼
+KPIGrid.jsx useMemo recalculates:
+      │  • Iterates timeline entries up to endDate
+      │  • Replays FIFO over each day's operations
+      │  • Skips hidden assets and disabled trades
+      │  • Computes: value, cost basis, unrealized, realized
+      │  • No HTTP request — pure in-memory computation
+      ▼
+UI updates instantly (~50ms)`
     }</div>
-    <div style={s.callout}>
-      The backend is stateless — it doesn't store your data, API keys, or CSV files. Every
-      request is processed independently and the response contains everything the frontend needs.
-      The only persistent storage is the Supabase price cache, which contains only public market
-      prices, not user data.
+    <p style={s.body}>
+      The same approach applies to the Asset Leaderboard and Portfolio Bar — they recalculate
+      from the same timeline data, ensuring all components stay perfectly in sync without any
+      backend coordination. The compute-once, interact-forever model means the backend serves a
+      single response and the frontend handles the rest for the entire session.
+    </p>
+  </div>
+);
+
+const DecisionsSection = ({ s }) => (
+  <div id="decisions">
+    <h2 style={s.sectionTitle}>Design Decisions</h2>
+    <div style={s.greenBar} />
+
+    <p style={s.body}>
+      Key architectural choices and the reasoning behind each:
+    </p>
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '1.2rem' }}>
+      {[
+        {
+          title: 'FIFO processes full history',
+          why: 'Partial history produces incorrect cost basis — earlier buys that should have been consumed by sells still appear as held positions. The entire trade log must be replayed from day one to get accurate numbers.',
+        },
+        {
+          title: 'Daily time-series snapshots',
+          why: 'The backend computes one snapshot per day and returns the full series. This allows the frontend to answer any date range query, zoom, or filter instantly without backend round-trips — compute once, interact forever.',
+        },
+        {
+          title: 'Frontend recomputation over re-fetching',
+          why: 'KPIs, leaderboards, and charts all derive from the in-memory timeline via useMemo. This eliminates network latency for every user interaction after the initial load, keeping the UI at ~50ms response time.',
+        },
+        {
+          title: 'Batch price lookup (4 queries vs 36,500)',
+          why: 'Historical prices are fetched in bulk by asset+date range from Supabase, not individually per day. For a 1,000-day timeline with 10 assets, this reduces database queries by 99.99%.',
+        },
+        {
+          title: 'Stateless user data + persistent price storage',
+          why: 'User trades and credentials are never stored — privacy by design. Public market prices are persisted in Supabase because they\'re expensive to re-fetch and identical for all users.',
+        },
+        {
+          title: 'In-memory cache over Redis',
+          why: 'Current prices refresh every ~5 minutes from a Python dict in RAM. No Redis, no external services, no ops overhead. The trade-off (lost on restart) is acceptable — the first request rebuilds it.',
+        },
+        {
+          title: 'Dual date system',
+          why: 'Timeline zoom (exploratory) and KPI dates (analytical) are independent. Zooming into a chart range shouldn\'t make KPIs jump — applying the zoom to KPIs is always an explicit user action.',
+        },
+      ].map(item => (
+        <div key={item.title} style={s.card}>
+          <div style={s.label}>{item.title}</div>
+          <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>{item.why}</p>
+        </div>
+      ))}
     </div>
+  </div>
+);
+
+const GettingStartedSection = ({ s }) => (
+  <div id="getting-started">
+    <h2 style={s.sectionTitle}>Getting Started</h2>
+    <div style={s.greenBar} />
+
+    <h3 id="gs-api" style={s.subsectionTitle}>API Connection</h3>
+    <p style={s.body}>
+      Go to{' '}
+      <a href="https://pro.kraken.com/app/settings/api" target="_blank" rel="noopener noreferrer"
+        style={{ color: '#00ff88', textDecoration: 'none', borderBottom: '1px solid rgba(0,255,136,0.3)' }}>
+        Kraken API Settings
+      </a>{' '}
+      and create a read-only API key with minimum permissions:
+    </p>
+    <div style={{ ...s.card, marginBottom: '1.2rem' }}>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        1. <span style={s.inlineCode}>Funds Permissions</span> → check only <strong>Query</strong>
+      </p>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        2. <span style={s.inlineCode}>Orders and Trades</span> → check only{' '}
+        <strong>Query closed orders & trades</strong> (read-only access to completed trades)
+      </p>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        3. Leave all other permissions unchecked (Staking, WebSockets, etc.)
+      </p>
+      <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
+        4. Copy both keys — Kraken shows them only once. Paste them into the GainTrack form.
+      </p>
+    </div>
+    <div style={s.callout}>
+      GainTrack never stores or logs your API keys. They are used for a single read-only
+      request to fetch your trade history, then discarded from memory.
+    </div>
+
+    <h3 id="gs-csv" style={s.subsectionTitle}>CSV Upload</h3>
+    <p style={s.body}>
+      Go to{' '}
+      <a href="https://pro.kraken.com/app/statements" target="_blank" rel="noopener noreferrer"
+        style={{ color: '#00ff88', textDecoration: 'none', borderBottom: '1px solid rgba(0,255,136,0.3)' }}>
+        Kraken Statements
+      </a>{' '}
+      and export your trade history:
+    </p>
+    <div style={{ ...s.card, marginBottom: '1.2rem' }}>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        1. Set statement type to <span style={s.inlineCode}>Trades</span>, select the full date
+        range available
+      </p>
+      <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
+        2. Keep <strong>All Pairs</strong> and <strong>All Fields</strong> selected — FIFO needs
+        the complete dataset
+      </p>
+      <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
+        3. Export as <span style={s.inlineCode}>CSV</span>, then drag and drop the file into GainTrack
+      </p>
+    </div>
+    <p style={s.body}>
+      The CSV is parsed server-side, processed through the FIFO engine, and immediately discarded —
+      it is never written to disk.
+    </p>
+  </div>
+);
+
+const DashboardGuideSection = ({ s }) => (
+  <div id="dashboard">
+    <h2 style={s.sectionTitle}>Dashboard Guide</h2>
+    <div style={s.greenBar} />
+
+    <h3 id="db-kpi" style={s.subsectionTitle}>KPI Grid</h3>
+    <p style={s.body}>
+      Four key performance indicators calculated using FIFO accounting:
+    </p>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+      {[
+        { name: 'Total Invested', desc: 'Sum of all buy costs minus sell proceeds (your net cash outflow)' },
+        { name: 'Portfolio Value', desc: 'Current market value of all held positions at live prices' },
+        { name: 'Total P&L', desc: 'Combined realized gains (from sells) + unrealized gains (from current holdings)' },
+        { name: 'Realized P&L', desc: 'Profit/loss from completed sell transactions, calculated via FIFO cost basis' },
+      ].map(kpi => (
+        <div key={kpi.name} style={s.card}>
+          <div style={s.label}>{kpi.name}</div>
+          <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>{kpi.desc}</p>
+        </div>
+      ))}
+    </div>
+    <div style={s.callout}>
+      KPIs always show the cumulative state from your very first trade up to the selected end date.
+      FIFO must process the full history, so partial-range KPIs are never fetched — they're
+      recalculated in the frontend from the in-memory timeline.
+    </div>
+
+    <h3 id="db-timeline" style={s.subsectionTitle}>Timeline Chart</h3>
+    <p style={s.body}>
+      An interactive Chart.js line chart with two view modes:{' '}
+      <span style={s.inlineCode}>FULL VIEW</span> (portfolio value over time, with optional
+      cost basis overlay) and <span style={s.inlineCode}>P&L VIEW</span> (cumulative profit/loss,
+      green/red as it crosses zero). A <span style={s.inlineCode}>FILL</span> toggle adds gradient
+      area fill under the lines.
+    </p>
+    <p style={s.body}>
+      <strong>Interactions:</strong> Drag to zoom into a date range. Click a point to freeze the
+      tooltip for that day's snapshot. Quick filters (1W, 1M, 3M, 6M, 1Y, ALL TIME) jump to preset
+      ranges. Period buttons (D/W/M/Y) control data granularity. The chart has its own date range
+      (timeline dates) independent from the KPI dates — zooming the chart doesn't change KPIs unless
+      you explicitly click "Apply to All".
+    </p>
+
+    <h3 id="db-components" style={s.subsectionTitle}>Other Components</h3>
+    <p style={s.body}>
+      <strong>Portfolio Bar:</strong> A proportional bar showing each asset's weight by current market
+      value. Hover for asset name, value, and percentage.{' '}
+      <strong>Asset Leaderboard:</strong> A sortable table with per-asset FIFO breakdown — current value,
+      cost basis, unrealized and realized gains, and allocation percentage.{' '}
+      <strong>Price Ticker:</strong> A scrolling ticker showing live prices for held assets, with
+      percentage change from yesterday's close. Auto-refreshes every ~5 minutes from the backend cache.
+    </p>
+
+    <h3 id="db-trades" style={s.subsectionTitle}>Trades & Filters</h3>
+    <p style={s.body}>
+      The <strong>Trades tab</strong> shows every operation in your portfolio. Click any row to
+      toggle that trade on/off — disabled trades are excluded from all KPI calculations, charts,
+      and the leaderboard, running a "what if" scenario entirely client-side. Quick filter buttons
+      (ALL / BUY / SELL) focus on specific operation types.
+    </p>
+    <p style={s.body}>
+      The <strong>Filters sidebar</strong> (left panel) provides global controls: date range,
+      asset visibility (toggle individual assets on/off), threshold filters (minimum allocation or
+      balance), and operation type filters. All filters apply to every dashboard element and operate
+      on the in-memory timeline — no backend calls.
+    </p>
   </div>
 );
 
@@ -742,14 +665,16 @@ const SecuritySection = ({ s }) => (
     <div style={s.greenBar} />
 
     <p style={s.body}>
-      GainTrack is designed with a privacy-first approach. Here's how your data is protected:
+      GainTrack is designed with a privacy-first approach. User data is never persisted — the
+      only storage is a Supabase database containing public market prices (daily closing prices),
+      which is independent of any user information.
     </p>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
       {[
         { name: 'API Keys', desc: 'Used for a single Kraken API call, then discarded. Never stored in any database, log, or file.' },
         { name: 'CSV Files', desc: 'Parsed in server memory and never saved to disk. The raw file is not accessible after processing.' },
         { name: 'No User Accounts', desc: 'There are no accounts, sessions, or cookies. Each visit is stateless — your data exists only while the browser tab is open.' },
-        { name: 'Client-Side State', desc: 'All portfolio data lives in React state (browser memory). Closing the tab erases everything. Nothing persists.' },
+        { name: 'Persistent Storage', desc: 'Only public market prices are stored (Supabase PostgreSQL). No user data, trade history, or credentials are ever persisted.' },
       ].map(item => (
         <div key={item.name} style={s.card}>
           <div style={s.label}>{item.name}</div>
@@ -1018,11 +943,11 @@ const DocumentationSection = ({ theme, sidebarOpen }) => {
         paddingBottom: '5vh',
       }}>
         <AboutSection s={s} />
+        <ArchitectureSection s={s} />
+        <PipelineSection s={s} />
+        <DecisionsSection s={s} />
         <GettingStartedSection s={s} />
-        <OverviewDocsSection s={s} />
-        <OperationsDocsSection s={s} />
-        <FiltersDocsSection s={s} />
-        <HowItWorksSection s={s} />
+        <DashboardGuideSection s={s} />
         <SecuritySection s={s} />
         <ContactSection s={s} />
       </div>
