@@ -83,26 +83,10 @@ def obtener_precios_rango_kraken(asset: str, fecha_inicio: date, fecha_fin: date
     Patrón basado en main.py - más eficiente que llamadas individuales
     """
     try:
-        # Mapeo de assets a pares de Kraken
-        pair_mapping = {
-            'XXBT': 'XXBTZEUR',
-            'XETH': 'XETHZEUR',
-            'ADA': 'ADAEUR',
-            'SOL': 'SOLEUR',
-            'DOT': 'DOTEUR',
-            'POL': 'POLEUR',
-            'AVAX': 'AVAXEUR',
-            'XDG': 'XDGEUR',
-            'LINK': 'LINKEUR',
-            'UNI': 'UNIEUR',
-            'AAVE': 'AAVEEUR',
-            'ATOM': 'ATOMEUR',
-            'XRP': 'XXRPZEUR',
-            'HBAR': 'HBAREUR',
-            'TRUMP': 'TRUMPEUR'
-        }
-        
-        pair = pair_mapping.get(asset, f"{asset}EUR")
+        # Importar mapeo centralizado
+        from backfill_historico import PAIR_MAPPING as _PM
+
+        pair = _PM.get(asset, f"{asset}EUR")
         
         # Convertir fecha_inicio a timestamp Unix
         inicio_timestamp = int(time.mktime(fecha_inicio.timetuple()))

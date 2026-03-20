@@ -145,7 +145,7 @@ const TldrSection = ({ s }) => (
       }}>
         <li><strong>Ingestion:</strong> Trade data via Kraken API (HMAC-SHA512 auth) or CSV upload, with crypto-to-crypto EUR conversion</li>
         <li><strong>Processing:</strong> Full-history FIFO engine computes accurate cost basis, realized/unrealized gains per asset</li>
-        <li><strong>Storage:</strong> Daily time-series built from Supabase (PostgreSQL) historical prices — batch queries, not per-day lookups</li>
+        <li><strong>Storage:</strong> 100,000+ daily price records across 70+ assets in Supabase (PostgreSQL) — batch queries, not per-day lookups</li>
         <li><strong>Caching:</strong> 3-layer system — persistent Supabase, volatile in-memory (shared across all users, ~288 Kraken calls/day), browser-side timeline</li>
         <li><strong>Serving:</strong> Backend delivers pre-computed time-series once; frontend handles all analytical queries (KPIs, filtering, zoom) client-side via <span style={s.inlineCode}>useMemo</span> — zero-latency interactions (~50ms)</li>
         <li><strong>Privacy:</strong> User data is stateless (never stored). Only public market prices are persisted</li>
@@ -390,7 +390,7 @@ Sell 1.2 BTC @ €15,000
       <div style={s.label}>Supabase — PostgreSQL</div>
       <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
         <strong>Schema:</strong> One table with (asset, date, price) rows. Daily closing prices
-        for every tracked asset, from 2020 to present.
+        for all 70+ tracked assets, from 2020 to present — over 100,000 price records.
       </p>
       <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
         <strong>Population:</strong> A daily cron job runs at 00:05 AM and writes yesterday's closing
@@ -398,9 +398,9 @@ Sell 1.2 BTC @ €15,000
         failures.
       </p>
       <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        <strong>Batch optimization:</strong> When building a timeline spanning 1,000 days across
-        10 assets, the backend issues ~4 batch queries (grouped by asset) instead of 36,500
-        individual lookups — reducing query count by 99.99%.
+        <strong>Batch optimization:</strong> When building a timeline spanning 2,000+ days across
+        70+ tracked assets, the backend issues ~4 batch queries per asset (grouped by date range) instead of
+        individual lookups per asset-day — reducing query count by 99.99%.
       </p>
       <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
         <strong>Today's price protection:</strong> The cron job never writes today's price to
@@ -535,7 +535,7 @@ const PerformanceSection = ({ s }) => (
         {
           metric: '4 queries',
           label: 'vs ~36,500 individual lookups',
-          desc: 'Historical prices fetched in batch by asset+date range from Supabase. A 1,000-day timeline across 10 assets uses 4 grouped queries instead of one per asset-day.',
+          desc: 'Historical prices fetched in batch by asset+date range from Supabase. A 2,000-day timeline across 70+ assets uses grouped queries instead of one per asset-day.',
         },
         {
           metric: '288 calls/day',
@@ -550,7 +550,7 @@ const PerformanceSection = ({ s }) => (
         {
           metric: '1,000+',
           label: 'Trades processed per portfolio',
-          desc: 'Handles multi-year trade histories with hundreds to thousands of operations across 10+ assets. Full FIFO replay completes in seconds on the backend.',
+          desc: 'Handles multi-year trade histories with hundreds to thousands of operations across 70+ supported assets. Full FIFO replay completes in seconds on the backend.',
         },
       ].map(item => (
         <div key={item.label} style={s.card}>
@@ -590,7 +590,7 @@ const DecisionsSection = ({ s }) => (
         },
         {
           title: 'Batch price lookup (4 queries vs 36,500)',
-          why: 'Historical prices are fetched in bulk by asset+date range from Supabase, not individually per day. For a 1,000-day timeline with 10 assets, this reduces database queries by 99.99%.',
+          why: 'Historical prices are fetched in bulk by asset+date range from Supabase, not individually per day. For a 2,000-day timeline with 70+ assets, this reduces database queries by 99.99%.',
         },
         {
           title: 'Stateless user data + persistent price storage',

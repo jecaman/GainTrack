@@ -94,6 +94,18 @@ export const assetLabelMap = {
   'XDGEUR': 'DOGE',
   'XDGZEUR': 'DOGE',
 
+  // Litecoin variants (Kraken uses XLTC internally)
+  'XLTC': 'LTC',
+  'XLTCZ': 'LTC',
+  'XLTCZEUR': 'LTC',
+  'LTC': 'LTC',
+
+  // Stellar variants (Kraken uses XXLM internally)
+  'XXLM': 'XLM',
+  'XXLMZ': 'XLM',
+  'XXLMZEUR': 'XLM',
+  'XLM': 'XLM',
+
   // Fiat currencies
   'ZEUR': 'EUR',
   'ZUSD': 'USD',

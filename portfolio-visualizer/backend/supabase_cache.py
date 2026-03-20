@@ -135,23 +135,42 @@ class SupabaseCache:
         try:
             # Mapeo de assets a pares de Kraken
             pair_mapping = {
-                'XXBT': 'XXBTZEUR',
-                'XETH': 'XETHZEUR',
-                'ADA': 'ADAEUR',
-                'SOL': 'SOLEUR',
-                'DOT': 'DOTEUR',
-                'POL': 'POLEUR',
-                'AVAX': 'AVAXEUR',
-                'XDG': 'XDGEUR',
-                'LINK': 'LINKEUR',
-                'UNI': 'UNIEUR',
-                'AAVE': 'AAVEEUR',
-                'ATOM': 'ATOMEUR',
-                'HBAR': 'HBAREUR',
-                'XRP': 'XXRPZEUR',
-                'TRUMP': 'TRUMPEUR'
+                # Special Kraken naming
+                'XXBT': 'XXBTZEUR', 'XETH': 'XETHZEUR', 'XRP': 'XXRPZEUR',
+                'XLTC': 'XLTCZEUR', 'XXLM': 'XXLMZEUR', 'XDG': 'XDGEUR',
+                # Standard {ASSET}EUR
+                'SOL': 'SOLEUR', 'ADA': 'ADAEUR', 'AVAX': 'AVAXEUR',
+                'DOT': 'DOTEUR', 'LINK': 'LINKEUR', 'ATOM': 'ATOMEUR',
+                'UNI': 'UNIEUR', 'POL': 'POLEUR', 'HBAR': 'HBAREUR',
+                'TRUMP': 'TRUMPEUR', 'TRX': 'TRXEUR', 'TON': 'TONEUR',
+                'KAS': 'KASEUR', 'ICP': 'ICPEUR', 'BCH': 'BCHEUR',
+                'BNB': 'BNBEUR', 'XTZ': 'XTZEUR',
+                # L2 / New L1
+                'NEAR': 'NEAREUR', 'APT': 'APTEUR', 'ARB': 'ARBEUR',
+                'OP': 'OPEUR', 'SUI': 'SUIEUR', 'SEI': 'SEIEUR',
+                'STX': 'STXEUR', 'TIA': 'TIAEUR', 'INJ': 'INJEUR',
+                'MINA': 'MINAEUR', 'FLOW': 'FLOWEUR', 'KAVA': 'KAVAEUR',
+                'ALGO': 'ALGOEUR',
+                # DeFi
+                'AAVE': 'AAVEEUR', 'CRV': 'CRVEUR', 'COMP': 'COMPEUR',
+                'SNX': 'SNXEUR', 'SUSHI': 'SUSHIEUR', 'YFI': 'YFIEUR',
+                '1INCH': '1INCHEUR', 'DYDX': 'DYDXEUR', 'PENDLE': 'PENDLEEUR',
+                'RUNE': 'RUNEEUR', 'FIL': 'FILEUR',
+                # AI / Data
+                'FET': 'FETEUR', 'OCEAN': 'OCEANEUR', 'RENDER': 'RENDEREUR',
+                'TAO': 'TAOEUR', 'GRT': 'GRTEUR',
+                # Gaming / Metaverse
+                'MANA': 'MANAEUR', 'SAND': 'SANDEUR', 'AXS': 'AXSEUR',
+                'ENJ': 'ENJEUR', 'GALA': 'GALAEUR', 'IMX': 'IMXEUR',
+                # Meme
+                'PEPE': 'PEPEEUR', 'SHIB': 'SHIBEUR', 'FLOKI': 'FLOKIEUR',
+                'BONK': 'BONKEUR', 'WIF': 'WIFEUR',
+                # Trending / New
+                'JUP': 'JUPEUR', 'WLD': 'WLDEUR', 'STRK': 'STRKEUR',
+                'ZRO': 'ZROEUR', 'EIGEN': 'EIGENEUR', 'ENA': 'ENAEUR',
+                'ONDO': 'ONDOEUR', 'ETHFI': 'ETHFIEUR',
             }
-            
+
             # Usar el asset tal como viene si no está en el mapeo
             pair = pair_mapping.get(asset, f"{asset}EUR")
             

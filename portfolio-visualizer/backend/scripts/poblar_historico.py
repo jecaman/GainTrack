@@ -21,23 +21,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Assets que trackeas en tu portfolio
-ASSETS = [
-    "XXBT",    # BTC
-    "XETH",    # ETH
-    "SOL",     # SOL
-    "XRP",     # XRP
-    "LINK",    # LINK
-    "HBAR",    # HBAR
-    "TRUMP",   # TRUMP
-    "ADA",     # Cardano
-    "DOT",     # Polkadot
-    "AVAX",    # Avalanche
-    "POL",     # Polygon (ex-MATIC)
-    "XDG",     # Dogecoin (DOGE)
-    "ATOM",    # Cosmos
-    "UNI"      # Uniswap
-]
+# Assets — importar lista centralizada del backfill script
+from backfill_historico import ASSETS, PAIR_MAPPING
 
 def obtener_precio_historico_kraken(asset: str, fecha: date) -> float:
     """
@@ -45,26 +30,7 @@ def obtener_precio_historico_kraken(asset: str, fecha: date) -> float:
     Usa la API de Kraken para obtener el precio de cierre del día
     """
     try:
-        # Mapeo de assets a pares de Kraken (igual que en supabase_cache.py)
-        pair_mapping = {
-            'XXBT': 'XXBTZEUR',
-            'XETH': 'XETHZEUR',
-            'ADA': 'ADAEUR',
-            'SOL': 'SOLEUR',
-            'DOT': 'DOTEUR',
-            'POL': 'POLEUR',
-            'AVAX': 'AVAXEUR',
-            'XDG': 'XDGEUR',
-            'LINK': 'LINKEUR',
-            'UNI': 'UNIEUR',
-            'AAVE': 'AAVEEUR',
-            'ATOM': 'ATOMEUR',
-            'XRP': 'XXRPZEUR',
-            'HBAR': 'HBAREUR',
-            'TRUMP': 'TRUMPEUR'
-        }
-        
-        pair = pair_mapping.get(asset, f"{asset}EUR")
+        pair = PAIR_MAPPING.get(asset, f"{asset}EUR")
         
         # Convertir fecha a timestamp Unix (inicio y fin del día)
         inicio_dia = int(time.mktime(fecha.timetuple()))

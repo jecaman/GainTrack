@@ -26,42 +26,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Assets del portfolio
-ASSETS = [
-    "XXBT",    # BTC
-    "XETH",    # ETH
-    "SOL",     # SOL
-    "XRP",     # XRP
-    "LINK",    # LINK
-    "HBAR",    # HBAR
-    "TRUMP",   # TRUMP
-    "ADA",     # Cardano
-    "DOT",     # Polkadot
-    "AVAX",    # Avalanche
-    "POL",     # Polygon (ex-MATIC)
-    "XDG",     # Dogecoin (DOGE)
-    "ATOM",    # Cosmos
-    "UNI"      # Uniswap
-]
-
-# Mapeo de assets a pares de Kraken
-PAIR_MAPPING = {
-    'XXBT': 'XXBTZEUR',
-    'XETH': 'XETHZEUR',
-    'ADA': 'ADAEUR',
-    'SOL': 'SOLEUR',
-    'DOT': 'DOTEUR',
-    'POL': 'POLEUR',
-    'AVAX': 'AVAXEUR',
-    'XDG': 'XDGEUR',
-    'LINK': 'LINKEUR',
-    'UNI': 'UNIEUR',
-    'AAVE': 'AAVEEUR',
-    'ATOM': 'ATOMEUR',
-    'XRP': 'XXRPZEUR',
-    'HBAR': 'HBAREUR',
-    'TRUMP': 'TRUMPEUR'
-}
+# Assets del portfolio — importar lista centralizada del backfill script
+from backfill_historico import ASSETS, PAIR_MAPPING
 
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 5  # seconds

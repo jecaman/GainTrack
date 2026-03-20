@@ -45,9 +45,11 @@ ALL_KRAKEN_PAIRS_CACHE = {}
 
 # Mapeo base conocido de assets para Kraken (algunos assets tienen nombres diferentes)
 KNOWN_ASSET_MAPPING_KRAKEN = {
-    'BTC': 'XXBT',  # Bitcoin se llama XXBT en Kraken
-    'ETH': 'XETH',  # Ethereum se llama XETH en Kraken
-    'DOGE': 'XDG',  # Dogecoin se llama XDG en Kraken
+    'BTC': 'XXBT',   # Bitcoin se llama XXBT en Kraken
+    'ETH': 'XETH',   # Ethereum se llama XETH en Kraken
+    'DOGE': 'XDG',   # Dogecoin se llama XDG en Kraken
+    'LTC': 'XLTC',   # Litecoin se llama XLTC en Kraken
+    'XLM': 'XXLM',   # Stellar se llama XXLM en Kraken
 }
 
 # Cache dinámico para mapeos descubiertos automáticamente
@@ -1210,7 +1212,25 @@ def calcular_timeline_con_cache_hibrido(trades_df: pd.DataFrame, fecha_inicio: s
             'BTC': 'XXBT', 'ETH': 'XETH', 'XRP': 'XRP', 'SOL': 'SOL',
             'LINK': 'LINK', 'HBAR': 'HBAR', 'TRUMP': 'TRUMP',
             'ADA': 'ADA', 'DOT': 'DOT', 'AVAX': 'AVAX', 'POL': 'POL',
-            'DOGE': 'XDG', 'ATOM': 'ATOM', 'UNI': 'UNI'
+            'DOGE': 'XDG', 'ATOM': 'ATOM', 'UNI': 'UNI',
+            'LTC': 'XLTC', 'XLM': 'XXLM',
+            'TRX': 'TRX', 'TON': 'TON', 'KAS': 'KAS', 'ICP': 'ICP',
+            'BCH': 'BCH', 'BNB': 'BNB', 'XTZ': 'XTZ',
+            'NEAR': 'NEAR', 'APT': 'APT', 'ARB': 'ARB', 'OP': 'OP',
+            'SUI': 'SUI', 'SEI': 'SEI', 'STX': 'STX', 'TIA': 'TIA',
+            'INJ': 'INJ', 'MINA': 'MINA', 'FLOW': 'FLOW', 'KAVA': 'KAVA',
+            'ALGO': 'ALGO',
+            'AAVE': 'AAVE', 'CRV': 'CRV', 'COMP': 'COMP', 'SNX': 'SNX',
+            'SUSHI': 'SUSHI', 'YFI': 'YFI', '1INCH': '1INCH', 'DYDX': 'DYDX',
+            'PENDLE': 'PENDLE', 'RUNE': 'RUNE', 'FIL': 'FIL',
+            'FET': 'FET', 'OCEAN': 'OCEAN', 'RENDER': 'RENDER', 'TAO': 'TAO',
+            'GRT': 'GRT',
+            'MANA': 'MANA', 'SAND': 'SAND', 'AXS': 'AXS', 'ENJ': 'ENJ',
+            'GALA': 'GALA', 'IMX': 'IMX',
+            'PEPE': 'PEPE', 'SHIB': 'SHIB', 'FLOKI': 'FLOKI', 'BONK': 'BONK',
+            'WIF': 'WIF',
+            'JUP': 'JUP', 'WLD': 'WLD', 'STRK': 'STRK', 'ZRO': 'ZRO',
+            'EIGEN': 'EIGEN', 'ENA': 'ENA', 'ONDO': 'ONDO', 'ETHFI': 'ETHFI',
         }
         
         # Preparar datos
