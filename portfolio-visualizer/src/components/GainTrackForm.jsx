@@ -331,13 +331,12 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             gap: '6px',
           }}>
             <p style={{
-              color: theme.textSecondary,
+              color: 'rgba(255,255,255,0.55)',
               fontSize: '14px',
               margin: 0,
               fontWeight: '300',
               letterSpacing: '0.04em',
               lineHeight: '1.6',
-              opacity: 0.8,
               transition: 'color 0.3s ease',
             }}>
               Track your Kraken portfolio performance.
@@ -683,7 +682,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             fontFamily: 'monospace',
             fontSize: '10px',
             letterSpacing: '1px',
-            color: 'rgba(255,255,255,0.3)',
+            color: 'rgba(255,255,255,0.45)',
           }}>
             FIFO engine &middot; daily time-series &middot; real-time prices
           </span>
@@ -720,13 +719,13 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             target="_blank"
             rel="noopener noreferrer"
             style={{
-              color: theme.textMuted,
+              color: 'rgba(255,255,255,0.4)',
               transition: 'color 0.2s ease',
               display: 'flex',
               alignItems: 'center',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = theme.greenPrimary; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = theme.textMuted; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24"
               fill={fill ? 'currentColor' : 'none'}
