@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 
 const TOC_ITEMS = [
   // ── Technical ──
+  { id: 'tldr', label: 'TL;DR', subs: [] },
   { id: 'about', label: 'About', subs: [
     { id: 'about-problem', label: 'The Problem' },
     { id: 'about-what', label: 'What GainTrack Does' },
@@ -17,7 +18,9 @@ const TOC_ITEMS = [
     { id: 'pl-cache', label: 'Caching System' },
     { id: 'pl-serving', label: 'Serving Layer' },
   ]},
+  { id: 'performance', label: 'Performance', subs: [] },
   { id: 'decisions', label: 'Design Decisions', subs: [] },
+  { id: 'tradeoffs', label: 'Trade-offs', subs: [] },
   // ── Functional ──
   { id: 'getting-started', label: 'Getting Started', subs: [
     { id: 'gs-api', label: 'API Connection' },
@@ -121,19 +124,61 @@ const makeStyles = (theme) => ({
 
 // ─── Section Components ────────────────────────────────────────────────────────
 
+const TldrSection = ({ s }) => (
+  <div id="tldr">
+    <h2 style={{ ...s.sectionTitle, marginTop: '0.5rem' }}>TL;DR</h2>
+    <div style={s.greenBar} />
+
+    <div style={{
+      ...s.card,
+      borderLeft: '3px solid #00ff88',
+      paddingLeft: '1.6rem',
+    }}>
+      <ul style={{
+        ...s.body,
+        fontSize: '15px',
+        margin: 0,
+        paddingLeft: '1.2rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+      }}>
+        <li><strong>Ingestion:</strong> Trade data via Kraken API (HMAC-SHA512 auth) or CSV upload, with crypto-to-crypto EUR conversion</li>
+        <li><strong>Processing:</strong> Full-history FIFO engine computes accurate cost basis, realized/unrealized gains per asset</li>
+        <li><strong>Storage:</strong> Daily time-series built from Supabase (PostgreSQL) historical prices — batch queries, not per-day lookups</li>
+        <li><strong>Caching:</strong> 3-layer system — persistent Supabase, volatile in-memory (shared across all users, ~288 Kraken calls/day), browser-side timeline</li>
+        <li><strong>Serving:</strong> Backend returns complete timeline once; frontend recomputes all KPIs/charts client-side via <span style={s.inlineCode}>useMemo</span> (~50ms)</li>
+        <li><strong>Privacy:</strong> User data is stateless (never stored). Only public market prices are persisted</li>
+      </ul>
+    </div>
+
+    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '1.2rem', marginBottom: '0.5rem' }}>
+      {['Python', 'FastAPI', 'PostgreSQL', 'React 19', 'Chart.js', 'Vite'].map(tech => (
+        <span key={tech} style={{
+          ...s.inlineCode,
+          fontSize: '12px',
+          padding: '4px 10px',
+        }}>{tech}</span>
+      ))}
+    </div>
+  </div>
+);
+
 const AboutSection = ({ s }) => (
   <div id="about">
-    <h2 style={{ ...s.sectionTitle, marginTop: '0.5rem' }}>About</h2>
+    <h2 style={s.sectionTitle}>About</h2>
     <div style={s.greenBar} />
 
     <p style={s.body}>
       GainTrack is a data pipeline that processes cryptocurrency trade history through a
       FIFO (First In, First Out) accounting engine, reconstructs daily portfolio state as a
-      time-series, and serves pre-computed snapshots to an interactive frontend. The backend
-      ingests raw trade data (via CSV or authenticated API), runs a full-history FIFO pass,
-      fetches historical prices from a persistent Supabase cache, and returns a complete daily
-      timeline. The frontend then operates entirely from this in-memory dataset — all filtering,
-      date changes, and KPI recalculations happen client-side with zero network requests.
+      time-series, and serves pre-computed snapshots to an interactive frontend.
+    </p>
+    <p style={s.body}>
+      The backend ingests raw trade data (via CSV or authenticated API), runs a full-history FIFO
+      pass, fetches historical prices from a persistent Supabase cache, and returns a complete
+      daily timeline. The frontend then operates entirely from this in-memory dataset — all
+      filtering, date changes, and KPI recalculations happen client-side with zero network requests.
     </p>
     <div style={s.callout}>
       <strong>Currently Kraken-only.</strong> GainTrack works exclusively with trade data from Kraken
@@ -170,15 +215,6 @@ const AboutSection = ({ s }) => (
       each asset), which is independent of any user data.
     </p>
 
-    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '1rem' }}>
-      {['React 19', 'Vite', 'FastAPI', 'Chart.js', 'Supabase'].map(tech => (
-        <span key={tech} style={{
-          ...s.inlineCode,
-          fontSize: '12px',
-          padding: '4px 10px',
-        }}>{tech}</span>
-      ))}
-    </div>
   </div>
 );
 
@@ -202,8 +238,8 @@ const ArchitectureSection = ({ s }) => (
 `CSV / API Keys
       │
       ▼                                        ┌─────────────────┐
-┌──────────────────────────────────────────────┤   BATCH          │
-│  Backend (FastAPI)                           │   (per request)  │
+┌──────────────────────────────────────────────┤   BATCH         │
+│  Backend (FastAPI)                           │   (per request) │
 │                                              └─────────────────┘
 │  1. Parse trades from CSV or Kraken API
 │  2. Detect crypto-to-crypto trades, convert costs
@@ -224,7 +260,7 @@ const ArchitectureSection = ({ s }) => (
 │  • Charts rendered from timeline data        │
 │  • All filtering happens client-side         │
 │  • Prices auto-refresh every ~5 min          │  ← NEAR REAL-TIME
-│    (hits backend RAM cache, not Kraken)       │
+│    (hits backend RAM cache, not Kraken)      │
 └──────────────────────────────────────────────┘`
     }</div>
     <p style={s.body}>
@@ -239,7 +275,8 @@ const ArchitectureSection = ({ s }) => (
       The complete system with every component, data flow, and storage persistence:
     </p>
     <div style={s.codeBlock}>{
-`┌─────────┐    CSV/API     ┌────────────────────────────────────┐
+`
+┌─────────┐    CSV/API     ┌───-─────────────────────────────────┐
 │  User   │ ──────────────→│  Backend (FastAPI, port 8001)       │
 │  Input  │                │                                     │
 └─────────┘                │  Parse trades                       │
@@ -251,8 +288,8 @@ const ArchitectureSection = ({ s }) => (
                            │    └─ Kraken API ← today's price    │
                            │       ↓                             │
                            │  Return: timeline[] + portfolio[]   │
-                           └────────────────┬────────────────────┘
-                                            │
+                           └──────────────── ┬───────────────────┘
+                                             │ 
                     ┌──────────────────────┐ │ ┌──────────────────┐
                     │  Supabase            │ │ │  Kraken API      │
                     │  (PostgreSQL)        │ │ │  (public)        │
@@ -355,7 +392,7 @@ Sell 1.2 BTC @ €15,000
         for every tracked asset, from 2020 to present.
       </p>
       <p style={{ ...s.body, marginBottom: '0.6rem', fontSize: '15px' }}>
-        <strong>Population:</strong> A daily cron job runs at 01:00 AM and writes yesterday's closing
+        <strong>Population:</strong> A daily cron job runs at 00:05 AM and writes yesterday's closing
         price. The job is idempotent (uses upsert) and includes exponential backoff for transient
         failures.
       </p>
@@ -394,14 +431,15 @@ Sell 1.2 BTC @ €15,000
       <div style={s.card}>
         <div style={s.label}>Layer 2 — In-Memory Cache (Current Prices) — VOLATILE</div>
         <p style={{ ...s.body, marginBottom: '0.4rem', fontSize: '15px' }}>
-          A simple Python dict in server RAM, shared across all requests. A background task
-          refreshes it every ~5 minutes by calling the Kraken public API — keeping it warm so user
-          requests never hit Kraken directly.
+          A Python dict in server RAM, shared across every user and request. A background task
+          is the only component that ever calls the Kraken API — it refreshes the cache
+          every ~5 minutes. User requests always read from this cache, never from Kraken
+          directly. This means 100 concurrent users generate zero additional Kraken API calls.
         </p>
         <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>
-          No Redis, Memcached, or external services needed. Total Kraken API usage: ~288 calls/day,
-          well under any rate limit. The cache is lost on server restart, but the first request
-          rebuilds it automatically.
+          No Redis, Memcached, or external services. Total Kraken API usage: ~288 calls/day
+          regardless of user count, well under any rate limit. The cache is volatile (lost on
+          restart), but the first request rebuilds it automatically.
         </p>
       </div>
       <div style={s.card}>
@@ -469,11 +507,55 @@ KPIGrid.jsx useMemo recalculates:
 UI updates instantly (~50ms)`
     }</div>
     <p style={s.body}>
-      The same approach applies to the Asset Leaderboard and Portfolio Bar — they recalculate
-      from the same timeline data, ensuring all components stay perfectly in sync without any
-      backend coordination. The compute-once, interact-forever model means the backend serves a
-      single response and the frontend handles the rest for the entire session.
+      <strong>Why this works:</strong> the dataset is naturally bounded. A daily-granularity timeline
+      for a multi-year portfolio is ~1,000–2,000 entries — small enough for a browser to iterate in
+      under 50ms. This makes client-side recomputation faster than a backend round-trip would be,
+      while eliminating server load for every user interaction after the initial request.
     </p>
+    <p style={s.body}>
+      The same approach applies to the Asset Leaderboard and Portfolio Bar — all components
+      derive from the same in-memory timeline, staying in sync without backend coordination.
+    </p>
+  </div>
+);
+
+const PerformanceSection = ({ s }) => (
+  <div id="performance">
+    <h2 style={s.sectionTitle}>Performance & Scale</h2>
+    <div style={s.greenBar} />
+
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+      {[
+        {
+          metric: '~50ms',
+          label: 'Frontend recomputation',
+          desc: 'Full FIFO replay + KPI recalculation over ~1,000 daily snapshots, triggered by any filter/date change. Pure in-memory, zero network.',
+        },
+        {
+          metric: '4 queries',
+          label: 'vs ~36,500 individual lookups',
+          desc: 'Historical prices fetched in batch by asset+date range from Supabase. A 1,000-day timeline across 10 assets uses 4 grouped queries instead of one per asset-day.',
+        },
+        {
+          metric: '288 calls/day',
+          label: 'Total Kraken API usage',
+          desc: 'Background task refreshes every ~5 min. This rate is constant regardless of user count — 100 concurrent users generate zero additional API calls.',
+        },
+        {
+          metric: '~1,000–2,000',
+          label: 'Daily timeline entries',
+          desc: 'Bounded dataset: one snapshot per day over a multi-year portfolio. Small enough for browser-side iteration, large enough for meaningful analysis.',
+        },
+      ].map(item => (
+        <div key={item.label} style={s.card}>
+          <div style={{ fontSize: '22px', fontWeight: 700, color: '#00ff88', fontFamily: 'monospace', marginBottom: '2px' }}>
+            {item.metric}
+          </div>
+          <div style={s.label}>{item.label}</div>
+          <p style={{ ...s.body, marginBottom: 0, fontSize: '14px', marginTop: '0.4rem' }}>{item.desc}</p>
+        </div>
+      ))}
+    </div>
   </div>
 );
 
@@ -520,6 +602,47 @@ const DecisionsSection = ({ s }) => (
         <div key={item.title} style={s.card}>
           <div style={s.label}>{item.title}</div>
           <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>{item.why}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const TradeoffsSection = ({ s }) => (
+  <div id="tradeoffs">
+    <h2 style={s.sectionTitle}>Limitations & Trade-offs</h2>
+    <div style={s.greenBar} />
+
+    <p style={s.body}>
+      Every architectural choice has costs. These are the conscious trade-offs in the current design:
+    </p>
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '1.2rem' }}>
+      {[
+        {
+          title: 'Single-exchange ingestion',
+          tradeoff: 'Currently Kraken-only. The ingestion layer is tightly coupled to Kraken\'s API and CSV schema. Adding exchanges requires new parsers and asset-name normalization per source — not a flag flip, but a well-scoped extension point.',
+        },
+        {
+          title: 'Full recomputation per request',
+          tradeoff: 'Every request replays FIFO over the entire trade history instead of using incremental computation or pre-materialized views. This keeps the backend stateless (no user data stored), but means initial load scales linearly with trade count. Acceptable for individual portfolios (~seconds); would need an incremental pipeline for institutional-scale data.',
+        },
+        {
+          title: 'No persistent user state',
+          tradeoff: 'Toggled trades, hidden assets, and filter preferences exist only in browser memory. Closing the tab loses everything. This is a deliberate privacy choice — no user database means nothing to breach — but sacrifices continuity between sessions.',
+        },
+        {
+          title: 'Frontend computation ceiling',
+          tradeoff: 'Client-side FIFO replay works because the dataset is bounded (~1,000–2,000 daily snapshots). For portfolios spanning 10+ years or sub-daily granularity, this approach would hit browser memory and CPU limits. The mitigation path is server-side pre-aggregation with cached results.',
+        },
+        {
+          title: 'Volatile price cache',
+          tradeoff: 'Current prices live in a Python dict — lost on server restart. First request after restart has higher latency (~2–3s cold start vs ~50ms warm). Acceptable for a single-server deployment; a Redis layer would be needed for multi-instance horizontal scaling.',
+        },
+      ].map(item => (
+        <div key={item.title} style={s.card}>
+          <div style={s.label}>{item.title}</div>
+          <p style={{ ...s.body, marginBottom: 0, fontSize: '15px' }}>{item.tradeoff}</p>
         </div>
       ))}
     </div>
@@ -768,7 +891,7 @@ const ContactSection = ({ s }) => (
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 const DocumentationSection = ({ theme, sidebarOpen }) => {
-  const [activeTocId, setActiveTocId] = useState('about');
+  const [activeTocId, setActiveTocId] = useState('tldr');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const sectionRefs = useRef({});
 
@@ -942,10 +1065,13 @@ const DocumentationSection = ({ theme, sidebarOpen }) => {
         flex: 1,
         paddingBottom: '5vh',
       }}>
+        <TldrSection s={s} />
         <AboutSection s={s} />
         <ArchitectureSection s={s} />
         <PipelineSection s={s} />
+        <PerformanceSection s={s} />
         <DecisionsSection s={s} />
+        <TradeoffsSection s={s} />
         <GettingStartedSection s={s} />
         <DashboardGuideSection s={s} />
         <SecuritySection s={s} />

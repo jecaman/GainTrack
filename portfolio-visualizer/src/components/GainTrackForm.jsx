@@ -52,6 +52,19 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
   const [buttonHover, setButtonHover] = useState(false);
   const [hoveredLink, setHoveredLink] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingElapsed, setLoadingElapsed] = useState(0);
+
+  // Track elapsed time during loading to show cold-start message
+  useEffect(() => {
+    if (!isLoading && !isProcessing) {
+      setLoadingElapsed(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingElapsed(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isLoading, isProcessing]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -248,6 +261,25 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             }}>
               Analyzing your portfolio...
             </p>
+
+            {/* Cold-start message after 5s */}
+            {loadingElapsed >= 5 && (
+              <p style={{
+                color: 'rgba(255,255,255,0.35)',
+                fontSize: '12px',
+                fontWeight: '400',
+                margin: 0,
+                fontFamily: "'Inter', sans-serif",
+                textAlign: 'center',
+                maxWidth: '280px',
+                lineHeight: '1.5',
+                animation: 'fadeIn 0.5s ease',
+              }}>
+                {loadingElapsed < 15
+                  ? 'The server is waking up — this usually takes a few seconds on the first request.'
+                  : 'Still working — the server may need up to 30s to start from a cold state.'}
+              </p>
+            )}
           </div>
 
           <style>{`
@@ -332,6 +364,19 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             </span>
           </div>
         </div>
+
+        {/* ── Descriptor ── */}
+        <p style={{
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          letterSpacing: '1.5px',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.25)',
+          margin: '4px 0 0 0',
+          textAlign: 'center',
+        }}>
+          FIFO engine &middot; daily time-series &middot; real-time prices
+        </p>
 
         {/* ── Form Card ── */}
         <div style={{

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script para configurar cron job que actualice precios históricos diariamente
-# Ejecuta a las 01:00 AM todos los días con rotación de logs
+# Ejecuta a las 00:05 AM todos los días con rotación de logs
 
 set -e
 
@@ -57,15 +57,15 @@ WRAPPER_EOF
 
 chmod +x "$WRAPPER"
 
-# Crear entrada de cron — 01:00 AM diario
-CRON_ENTRY="0 1 * * * $WRAPPER"
+# Crear entrada de cron — 00:05 AM diario
+CRON_ENTRY="5 0 * * * $WRAPPER"
 
 # Agregar al crontab (evitando duplicados)
 (crontab -l 2>/dev/null | grep -v "actualizar_historicos\|run_daily_update"; echo "$CRON_ENTRY") | crontab -
 
 echo ""
 echo "Cron job configured:"
-echo "  Schedule: daily at 01:00 AM"
+echo "  Schedule: daily at 00:05 AM"
 echo "  Log rotation: at 5 MB, keeps last 3 backups"
 echo ""
 echo "Commands:"

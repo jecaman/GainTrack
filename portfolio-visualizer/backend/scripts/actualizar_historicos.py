@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script para actualizar precios históricos del día anterior.
-Debe ejecutarse diariamente (ej: 01:00 AM via cron).
+Debe ejecutarse diariamente (ej: 00:05 AM via cron).
 
 Usa la API OHLC de Kraken para obtener el precio de cierre real del día anterior,
 en vez del Ticker real-time. Así el resultado es determinista sin importar

@@ -34,7 +34,7 @@
 ### Why GitHub Actions for cron?
 - Render free tier sleeps — can't run reliable cron jobs
 - GitHub Actions runs independently, free for public repos
-- Runs `actualizar_historicos.py` daily at 01:00 UTC
+- Runs `actualizar_historicos.py` daily at 00:05 UTC
 
 ### Why Vercel for frontend?
 - Auto-detects Vite, zero config
@@ -79,7 +79,7 @@
 2. Add repository secrets:
    - `SUPABASE_URL` = your Supabase project URL
    - `SUPABASE_KEY` = your Supabase anon key
-3. The workflow (`.github/workflows/daily-price-update.yml`) runs automatically at 01:00 UTC
+3. The workflow (`.github/workflows/daily-price-update.yml`) runs automatically at 00:05 UTC
 4. To test: Actions tab → "Daily Price Update" → "Run workflow"
 
 ---

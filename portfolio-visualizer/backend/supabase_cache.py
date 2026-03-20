@@ -290,17 +290,31 @@ class SupabaseCache:
             return {}
 
 
-# Instancia global del cache
-cache = SupabaseCache()
+# Instancia global del cache (lazy init para evitar crash si faltan env vars al importar)
+_cache_instance = None
+
+def _get_cache() -> SupabaseCache:
+    global _cache_instance
+    if _cache_instance is None:
+        _cache_instance = SupabaseCache()
+    return _cache_instance
+
+# Property-like access for backwards compatibility
+class _CacheProxy:
+    """Proxy that lazily initializes SupabaseCache on first attribute access."""
+    def __getattr__(self, name):
+        return getattr(_get_cache(), name)
+
+cache = _CacheProxy()
 
 # Funciones de conveniencia para usar en main.py
 def obtener_precio(asset: str, fecha: date = None) -> Optional[float]:
     """Función simple para obtener precio de un asset"""
-    return cache.obtener_precio_hibrido(asset, fecha)
+    return _get_cache().obtener_precio_hibrido(asset, fecha)
 
 def obtener_precios(assets: List[str]) -> Dict[str, float]:
     """Función simple para obtener precios de múltiples assets"""
-    return cache.obtener_precios_multiples(assets)
+    return _get_cache().obtener_precios_multiples(assets)
 
 def actualizar_historicos_ayer(assets: List[str]) -> Dict[str, bool]:
     """Actualiza precios históricos del día anterior"""
