@@ -331,7 +331,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             gap: '6px',
           }}>
             <p style={{
-              color: 'rgba(255,255,255,0.55)',
+              color: 'rgba(255,255,255,0.7)',
               fontSize: '14px',
               margin: 0,
               fontWeight: '300',
@@ -682,9 +682,9 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             fontFamily: 'monospace',
             fontSize: '10px',
             letterSpacing: '1px',
-            color: 'rgba(255,255,255,0.45)',
+            color: 'rgba(255,255,255,0.6)',
           }}>
-            FIFO engine &middot; daily time-series &middot; real-time prices
+            FIFO engine &middot; daily time-series &middot; NRT prices
           </span>
         </p>
       </div>
@@ -719,15 +719,15 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             target="_blank"
             rel="noopener noreferrer"
             style={{
-              color: 'rgba(255,255,255,0.4)',
+              color: 'rgba(255,255,255,0.6)',
               transition: 'color 0.2s ease',
               display: 'flex',
               alignItems: 'center',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = theme.greenPrimary; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24"
+            <svg width="22" height="22" viewBox="0 0 24 24"
               fill={fill ? 'currentColor' : 'none'}
               stroke={fill ? 'none' : 'currentColor'}
               strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
