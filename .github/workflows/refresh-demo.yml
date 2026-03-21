@@ -9,6 +9,7 @@ on:
 jobs:
   refresh-demo:
     runs-on: ubuntu-latest
+    environment: produccion
 
     steps:
       - uses: actions/checkout@v4
