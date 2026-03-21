@@ -21,8 +21,8 @@ jobs:
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
         run: |
-          CSV_PATH="portfolio-visualizer/public/demo_trades.csv"
-          JSON_PATH="portfolio-visualizer/public/demo_portfolio.json"
+          CSV_PATH="public/demo_trades.csv"
+          JSON_PATH="public/demo_portfolio.json"
 
           echo "Sending demo CSV to backend at $BACKEND_URL..."
 
@@ -56,7 +56,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add portfolio-visualizer/public/demo_portfolio.json
+          git add public/demo_portfolio.json
           if git diff --cached --quiet; then
             echo "No changes to demo_portfolio.json"
           else

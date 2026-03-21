@@ -50,7 +50,7 @@
 1. Go to [vercel.com](https://vercel.com) → Import Git Repository
 2. Select the repo, set:
    - **Framework Preset**: Vite
-   - **Root Directory**: `portfolio-visualizer`
+   - **Root Directory**: `.` (repo root)
    - **Build Command**: `npm run build`
    - **Output Directory**: `dist`
 3. Add environment variable:
@@ -62,7 +62,7 @@
 1. Go to [render.com](https://render.com) → New Web Service
 2. Connect the repo
 3. Render will detect `render.yaml` automatically, or configure manually:
-   - **Root Directory**: `portfolio-visualizer/backend`
+   - **Root Directory**: `backend`
    - **Runtime**: Docker
    - **Plan**: Free
 4. Add environment variables:
@@ -149,15 +149,15 @@ Render free tier spins down after 15 min of inactivity. First request after slee
 
 ```bash
 # Build frontend locally
-cd portfolio-visualizer && npm run build
+npm run build
 
 # Test backend Docker image locally
-cd portfolio-visualizer/backend
+cd backend
 docker build -t gaintrack-api .
 docker run -p 8001:8001 --env-file .env gaintrack-api
 
 # Test cron script manually
-cd portfolio-visualizer/backend
+cd backend
 python3 scripts/actualizar_historicos.py
 
 # Check Render logs
@@ -173,7 +173,7 @@ python3 scripts/actualizar_historicos.py
 
 To switch backend to Railway ($5/mo):
 1. Create Railway project, connect repo
-2. Set root directory to `portfolio-visualizer/backend`
+2. Set root directory to `backend`
 3. Copy env vars from Render
 4. Update `VITE_API_URL` in Vercel to the new Railway URL
 5. Redeploy frontend

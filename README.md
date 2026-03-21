@@ -29,7 +29,7 @@ A personal crypto portfolio tracker that processes your Kraken trade history wit
 ### Backend
 
 ```bash
-cd portfolio-visualizer/backend
+cd backend
 pip install -r requirements.txt
 python3 main.py
 # → http://localhost:8001
@@ -40,7 +40,6 @@ Requires a `.env` file with Supabase credentials (see `scripts/setup-supabase.sq
 ### Frontend
 
 ```bash
-cd portfolio-visualizer
 npm install
 npm run dev
 # → http://localhost:5173
@@ -74,7 +73,6 @@ The backend only needs to be called once on load (or when operation exclusions c
 ## Project Structure
 
 ```
-portfolio-visualizer/
 ├── backend/
 │   ├── main.py               # FastAPI server (port 8001)
 │   ├── supabase_cache.py     # Historical price cache via Supabase
@@ -126,7 +124,7 @@ portfolio-visualizer/
 ## Maintenance Scripts
 
 ```bash
-cd portfolio-visualizer/backend
+cd backend
 
 # Update yesterday's prices in Supabase cache (runs daily via GitHub Actions)
 python3 scripts/actualizar_historicos.py
