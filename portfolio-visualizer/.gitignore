@@ -76,3 +76,4 @@ build/
 
 # CSV data files (user uploads)
 *.csv
+!public/demo_trades.csv
