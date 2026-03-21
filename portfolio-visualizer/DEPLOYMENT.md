@@ -73,14 +73,22 @@
    - `FORCE_HTTPS` = `true`
 5. Deploy
 
-### 3. GitHub Actions (Daily Cron)
+### 3. GitHub Actions
 
-1. Go to repo → Settings → Secrets and variables → Actions
-2. Add repository secrets:
-   - `SUPABASE_URL` = your Supabase project URL
-   - `SUPABASE_KEY` = your Supabase anon key
-3. The workflow (`.github/workflows/daily-price-update.yml`) runs automatically at 00:05 UTC
-4. To test: Actions tab → "Daily Price Update" → "Run workflow"
+Secrets are stored in the **Production** environment (repo → Settings → Environments → Production).
+
+**Daily Price Update** (`.github/workflows/daily-price-update.yml`):
+- Runs at 00:05 UTC daily
+- Updates yesterday's prices in the Supabase cache
+- Requires: `SUPABASE_URL`, `SUPABASE_KEY`
+
+**Refresh Demo Portfolio** (`.github/workflows/refresh-demo.yml`):
+- Runs at 00:15 UTC daily (after price update)
+- Sends `demo_trades.csv` to the backend and saves the response as `demo_portfolio.json`
+- Auto-commits the updated JSON to the repo
+- Requires: `BACKEND_URL` (the Render backend URL)
+
+To test either: Actions tab → select workflow → "Run workflow"
 
 ---
 
@@ -103,12 +111,13 @@
 | `FORCE_HTTPS` | `true` | Recommended |
 | `PORT` | Auto-assigned by Render | Automatic |
 
-### GitHub Actions Secrets
+### GitHub Actions Secrets (Production environment)
 
-| Secret | Value | Required |
-|--------|-------|----------|
-| `SUPABASE_URL` | Supabase project URL | Yes |
-| `SUPABASE_KEY` | Supabase anon key | Yes |
+| Secret | Value | Used by |
+|--------|-------|---------|
+| `SUPABASE_URL` | Supabase project URL | Daily Price Update |
+| `SUPABASE_KEY` | Supabase anon key | Daily Price Update |
+| `BACKEND_URL` | Render backend URL (e.g. `https://xxx.onrender.com`) | Refresh Demo |
 
 ---
 
@@ -130,6 +139,7 @@ Render free tier spins down after 15 min of inactivity. First request after slee
 | `backend/.dockerignore` | Excludes .env, trades.csv, logs from image |
 | `render.yaml` | Render service definition (IaC) |
 | `.github/workflows/daily-price-update.yml` | Daily cron for Supabase price cache |
+| `.github/workflows/refresh-demo.yml` | Daily demo portfolio refresh |
 | `.env.development` | Frontend dev API URL |
 | `.env.production` | Frontend prod API URL (template) |
 

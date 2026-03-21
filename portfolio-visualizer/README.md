@@ -1,125 +1,158 @@
-# Portfolio Visualizer - Kraken Trading Analytics
+# GainTrack — Crypto Portfolio Analyzer
 
-## Descripción
-Aplicación web completa para análisis y visualización de portfolios de criptomonedas en Kraken. Combina un backend Python con FastAPI y un frontend React moderno para proporcionar análisis detallados de inversiones y visualizaciones interactivas.
+A personal crypto portfolio tracker that processes your Kraken trade history with FIFO accounting and displays real-time analytics in an interactive dashboard.
 
-## Características Principales
-- **Dashboard de KPIs en tiempo real**: Métricas clave del portfolio actualizadas
-- **Gráficos interactivos de rendimiento**: Visualizaciones con Chart.js
-- **Análisis histórico de trades**: Procesamiento completo del historial de transacciones
-- **Sistema de caché inteligente**: Optimización de llamadas API (5 minutos)
-- **UI moderna con glass-morphism**: Diseño responsivo con CSS personalizado
+## Features
 
-## Arquitectura del Sistema
+- **FIFO-based P&L** — Accurate cost basis, realized and unrealized gains using First-In-First-Out
+- **Interactive timeline** — Zoom, pan, and click any day to see portfolio state at that point
+- **Live prices** — Auto-refreshing prices from Kraken API (5-min cache)
+- **Per-asset breakdown** — Leaderboard, donut chart, and proportional bar
+- **Operation filtering** — Toggle individual trades on/off to see "what if" scenarios
+- **Date range analysis** — KPIs adapt to show period gains or cumulative state
+- **Demo mode** — Try instantly with pre-computed sample data, no backend needed
+- **Multi-currency** — EUR and USD support
 
-### Backend (Python/FastAPI)
-- **Framework**: FastAPI con Uvicorn
-- **API Integration**: krakenex y pykrakenapi
-- **Data Processing**: Pandas para análisis de datos
-- **Cache System**: Sistema de caché de 5 minutos para optimizar rendimiento
+## Tech Stack
 
-### Frontend (React/Vite)
-- **Framework**: React 19 con Vite
-- **Styling**: CSS moderno con efectos visuales
-- **Charts**: Chart.js con react-chartjs-2
-- **Components**: Arquitectura modular de componentes
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Vite, Chart.js |
+| Backend | Python, FastAPI, Pandas |
+| Price Cache | Supabase (PostgreSQL) |
+| Deployment | Vercel + Render + GitHub Actions |
 
-## Instalación Rápida
+---
 
-### Requisitos Previos
-- Python 3.8+
-- Node.js 18+
-- npm o yarn
-- Cuenta y credenciales de Kraken API
+## Quick Start
 
 ### Backend
+
 ```bash
-cd backend/
+cd portfolio-visualizer/backend
 pip install -r requirements.txt
-python3 main2.py
+python3 main.py
+# → http://localhost:8001
 ```
+
+Requires a `.env` file with Supabase credentials (see `scripts/setup-supabase.sql` for schema).
 
 ### Frontend
+
 ```bash
+cd portfolio-visualizer
 npm install
 npm run dev
+# → http://localhost:5173
 ```
 
-## Uso
+Set `VITE_API_URL` in `.env.development` to point to the backend (defaults to `http://localhost:8001`).
 
-1. **Iniciar el backend**: El servidor se ejecuta en `http://localhost:8000`
-2. **Iniciar el frontend**: La aplicación web está disponible en `http://localhost:5173`
-3. **Configurar credenciales**: Usar las credenciales de Kraken API (ver CLAUDE.md para migrar a variables de entorno)
-4. **Explorar el dashboard**: Visualizar KPIs, gráficos y análisis del portfolio
+---
 
-## Estructura del Proyecto
+## How It Works
+
+```
+Kraken CSV export
+       ↓
+  Backend (FastAPI)
+  ├── Parses CSV
+  ├── Processes FIFO across full history
+  ├── Fetches historical prices from Supabase cache
+  └── Returns timeline + portfolio data
+       ↓
+  Frontend (React)
+  ├── Renders dashboard with KPIs, charts, tables
+  ├── Recalculates KPIs client-side on date/filter changes
+  └── Fetches live prices from backend (Kraken API → 5-min cache)
+```
+
+The backend only needs to be called once on load (or when operation exclusions change). All date filtering and KPI recalculation happens in the browser from the full timeline data.
+
+---
+
+## Project Structure
 
 ```
 portfolio-visualizer/
-├── .gitignore              # Archivos ignorados por Git
-├── README.md               # Esta documentación
-├── CLAUDE.md               # Guías para desarrollo
-├── BACKLOG.md              # Tareas pendientes
-├── DONE.md                 # Tareas completadas
-├── package.json            # Dependencias Node.js
-├── vite.config.js          # Configuración Vite
-├── eslint.config.js        # Configuración ESLint
 ├── backend/
-│   ├── main2.py            # Servidor FastAPI principal (v2 modular)
-│   ├── kraken_pairs.py     # Lista de pares de trading
-│   └── requirements.txt    # Dependencias Python
+│   ├── main.py               # FastAPI server (port 8001)
+│   ├── supabase_cache.py     # Historical price cache via Supabase
+│   ├── requirements.txt
+│   ├── Dockerfile             # For Render deployment
+│   ├── scripts/
+│   │   ├── actualizar_historicos.py  # Daily cron: update yesterday's prices
+│   │   ├── poblar_historico.py       # Backfill price cache (last N days)
+│   │   ├── recarga_historica.py      # Reload specific date range
+│   │   ├── generate_demo_csv.py      # Generate demo dataset
+│   │   ├── setup_cron.sh             # Local cron setup
+│   │   └── setup-supabase.sql        # Supabase table schema
+│   └── tests/
+│       └── test_portfolio.py
 ├── src/
+│   ├── App.jsx               # Entry point; fetches data, manages state
 │   ├── components/
-│   │   ├── ApiForm.jsx     # Formulario de conexión API
-│   │   ├── ApiFormPage.jsx # Página del formulario
-│   │   ├── KPISection.jsx  # Dashboard de KPIs
-│   │   ├── GeneralPerformanceSection.jsx  # Gráficos de rendimiento
-│   │   ├── AssetAnalysisSection.jsx       # Análisis de activos
-│   │   ├── PortfolioCharts.jsx      # Componente de gráficos
-│   │   └── PortfolioPage.jsx        # Página principal del portfolio
-│   ├── utils/
-│   │   └── chartUtils.js   # Utilidades para gráficos
-│   ├── App.jsx             # Componente principal
-│   ├── main.jsx            # Punto de entrada
-│   └── index.css           # Estilos globales
-└── public/
-    ├── logo.png            # Logo del proyecto
-    ├── bitcoin.svg         # Icono Bitcoin
-    └── vite.svg            # Icono Vite
+│   │   ├── Filters.jsx       # Sidebar filters (date, assets, operations)
+│   │   └── Dashboard/
+│   │       ├── Dashboard.jsx         # Central date/filter state manager
+│   │       ├── Header.jsx
+│   │       └── Sections/
+│   │           ├── Overview/         # KPIs, timeline, asset table, charts
+│   │           ├── Operations/       # Trade history with toggle
+│   │           └── Portfolio/        # Portfolio breakdown
+│   └── utils/
+│       ├── krakenAssets.js    # Asset name/color/logo mapping
+│       ├── chartUtils.js     # Chart.js helpers
+│       └── numberFormatter.js # European number formatting
+├── public/
+│   ├── demo_portfolio.json   # Pre-computed demo data
+│   └── demo_trades.csv       # Demo trade history
+└── DEPLOYMENT.md             # Deployment guide (Vercel + Render + Actions)
 ```
 
-## Endpoints API
+---
 
-- `POST /api/portfolio`: Datos completos del portfolio (incluye KPIs)
-- `GET /docs`: Documentación interactiva de la API
+## API Endpoints
 
-## Estado del Proyecto
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/portfolio` | Process trades from API keys (returns timeline + KPIs) |
+| `POST` | `/api/portfolio/csv` | Process trades from CSV upload |
+| `GET` | `/api/prices/current` | Live prices for tracked assets (5-min cache) |
+| `GET` | `/docs` | Interactive API documentation (Swagger) |
 
-**Progreso**: 90% completado
+---
 
-### Funcionalidades Implementadas ✅
-- Conexión con Kraken API
-- Sistema de caché optimizado
-- Dashboard de KPIs
-- Gráficos interactivos
-- UI moderna y responsiva
+## Maintenance Scripts
 
-### Próximos Pasos 🔄
-- Migrar credenciales a variables de entorno
-- Mejorar manejo de errores
-- Agregar validación de entrada
-- Configuración de producción
+```bash
+cd portfolio-visualizer/backend
 
-## Tecnologías Utilizadas
+# Update yesterday's prices in Supabase cache (runs daily via GitHub Actions)
+python3 scripts/actualizar_historicos.py
 
-- **Backend**: Python, FastAPI, Pandas, Kraken API
-- **Frontend**: React 19, Vite, CSS personalizado, Chart.js
-- **Tools**: ESLint, PostCSS
+# Backfill historical prices for the last N days
+python3 scripts/poblar_historico.py
 
-## Contribuir
+# Reload prices for a specific asset and date range
+python3 scripts/recarga_historica.py 2025-09-01 2025-10-01 XXBT
+```
 
-Ver `CLAUDE.md` para estándares de desarrollo y `BACKLOG.md` para tareas pendientes.
+---
 
-## Licencia
+## Deployment
 
-Proyecto personal de análisis de portfolio de criptomonedas.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for full setup guide. TL;DR:
+
+- **Frontend**: Vercel (auto-deploy on push)
+- **Backend**: Render free tier (Docker)
+- **Price cron**: GitHub Actions (daily at 00:05 UTC)
+- **Demo refresh**: GitHub Actions (daily at 00:15 UTC)
+
+Total cost: **$0/month**
+
+---
+
+## License
+
+Personal project. Not open for contributions at this time.
