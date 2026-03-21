@@ -27,6 +27,4 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: |
-          python -c "import os; print('SUPABASE_URL set:', bool(os.getenv('SUPABASE_URL'))); print('SUPABASE_KEY set:', bool(os.getenv('SUPABASE_KEY')))"
-          python scripts/actualizar_historicos.py
+        run: python scripts/actualizar_historicos.py
