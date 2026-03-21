@@ -1,4 +1,4 @@
-# Deployment — GainTrack Portfolio Visualizer
+# Deployment — GainTrack
 
 ## Architecture
 
@@ -9,37 +9,17 @@
 │  React/Vite │     │   FastAPI    │     │ PostgreSQL │
 │    FREE     │     │    FREE      │     │    FREE    │
 └─────────────┘     └──────────────┘     └───────────┘
-                          ▲
-                    ┌─────┴──────┐
-                    │  GitHub    │
-                    │  Actions   │
-                    │ (Daily     │
-                    │  cron)     │
-                    │   FREE     │
-                    └────────────┘
+                         ▲
+                   ┌─────┴──────┐
+                   │  GitHub    │
+                   │  Actions   │
+                   │ (Daily     │
+                   │  cron)     │
+                   │   FREE     │
+                   └────────────┘
 ```
 
 **Total cost: $0/month**
-
----
-
-## Decisions & Trade-offs
-
-### Why Render free tier?
-- Low traffic (personal use + occasional visitors)
-- Backend sleeps after 15 min of inactivity
-- Cold start ~30-50s on first request (acceptable trade-off for $0)
-- If problematic, easy to migrate to Railway ($5/mo) — just change the URL
-
-### Why GitHub Actions for cron?
-- Render free tier sleeps — can't run reliable cron jobs
-- GitHub Actions runs independently, free for public repos
-- Runs `actualizar_historicos.py` daily at 00:05 UTC
-
-### Why Vercel for frontend?
-- Auto-detects Vite, zero config
-- Global CDN — instant page load
-- Auto-deploy on git push
 
 ---
 
@@ -47,133 +27,42 @@
 
 ### 1. Vercel (Frontend)
 
-1. Go to [vercel.com](https://vercel.com) → Import Git Repository
-2. Select the repo, set:
-   - **Framework Preset**: Vite
-   - **Root Directory**: `.` (repo root)
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-3. Add environment variable:
-   - `VITE_API_URL` = `https://<your-render-backend>.onrender.com`
-4. Deploy
+1. Import Git Repository → set **Root Directory** to `.` (repo root), **Framework Preset** to Vite
+2. Add env var: `VITE_API_URL` = `https://<your-render-backend>.onrender.com`
+3. Deploy
 
 ### 2. Render (Backend)
 
-1. Go to [render.com](https://render.com) → New Web Service
-2. Connect the repo
-3. Render will detect `render.yaml` automatically, or configure manually:
-   - **Root Directory**: `backend`
-   - **Runtime**: Docker
-   - **Plan**: Free
-4. Add environment variables:
-   - `SUPABASE_URL` = your Supabase project URL
-   - `SUPABASE_KEY` = your Supabase anon key
-   - `CORS_ORIGINS` = `https://<your-vercel-frontend>.vercel.app`
-   - `ENV` = `production`
-   - `FORCE_HTTPS` = `true`
-5. Deploy
+1. New Web Service → connect repo
+2. Render detects `render.yaml`, or set manually: **Root Directory** `backend`, **Runtime** Docker, **Plan** Free
+3. Add env vars: `SUPABASE_URL`, `SUPABASE_KEY`, `CORS_ORIGINS`, `ENV=production`, `FORCE_HTTPS=true`
+4. Deploy
 
 ### 3. GitHub Actions
 
-Secrets are stored in the **Production** environment (repo → Settings → Environments → Production).
+Secrets in the **Production** environment (repo → Settings → Environments → Production):
 
-**Daily Price Update** (`.github/workflows/daily-price-update.yml`):
-- Runs at 00:05 UTC daily
-- Updates yesterday's prices in the Supabase cache
-- Requires: `SUPABASE_URL`, `SUPABASE_KEY`
-
-**Refresh Demo Portfolio** (`.github/workflows/refresh-demo.yml`):
-- Runs at 00:15 UTC daily (after price update)
-- Sends `demo_trades.csv` to the backend and saves the response as `demo_portfolio.json`
-- Auto-commits the updated JSON to the repo
-- Requires: `BACKEND_URL` (the Render backend URL)
-
-To test either: Actions tab → select workflow → "Run workflow"
+| Secret | Used by |
+|--------|---------|
+| `SUPABASE_URL`, `SUPABASE_KEY` | Daily Price Update (00:05 UTC) |
+| `BACKEND_URL` | Refresh Demo Portfolio (00:15 UTC) |
 
 ---
 
-## Environment Variables Reference
+## Environment Variables
 
 ### Frontend (Vercel)
 
-| Variable | Value | Required |
-|----------|-------|----------|
-| `VITE_API_URL` | `https://<render-service>.onrender.com` | Yes |
+| Variable | Value |
+|----------|-------|
+| `VITE_API_URL` | Render backend URL |
 
 ### Backend (Render)
 
-| Variable | Value | Required |
-|----------|-------|----------|
-| `SUPABASE_URL` | Supabase project URL | Yes |
-| `SUPABASE_KEY` | Supabase anon key | Yes |
-| `CORS_ORIGINS` | Vercel frontend URL | Yes |
-| `ENV` | `production` | Yes |
-| `FORCE_HTTPS` | `true` | Recommended |
-| `PORT` | Auto-assigned by Render | Automatic |
-
-### GitHub Actions Secrets (Production environment)
-
-| Secret | Value | Used by |
-|--------|-------|---------|
-| `SUPABASE_URL` | Supabase project URL | Daily Price Update |
-| `SUPABASE_KEY` | Supabase anon key | Daily Price Update |
-| `BACKEND_URL` | Render backend URL (e.g. `https://xxx.onrender.com`) | Refresh Demo |
-
----
-
-## Render Cold Start
-
-Render free tier spins down after 15 min of inactivity. First request after sleep takes ~30-50s.
-
-**Mitigation ideas:**
-- Show "Starting server..." message in the frontend when backend is slow to respond
-- Demo mode works without backend (instant, pre-computed data)
-
----
-
-## Files Added for Deployment
-
-| File | Purpose |
-|------|---------|
-| `backend/Dockerfile` | Container image for Render |
-| `backend/.dockerignore` | Excludes .env, trades.csv, logs from image |
-| `render.yaml` | Render service definition (IaC) |
-| `.github/workflows/daily-price-update.yml` | Daily cron for Supabase price cache |
-| `.github/workflows/refresh-demo.yml` | Daily demo portfolio refresh |
-| `.env.development` | Frontend dev API URL |
-| `.env.production` | Frontend prod API URL (template) |
-
----
-
-## Useful Commands
-
-```bash
-# Build frontend locally
-npm run build
-
-# Test backend Docker image locally
-cd backend
-docker build -t gaintrack-api .
-docker run -p 8001:8001 --env-file .env gaintrack-api
-
-# Test cron script manually
-cd backend
-python3 scripts/actualizar_historicos.py
-
-# Check Render logs
-# → render.com dashboard → your service → Logs
-
-# Trigger GitHub Action manually
-# → GitHub repo → Actions → Daily Price Update → Run workflow
-```
-
----
-
-## Migration (if Render doesn't work out)
-
-To switch backend to Railway ($5/mo):
-1. Create Railway project, connect repo
-2. Set root directory to `backend`
-3. Copy env vars from Render
-4. Update `VITE_API_URL` in Vercel to the new Railway URL
-5. Redeploy frontend
+| Variable | Value |
+|----------|-------|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_KEY` | Supabase anon key |
+| `CORS_ORIGINS` | Vercel frontend URL |
+| `ENV` | `production` |
+| `FORCE_HTTPS` | `true` |
