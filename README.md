@@ -2,7 +2,7 @@
 
 A personal crypto portfolio tracker that processes your Kraken trade history with FIFO accounting and displays real-time analytics in an interactive dashboard.
 
-**Website**: [gain-track-kappa.vercel.app](https://gain-track-kappa.vercel.app/) — includes a demo mode and detailed technical documentation.
+**Live demo**: [gain-track-kappa.vercel.app](https://gain-track-kappa.vercel.app/) — includes a demo mode and detailed technical documentation.
 
 ## Features
 
