@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import SectionTabs from './Navigation/SectionTabs';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
@@ -18,6 +18,39 @@ const Header = ({
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState('success'); // 'success' | 'warning'
+
+  // En mobile, ocultar el header al hacer scroll hacia abajo (para no robar tanta
+  // pantalla) y volver a mostrarlo en cuanto el usuario hace scroll hacia arriba.
+  const [hidden, setHidden] = useState(false);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setHidden(false);
+      return;
+    }
+    const container = document.getElementById('main-scroll');
+    if (!container) return;
+
+    lastScrollY.current = container.scrollTop;
+
+    const onScroll = () => {
+      const currentY = container.scrollTop;
+      const delta = currentY - lastScrollY.current;
+
+      if (currentY < 40) {
+        setHidden(false);
+      } else if (delta > 4) {
+        setHidden(true);
+      } else if (delta < -4) {
+        setHidden(false);
+      }
+      lastScrollY.current = currentY;
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, [isMobile]);
 
   const handleRefresh = async () => {
     if (refreshState === 'loading' || !onRefreshPrices) return;
@@ -76,7 +109,8 @@ const Header = ({
         justifyContent: 'center',
         paddingTop: isMobile ? '20px' : '38px',   /* margen visible encima del menú */
         paddingRight: isMobile ? '0' : (sidebarOpen ? '350px' : '0'),
-        transition: 'padding-right 0.45s cubic-bezier(0.4,0,0.2,1)',
+        transform: isMobile && hidden ? 'translateY(-100%)' : 'translateY(0)',
+        transition: 'padding-right 0.45s cubic-bezier(0.4,0,0.2,1), transform 0.25s ease',
         boxSizing: 'border-box',
       }}>
 
