@@ -848,14 +848,16 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
   };
 
   // Create the sidebar content
-  // On mobile the panel becomes a full-width overlay instead of a fixed 320px push-panel.
+  // On mobile the panel becomes a full-width overlay instead of a fixed 320px push-panel,
+  // and the tab itself shrinks — 60px was oversized against a ~375-430px screen.
   const panelWidth = isMobile ? windowWidth : 320;
+  const tabWidth = isMobile ? 40 : 60;
   const sidebarContent = (
     <div style={{
       position: 'fixed',
       top: 0,
       right: 0,
-      width: `${panelWidth + 60}px`, // panel + tab
+      width: `${panelWidth + tabWidth}px`, // panel + tab
       height: '100vh',
       display: 'flex',
       flexDirection: 'row',
@@ -890,10 +892,10 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '120px',
-            width: '60px',
+            height: isMobile ? '84px' : '120px',
+            width: `${tabWidth}px`,
             position: 'relative',
-            top: '245px',
+            top: isMobile ? '90px' : '245px',
             animation: showTabPulse ? 'tabPulse 2s ease-in-out infinite' : 'none',
             fontFamily: "'Inter', sans-serif",
             userSelect: 'none',
@@ -928,9 +930,9 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
         >
           {/* FILTERS text written horizontally but rotated */}
           <div style={{
-            fontSize: '12px',
+            fontSize: isMobile ? '10px' : '12px',
             fontWeight: '600',
-            letterSpacing: '2px',
+            letterSpacing: isMobile ? '1px' : '2px',
             textTransform: 'uppercase',
             lineHeight: '1',
             userSelect: 'none',

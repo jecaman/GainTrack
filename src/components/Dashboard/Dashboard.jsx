@@ -560,7 +560,10 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         paddingTop: '0',
         paddingBottom: '0',
         paddingLeft: isMobile ? '1rem' : '4rem',
-        paddingRight: isMobile ? '1rem' : (sidebarOpen ? 'calc(350px + 4rem)' : '4rem'),
+        // En mobile dejamos hueco fijo a la derecha: la pestaña "FILTERS" (fija, ~65px)
+        // siempre está flotando ahí encima, así que el contenido no puede llegar hasta el borde
+        // o queda tapado por ella (independientemente de si el panel está abierto o cerrado).
+        paddingRight: isMobile ? '4.75rem' : (sidebarOpen ? 'calc(350px + 4rem)' : '4rem'),
         transition: 'padding-right 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
         overflow: 'visible'
       }}>
