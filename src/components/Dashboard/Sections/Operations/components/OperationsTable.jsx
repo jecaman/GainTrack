@@ -428,18 +428,118 @@ const OperationsTable = ({
       </div>
 
       <div style={{ background: 'transparent', border: 'none', width: '100%', margin: '0', padding: '0' }}>
+        {isMobile ? (
+          /* Vista móvil en tarjetas — nada de scroll lateral, cada operación apilada verticalmente. */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: 'calc(100% - 1.5rem)', marginLeft: '0.75rem', marginRight: '0.75rem' }}>
+            {sortedOperations.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: theme.textSecondary, fontStyle: 'italic' }}>
+                No operations found for the selected period
+              </div>
+            ) : (
+              sortedOperations.map((operation, index) => {
+                const sym = getDisplaySymbol(operation.asset);
+                const excluded = disabledOps.has(operation.opId);
+                const stats = [
+                  ['Amount', `${formatEuropeanNumber(operation.amount, 6)} ${sym}`],
+                  ['Price', operation.price > 0 ? formatEuropeanPrice(operation.price * currency.multiplier, currency.symbol) : '-'],
+                  ['Total', formatEuropeanCurrency(operation.cost * currency.multiplier, currency.symbol)],
+                  ['Fee', formatEuropeanPrice(operation.fee * currency.multiplier, currency.symbol)],
+                ];
+                return (
+                  <div
+                    key={`${operation.operationKey}-${index}`}
+                    onClick={() => onToggleOperation && onToggleOperation(operation.opId)}
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '12px',
+                      padding: '12px 14px',
+                      opacity: excluded ? 0.4 : 1,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onToggleOperation && onToggleOperation(operation.opId); }}
+                          title={excluded ? 'Incluir operación' : 'Excluir operación'}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: excluded ? 'rgba(255,255,255,0.25)' : '#00ff99', flexShrink: 0 }}
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            {excluded ? (
+                              <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
+                            ) : (
+                              <>
+                                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                <path d="M7 12l4 4 6-6" stroke="#000" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                              </>
+                            )}
+                          </svg>
+                        </button>
+                        {getAssetLogo(sym) ? (
+                          <img
+                            src={getAssetLogo(sym)}
+                            alt={sym}
+                            style={{ width: '24px', height: '24px', borderRadius: '50%', flexShrink: 0 }}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div style={{ width: '24px', height: '24px', flexShrink: 0 }} />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ color: theme.textPrimary, fontWeight: '600', fontSize: '13px' }}>{sym}</div>
+                          <div style={{ color: theme.textSecondary, fontSize: '11px' }}>{formatDate(operation.timestamp)}</div>
+                        </div>
+                      </div>
+                      <span style={{
+                        backgroundColor: operation.type === 'buy' ? 'rgba(0, 255, 153, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                        color: operation.type === 'buy' ? '#00FF99' : '#ef4444',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: '700',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.4px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}>
+                        {operation.type}{operation.ordertype ? ` ${operation.ordertype}` : ''}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: '12px' }}>
+                      {stats.map(([label, value]) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ color: theme.textSecondary }}>{label}</span>
+                          <span style={{ color: theme.textPrimary, fontWeight: '600' }}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {operation.realizedGain !== null && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${theme.borderColor}` }}>
+                        <span style={{ fontSize: '11px', color: theme.textSecondary }}>Realized P&L</span>
+                        <span style={{ fontSize: '12px', fontWeight: '700', color: operation.realizedGain >= 0 ? '#00FF99' : '#ef4444' }}>
+                          {operation.realizedGain >= 0 ? '+' : ''}{formatEuropeanCurrency(operation.realizedGain * currency.multiplier, currency.symbol)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
         <div style={{
-          overflow: isMobile ? 'hidden' : 'visible',
-          overflowX: isMobile ? 'auto' : 'visible',
-          WebkitOverflowScrolling: 'touch',
-          width: isMobile ? 'calc(100% - 1.5rem)' : 'calc(100% - 120px)',
-          marginLeft: isMobile ? '0.75rem' : '60px',
-          marginRight: isMobile ? '0.75rem' : '60px',
+          overflow: 'visible',
+          width: 'calc(100% - 120px)',
+          marginLeft: '60px',
+          marginRight: '60px',
           padding: '0',
           boxSizing: 'border-box'
         }}>
           <table style={{
-            width: isMobile ? '800px' : '100%',
+            width: '100%',
             tableLayout: 'fixed',
             borderCollapse: 'separate',
             borderSpacing: 0,
@@ -715,6 +815,7 @@ const OperationsTable = ({
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
 

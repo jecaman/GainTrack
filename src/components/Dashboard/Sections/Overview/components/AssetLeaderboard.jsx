@@ -407,15 +407,126 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
         margin: '0',
         padding: '0'
       }}>
-        {/* Mismos márgenes que el timeline (responsive a sidebarOpen); en mobile la tabla
-            es más ancha que la pantalla, así que este contenedor scrollea horizontalmente. */}
+        {isMobile ? (
+          /* Vista móvil en tarjetas — nada de scroll lateral, cada asset apilado verticalmente. */
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            width: 'calc(100% - 1.5rem)',
+            marginLeft: '0.75rem',
+            marginRight: '0.75rem',
+          }}>
+            {processedData.map((row) => {
+              if (row.isClosed) {
+                const plColor = row.netProfit >= 0 ? theme.accentPrimary : '#ef4444';
+                return (
+                  <div key="closed-positions" style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${theme.borderColor}`,
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                    opacity: 0.6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '30px', height: '30px', borderRadius: '50%',
+                        backgroundColor: 'rgba(255,255,255,0.08)', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', fontSize: '13px', flexShrink: 0,
+                      }}>✕</div>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: theme.textSecondary, fontStyle: 'italic' }}>Closed Positions</span>
+                        <span style={{ fontSize: '11px', color: theme.textMuted }}>Fully sold assets</span>
+                      </div>
+                    </div>
+                    <span style={{ color: plColor, fontSize: '14px', fontWeight: '700' }}>
+                      {row.netProfit >= 0 ? '+' : ''}{fmt(row.netProfit)}
+                    </span>
+                  </div>
+                );
+              }
+
+              const plColor = row.netProfit >= 0 ? theme.accentPrimary : '#ef4444';
+              const roiSign = row.netProfitPercent >= 0 ? '+' : '-';
+              const stats = [
+                ['Holdings', formatEuropeanNumber(row.nativeValue, 6)],
+                ['Price', row.marketPrice != null ? fmtPrice(row.marketPrice) : '—'],
+                ['Avg Cost', row.avgCost != null ? fmtPrice(row.avgCost) : '—'],
+                ['Cost Basis', fmt(row.avgCost * row.nativeValue)],
+              ];
+
+              return (
+                <div key={row.asset} style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '12px',
+                  padding: '14px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                      {getAssetLogo(row.nativeSymbol) ? (
+                        <img
+                          src={getAssetLogo(row.nativeSymbol, 'small')}
+                          alt={row.asset}
+                          style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div style={{ width: '32px', height: '32px', flexShrink: 0 }} />
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: theme.accentPrimary }}>{row.asset}</span>
+                        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {getAssetFullName(row.nativeSymbol)}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: '8px' }}>
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: theme.textPrimary }}>{fmt(row.fiatValue)}</div>
+                      <div style={{ fontSize: '11px', color: theme.textSecondary }}>{formatEuropeanPercentage(row.portfolioPercent)} alloc.</div>
+                    </div>
+                  </div>
+
+                  {/* Barra de allocation */}
+                  <div style={{ position: 'relative', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden', marginBottom: '12px' }}>
+                    <div style={{ width: `${Math.min(row.portfolioPercent, 100)}%`, height: '100%', backgroundColor: getAssetColor(row.nativeSymbol), opacity: 0.9 }} />
+                  </div>
+
+                  {/* Métricas secundarias */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
+                    {stats.map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                        <span style={{ color: theme.textSecondary }}>{label}</span>
+                        <span style={{ color: theme.textPrimary, fontWeight: '600' }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* P&L */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${theme.borderColor}`,
+                  }}>
+                    <span style={{ fontSize: '10px', color: theme.textMuted }}>
+                      R: {row.realizedGains >= 0 ? '+' : ''}{fmt(row.realizedGains)} · U: {row.unrealizedGains >= 0 ? '+' : ''}{fmt(row.unrealizedGains)}
+                    </span>
+                    <span style={{ fontSize: '14px', fontWeight: '700', color: plColor }}>
+                      {row.netProfit >= 0 ? '+' : ''}{fmt(row.netProfit)} ({roiSign}{formatEuropeanPercentage(Math.abs(row.netProfitPercent))})
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <div style={{
-          overflow: isMobile ? 'hidden' : 'visible',
-          overflowX: isMobile ? 'auto' : 'visible',
-          WebkitOverflowScrolling: 'touch',
-          width: isMobile ? 'calc(100% - 1.5rem)' : (sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)'),
-          marginLeft: isMobile ? '0.75rem' : '60px',
-          marginRight: isMobile ? '0.75rem' : (sidebarOpen ? '-20px' : '60px'),
+          overflow: 'visible',
+          width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)',
+          marginLeft: '60px',
+          marginRight: sidebarOpen ? '-20px' : '60px',
           padding: '0',
           boxSizing: 'border-box'
         }}>
@@ -867,6 +978,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
     </>
