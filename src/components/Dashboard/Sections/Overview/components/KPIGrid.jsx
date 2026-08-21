@@ -662,17 +662,21 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
           windowWidth={windowWidth}
         />
 
-        <KPICard
-          label="Unrealized P&L"
-          value={kpiData.unrealizedData?.value || '0,00€'}
-          changePercent={kpiData.unrealizedData?.percent || '0.00%'}
-          isPositive={kpiData.unrealizedData?.isPositive || false}
-          theme={theme}
-          showChange={true}
-          tooltip="Profit or loss from assets you currently hold (paper gains/losses)"
-          sidebarOpen={sidebarOpen}
-          windowWidth={windowWidth}
-        />
+        {/* En mobile esta tarjeta va sola en la última fila (5 tarjetas / 2 columnas) —
+            que ocupe las dos columnas evita que quede descentrada. */}
+        <div style={isMobileWidth ? { gridColumn: '1 / -1' } : undefined}>
+          <KPICard
+            label="Unrealized P&L"
+            value={kpiData.unrealizedData?.value || '0,00€'}
+            changePercent={kpiData.unrealizedData?.percent || '0.00%'}
+            isPositive={kpiData.unrealizedData?.isPositive || false}
+            theme={theme}
+            showChange={true}
+            tooltip="Profit or loss from assets you currently hold (paper gains/losses)"
+            sidebarOpen={sidebarOpen}
+            windowWidth={windowWidth}
+          />
+        </div>
         </div>
       </div>
     </div>

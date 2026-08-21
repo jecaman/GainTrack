@@ -105,18 +105,31 @@ const PortfolioBar = ({
         width: isMobile ? 'calc(100% - 1.5rem)' : (sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)'),
         marginLeft: isMobile ? '0.75rem' : '60px',
         marginRight: isMobile ? '0.75rem' : (sidebarOpen ? '-20px' : '60px'),
-        marginTop: '2rem',
-        marginBottom: '0.25rem',
+        marginTop: isMobile ? '1.25rem' : '2rem',
+        marginBottom: isMobile ? '0.75rem' : '0.25rem',
         position: 'relative',
       }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      {isMobile && (
+        <div style={{
+          fontSize: '11px',
+          fontWeight: '700',
+          letterSpacing: '0.5px',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.5)',
+          fontFamily: 'monospace',
+          marginBottom: '8px',
+        }}>
+          Asset Allocation
+        </div>
+      )}
       {/* Barra */}
       <div
         style={{
           display: 'flex',
-          height: '20px',
+          height: isMobile ? '28px' : '20px',
           borderRadius: '10px',
           overflow: 'hidden',
           width: '100%',

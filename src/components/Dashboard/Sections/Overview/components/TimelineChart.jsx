@@ -3397,23 +3397,24 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             display: 'flex',
             flexWrap: isMobile ? 'wrap' : 'nowrap',
             alignItems: 'center',
-            gap: '1rem'
+            gap: isMobile ? '6px' : '1rem'
           }}>
-          {/* Botones de control mejorados */}
+          {/* Botones de control mejorados — en mobile, chrome mínimo: sin caja pesada,
+              todo más pequeño para que el foco visual sean los números y la gráfica. */}
           <div style={{
             display: 'flex',
             flexWrap: isMobile ? 'wrap' : 'nowrap',
             alignItems: 'center',
             marginRight: isMobile ? '0' : '1.5rem',
-            background: COLORS.BACKGROUND_DARK,
-            borderRadius: '14px',
-            padding: '6px',
-            border: `2px solid ${COLORS.BORDER_STRONG}`,
-            backdropFilter: 'blur(20px)',
-            boxShadow: COLORS.SHADOW,
+            background: isMobile ? 'transparent' : COLORS.BACKGROUND_DARK,
+            borderRadius: isMobile ? '8px' : '14px',
+            padding: isMobile ? '0' : '6px',
+            border: isMobile ? 'none' : `2px solid ${COLORS.BORDER_STRONG}`,
+            backdropFilter: isMobile ? 'none' : 'blur(20px)',
+            boxShadow: isMobile ? 'none' : COLORS.SHADOW,
             minWidth: isMobile ? '0' : 'fit-content',
             flexShrink: isMobile ? 1 : 0,
-            gap: isMobile ? '6px' : '0'
+            gap: isMobile ? '5px' : '0'
           }}>
             {/* Selector de modo de vista con toggle fluido */}
             <div style={{
@@ -3434,12 +3435,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))'
                     : COLORS.BTN_INACTIVE,
                   border: viewMode === 'both'
-                    ? '2px solid rgba(34, 197, 94, 0.7)'
-                    : `2px solid ${COLORS.BORDER}`,
-                  borderRadius: '10px',
-                  padding: '6px 10px',
+                    ? `${isMobile ? '1px' : '2px'} solid rgba(34, 197, 94, 0.7)`
+                    : `${isMobile ? '1px' : '2px'} solid ${COLORS.BORDER}`,
+                  borderRadius: isMobile ? '6px' : '10px',
+                  padding: isMobile ? '3px 7px' : '6px 10px',
                   color: viewMode === 'both' ? '#ffffff' : COLORS.TEXT_DIM,
-                  fontSize: '13px',
+                  fontSize: isMobile ? '9px' : '13px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -3476,12 +3477,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.5), rgba(16, 185, 129, 0.6))'
                     : COLORS.BTN_INACTIVE,
                   border: viewMode === 'balance'
-                    ? '2px solid rgba(34, 197, 94, 0.7)'
-                    : `2px solid ${COLORS.BORDER}`,
-                  borderRadius: '10px',
-                  padding: '6px 10px',
+                    ? `${isMobile ? '1px' : '2px'} solid rgba(34, 197, 94, 0.7)`
+                    : `${isMobile ? '1px' : '2px'} solid ${COLORS.BORDER}`,
+                  borderRadius: isMobile ? '6px' : '10px',
+                  padding: isMobile ? '3px 7px' : '6px 10px',
                   color: viewMode === 'balance' ? '#ffffff' : COLORS.TEXT_DIM,
-                  fontSize: '13px',
+                  fontSize: isMobile ? '9px' : '13px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -3537,17 +3538,17 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     border: showTotalInvested
                       ? `1px solid ${COLORS.BORDER_HOVER}`
                       : `1px solid ${COLORS.BORDER}`,
-                    borderRadius: '8px',
-                    padding: '5px 8px',
+                    borderRadius: isMobile ? '6px' : '8px',
+                    padding: isMobile ? '3px 6px' : '5px 8px',
                     color: showTotalInvested ? COLORS.TEXT : COLORS.TEXT_MUTED,
-                    fontSize: '13px',
+                    fontSize: isMobile ? '9px' : '13px',
                     fontFamily: 'monospace',
                     fontWeight: '600',
                     cursor: 'pointer',
                     transition: 'all 0.25s ease-out',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
+                    gap: isMobile ? '4px' : '6px',
                     backdropFilter: 'blur(10px)',
                     boxShadow: showTotalInvested
                       ? '0 3px 12px rgba(255, 255, 255, 0.1)'
@@ -3566,8 +3567,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                   }}
                 >
                   <span style={{
-                    width: '10px',
-                    height: '10px',
+                    width: isMobile ? '6px' : '10px',
+                    height: isMobile ? '6px' : '10px',
                     borderRadius: '50%',
                     background: showTotalInvested
                       ? 'linear-gradient(45deg, rgba(0, 255, 136, 1), rgba(34, 197, 94, 0.9))'
@@ -3591,17 +3592,17 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                   border: showFill
                     ? `1px solid ${COLORS.BORDER_HOVER}`
                     : `1px solid ${COLORS.BORDER}`,
-                  borderRadius: '8px',
-                  padding: '5px 8px',
+                  borderRadius: isMobile ? '6px' : '8px',
+                  padding: isMobile ? '3px 6px' : '5px 8px',
                   color: showFill ? COLORS.TEXT : COLORS.TEXT_MUTED,
-                  fontSize: '13px',
+                  fontSize: isMobile ? '9px' : '13px',
                   fontFamily: 'monospace',
                   fontWeight: '600',
                   cursor: 'pointer',
                   transition: 'all 0.25s ease-out',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: isMobile ? '4px' : '6px',
                   backdropFilter: 'blur(10px)',
                   boxShadow: showFill
                     ? '0 3px 12px rgba(255, 255, 255, 0.1)'
@@ -3620,8 +3621,8 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 }}
               >
                 <span style={{
-                  width: '10px',
-                  height: '10px',
+                  width: isMobile ? '6px' : '10px',
+                  height: isMobile ? '6px' : '10px',
                   borderRadius: '50%',
                   background: showFill
                     ? 'linear-gradient(45deg, rgba(0, 255, 136, 1), rgba(34, 197, 94, 0.9))'
@@ -3651,10 +3652,10 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                   border: periodMode === 'day' 
                     ? '1px solid rgba(34, 197, 94, 0.8)' 
                     : `1px solid ${COLORS.BORDER}`,
-                  borderRadius: '8px',
-                  padding: '4px 8px',
+                  borderRadius: isMobile ? '6px' : '8px',
+                  padding: isMobile ? '2px 6px' : '4px 8px',
                   color: periodMode === 'day' ? '#ffffff' : COLORS.TEXT_DIM,
-                  fontSize: '11px',
+                  fontSize: isMobile ? '8px' : '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -3695,14 +3696,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
                       ? `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`
                       : `1px solid ${COLORS.BORDER}`,
-                  borderRadius: '8px',
-                  padding: '4px 8px',
+                  borderRadius: isMobile ? '6px' : '8px',
+                  padding: isMobile ? '2px 6px' : '4px 8px',
                   color: periodMode === 'week' 
                     ? '#ffffff' 
                     : (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter))
                       ? COLORS.TEXT_MUTED
                       : COLORS.TEXT_DIM,
-                  fontSize: '11px',
+                  fontSize: isMobile ? '8px' : '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: (!canAggregate('week') || !isAggregationCompatible('week', activeQuickFilter)) ? 'not-allowed' : 'pointer',
@@ -3744,14 +3745,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
                       ? `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`
                       : `1px solid ${COLORS.BORDER}`,
-                  borderRadius: '8px',
-                  padding: '4px 8px',
+                  borderRadius: isMobile ? '6px' : '8px',
+                  padding: isMobile ? '2px 6px' : '4px 8px',
                   color: periodMode === 'month' 
                     ? '#ffffff' 
                     : (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter))
                       ? COLORS.TEXT_MUTED
                       : COLORS.TEXT_DIM,
-                  fontSize: '11px',
+                  fontSize: isMobile ? '8px' : '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: (!canAggregate('month') || !isAggregationCompatible('month', activeQuickFilter)) ? 'not-allowed' : 'pointer',
@@ -3793,14 +3794,14 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                     : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
                       ? `1px solid ${isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'}`
                       : `1px solid ${COLORS.BORDER}`,
-                  borderRadius: '8px',
-                  padding: '4px 8px',
+                  borderRadius: isMobile ? '6px' : '8px',
+                  padding: isMobile ? '2px 6px' : '4px 8px',
                   color: periodMode === 'year' 
                     ? '#ffffff' 
                     : (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter))
                       ? COLORS.TEXT_MUTED
                       : COLORS.TEXT_DIM,
-                  fontSize: '11px',
+                  fontSize: isMobile ? '8px' : '11px',
                   fontFamily: 'monospace',
                   fontWeight: '700',
                   cursor: (!canAggregate('year') || !isAggregationCompatible('year', activeQuickFilter)) ? 'not-allowed' : 'pointer',
@@ -3832,12 +3833,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
-                gap: '6px',
+                gap: isMobile ? '4px' : '6px',
                 transition: 'all 0.3s ease'
               }}>
                 <div style={{
-                  width: '28px',
-                  height: '3px',
+                  width: isMobile ? '14px' : '28px',
+                  height: isMobile ? '2px' : '3px',
                   background: 'linear-gradient(90deg, #10b981, #22c55e, #34d399)',
                   borderRadius: '2px',
                   boxShadow: '0 0 8px rgba(34, 197, 94, 0.4)'
@@ -3845,7 +3846,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 <span style={{ 
                   color: COLORS.TEXT,
                   fontWeight: '600',
-                  fontSize: isMobile ? '11px' : '15px'
+                  fontSize: isMobile ? '9px' : '15px'
                 }}>PORTFOLIO VALUE</span>
               </div>
             )}
@@ -3854,19 +3855,19 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
-                gap: '6px',
+                gap: isMobile ? '4px' : '6px',
                 transition: 'all 0.3s ease'
               }}>
                 <div style={{
-                  width: '28px',
-                  height: '3px',
+                  width: isMobile ? '14px' : '28px',
+                  height: isMobile ? '2px' : '3px',
                   background: 'repeating-linear-gradient(to right, rgba(220, 220, 220, 0.9) 0px, rgba(220, 220, 220, 0.9) 4px, transparent 4px, transparent 8px)',
                   borderRadius: '2px'
                 }}></div>
                 <span style={{ 
                   color: COLORS.TEXT,
                   fontWeight: '600',
-                  fontSize: isMobile ? '11px' : '15px'
+                  fontSize: isMobile ? '9px' : '15px'
                 }}>COST BASIS</span>
               </div>
             )}
@@ -3875,12 +3876,12 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
-                gap: '6px',
+                gap: isMobile ? '4px' : '6px',
                 transition: 'all 0.3s ease'
               }}>
                 <div style={{
-                  width: '28px',
-                  height: '3px',
+                  width: isMobile ? '14px' : '28px',
+                  height: isMobile ? '2px' : '3px',
                   background: 'linear-gradient(90deg, #10b981, #22c55e, #34d399)',
                   borderRadius: '2px',
                   boxShadow: '0 0 8px rgba(34, 197, 94, 0.4)'
@@ -3888,7 +3889,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 <span style={{ 
                   color: COLORS.TEXT,
                   fontWeight: '600',
-                  fontSize: isMobile ? '11px' : '15px'
+                  fontSize: isMobile ? '9px' : '15px'
                 }}>TOTAL P&L</span>
               </div>
             )}
@@ -3918,15 +3919,16 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               <div style={{
                 background: COLORS.BTN_INACTIVE,
                 border: `1px solid ${COLORS.BORDER}`,
-                borderRadius: '10px',
+                borderRadius: isMobile ? '7px' : '10px',
                 padding: (() => {
                   const { defaultStartDate } = getDefaultDates();
+                  if (isMobile) return startDate && startDate !== defaultStartDate ? '4px 18px 4px 7px' : '4px 7px';
                   return startDate && startDate !== defaultStartDate ? '6px 26px 6px 10px' : '6px 10px';
                 })(),
-                height: '37px',
+                height: isMobile ? '24px' : '37px',
                 boxSizing: 'border-box',
                 color: COLORS.TEXT,
-                fontSize: '13px',
+                fontSize: isMobile ? '9px' : '13px',
                 fontFamily: 'monospace',
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -3936,7 +3938,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
-                gap: '6px',
+                gap: isMobile ? '4px' : '6px',
                 whiteSpace: 'nowrap',
                 minWidth: isMobile ? '0' : '120px',
                 userSelect: 'none',
@@ -3969,7 +3971,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 setShowEndCalendar(false);
               }}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width={isMobile ? '11' : '15'} height={isMobile ? '11' : '15'} viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                   <line x1="16" y1="2" x2="16" y2="6"></line>
                   <line x1="8" y1="2" x2="8" y2="6"></line>
@@ -4492,11 +4494,11 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
             {/* TO separador */}
             <span style={{
               color: COLORS.TEXT,
-              fontSize: '11px',
+              fontSize: isMobile ? '8px' : '11px',
               fontFamily: 'monospace',
               letterSpacing: '1.5px',
               fontWeight: '600',
-              margin: '0 4px'
+              margin: isMobile ? '0 3px' : '0 4px'
             }}>TO</span>
 
             {/* Botón fecha fin */}
@@ -4504,15 +4506,16 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               <div style={{
                 background: COLORS.BTN_INACTIVE,
                 border: `1px solid ${COLORS.BORDER}`,
-                borderRadius: '10px',
+                borderRadius: isMobile ? '7px' : '10px',
                 padding: (() => {
                   const { defaultEndDate } = getDefaultDates();
+                  if (isMobile) return endDate && endDate !== defaultEndDate ? '4px 18px 4px 7px' : '4px 7px';
                   return endDate && endDate !== defaultEndDate ? '6px 26px 6px 10px' : '6px 10px';
                 })(),
-                height: '37px',
+                height: isMobile ? '24px' : '37px',
                 boxSizing: 'border-box',
                 color: COLORS.TEXT,
-                fontSize: '13px',
+                fontSize: isMobile ? '9px' : '13px',
                 fontFamily: 'monospace',
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -4522,7 +4525,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'flex-start',
-                gap: '6px',
+                gap: isMobile ? '4px' : '6px',
                 whiteSpace: 'nowrap',
                 minWidth: isMobile ? '0' : '120px',
                 userSelect: 'none',
@@ -4555,7 +4558,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 setShowEndCalendar(false);
               }}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width={isMobile ? '11' : '15'} height={isMobile ? '11' : '15'} viewBox="0 0 24 24" fill="none" stroke="rgba(145, 145, 145, 0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
                   <line x1="16" y1="2" x2="16" y2="6"></line>
                   <line x1="8" y1="2" x2="8" y2="6"></line>
@@ -4644,13 +4647,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
           zIndex: 10
         }}>
           {[
-            { key: 'all', label: 'ALL TIME' },
-            { key: '1y', label: '1 YEAR' },
-            { key: '6m', label: '6 MONTHS' },
-            { key: '3m', label: '3 MONTHS' },
-            { key: '1m', label: '1 MONTH' },
-            { key: '1w', label: '1 WEEK' }
-          ].map(({ key, label }) => (
+            { key: 'all', label: 'ALL TIME', mobileLabel: 'ALL' },
+            { key: '1y', label: '1 YEAR', mobileLabel: '1Y' },
+            { key: '6m', label: '6 MONTHS', mobileLabel: '6M' },
+            { key: '3m', label: '3 MONTHS', mobileLabel: '3M' },
+            { key: '1m', label: '1 MONTH', mobileLabel: '1M' },
+            { key: '1w', label: '1 WEEK', mobileLabel: '1W' }
+          ].map(({ key, label, mobileLabel }) => (
             <button
               key={key}
               onClick={() => handleQuickFilter(key)}
@@ -4659,13 +4662,13 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 background: activeQuickFilter === key ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255,255,255,0.06)',
                 border: activeQuickFilter === key ? '1px solid rgba(255, 255, 255, 0.25)' : '1px solid rgba(255,255,255,0.12)',
                 borderRadius: '6px',
-                padding: isMobile ? '4px 8px' : '5px 12px',
+                padding: isMobile ? '3px 6px' : '5px 12px',
                 color: (key !== 'all' && !isFilterCompatible(key, periodMode))
                   ? 'rgba(255, 255, 255, 0.2)'
                   : activeQuickFilter === key
                     ? '#ffffff'
                     : 'rgba(255, 255, 255, 0.65)',
-                fontSize: isMobile ? '11px' : '14px',
+                fontSize: isMobile ? '9px' : '14px',
                 fontFamily: 'monospace',
                 fontWeight: activeQuickFilter === key ? '700' : '400',
                 cursor: (key !== 'all' && !isFilterCompatible(key, periodMode)) ? 'not-allowed' : 'pointer',
@@ -4674,11 +4677,11 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
                 letterSpacing: '0.2px'
               }}
             >
-              {label}
+              {isMobile ? mobileLabel : label}
             </button>
           ))}
         </div>
-        
+
         {/* Botón de reset de fechas - posicionado en margen derecho del gráfico */}
         {((!isUsingDefaultRange || isZoomed || isTooltipFrozen)) && (
           <div
@@ -4703,17 +4706,17 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               right: isMobile ? 'auto' : (sidebarOpen ? '50px' : '20px'),
               background: 'rgba(255, 255, 255, 0.06)',
               border: '1px solid rgba(255, 255, 255, 0.5)',
-              borderRadius: '8px',
-              padding: '6px 14px',
+              borderRadius: isMobile ? '6px' : '8px',
+              padding: isMobile ? '3px 8px' : '6px 14px',
               color: '#ffffff',
-              fontSize: '14px',
+              fontSize: isMobile ? '9px' : '14px',
               fontFamily: 'monospace',
               fontWeight: '500',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: isMobile ? '4px' : '8px',
               whiteSpace: 'nowrap',
               userSelect: 'none',
               zIndex: 1000,
@@ -4730,7 +4733,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
               e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
             }}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width={isMobile ? '11' : '15'} height={isMobile ? '11' : '15'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
               <path d="M3 3v5h5"/>
             </svg>
