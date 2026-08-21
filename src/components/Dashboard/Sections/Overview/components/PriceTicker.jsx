@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { formatEuropeanPrice, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
 import { getAssetLogo } from '../../../../../utils/krakenAssets';
 import { assetLabelMap } from '../../../../../utils/chartUtils';
+import { useIsMobile } from '../../../../../hooks/useIsMobile';
 
 const PriceTicker = ({ portfolioData, theme, priceTimestamp, userRefreshCount = 0, currency = { symbol: '€', multiplier: 1 } }) => {
+  const { isMobile } = useIsMobile();
   const [flash, setFlash] = useState(false);
   const prevRefreshCount = useRef(0);
 
@@ -220,15 +222,15 @@ const PriceTicker = ({ portfolioData, theme, priceTimestamp, userRefreshCount = 
     `}</style>}
     <div style={{
       height: '50px',
-      width: 'calc(100% + 16rem)',
+      width: isMobile ? '100%' : 'calc(100% + 16rem)',
       overflow: 'hidden',
       background: 'linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.03) 100%)',
       // No borderTop — la línea del header sirve de límite superior
       borderBottom: `1px solid ${theme.borderColor}`,
       position: 'absolute',
       top: '0px',
-      left: '-8rem',
-      right: '-8rem',
+      left: isMobile ? '0' : '-8rem',
+      right: isMobile ? '0' : '-8rem',
       zIndex: 10,
       display: 'flex',
       alignItems: 'center',

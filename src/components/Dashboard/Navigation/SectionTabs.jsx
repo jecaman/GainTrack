@@ -1,6 +1,8 @@
 import { useRef, useLayoutEffect, useState } from 'react';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 
 const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount = 0 }) => {
+  const { isMobile } = useIsMobile();
   const sections = [
     { id: 'overview', label: 'Overview' },
     { id: 'operations', label: 'Trades' },
@@ -44,6 +46,70 @@ const SectionTabs = ({ activeSection, onSectionChange, theme, disabledOpsCount =
   }, [activeSection]);
 
   const sectionGradient = 'linear-gradient(90deg, rgba(120,120,120,0.6) 0%, rgba(200,200,200,0.85) 100%)';
+
+  // Mobile: simple flex row instead of the fixed 900px absolute "coverflow" layout,
+  // which has no room to work with on a phone-width viewport.
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.25rem' }}>
+        {sections.map((section) => {
+          const isActive = section.id === activeSection;
+          return (
+            <div
+              key={section.id}
+              onClick={() => onSectionChange(section.id)}
+              style={{ position: 'relative', textAlign: 'center', cursor: 'pointer' }}
+            >
+              <h2 style={{
+                margin: 0,
+                position: 'relative',
+                fontSize: isActive ? '1.05rem' : '0.9rem',
+                fontWeight: isActive ? 600 : 400,
+                color: isActive ? theme.textPrimary : theme.textSecondary,
+                fontFamily: "'Inter', sans-serif",
+                letterSpacing: '0.4px',
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+              }}>
+                {section.label}
+                {section.id === 'operations' && disabledOpsCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-10px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: '13px',
+                    height: '13px',
+                    padding: '0 3px',
+                    background: '#00ff88',
+                    borderRadius: '7px',
+                    fontSize: '0.45rem',
+                    fontWeight: '800',
+                    color: '#000',
+                    fontFamily: 'monospace',
+                  }}>
+                    {disabledOpsCount}
+                  </span>
+                )}
+              </h2>
+              {isActive && (
+                <div style={{
+                  width: '28px',
+                  height: '2px',
+                  background: theme.accentPrimary || '#00FF99',
+                  boxShadow: '0 0 8px rgba(0,255,153,0.6)',
+                  margin: '4px auto 0',
+                  borderRadius: '1px',
+                }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div style={{

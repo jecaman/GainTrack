@@ -5,12 +5,14 @@ import DocumentationSection from './Sections/Docs/DocumentationSection';
 import Filters from '../Filters';
 import Header from './Header';
 import { assetLabelMap } from '../../utils/chartUtils';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 
 
 const CURRENCY_SYMBOLS = { EUR: '€', USD: '$', GBP: '£', CAD: 'CA$' };
 
 const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToForm, onReprocessCsv, onRefreshPrices, priceTimestamp, userRefreshCount = 0, isVisible = true, fiatRates = {}, initialSection }) => {
+  const { isMobile } = useIsMobile();
   const [filters, setFilters] = useState({
     dateRange: 'all',
     assetType: 'all',
@@ -553,12 +555,12 @@ const Dashboard = ({ portfolioData, isLoading, theme, onShowGainTrack, onBackToF
         hasData={!!portfolioData}
       />
 
-      {/* Main Content Area — se desplaza cuando abre el sidebar */}
+      {/* Main Content Area — se desplaza cuando abre el sidebar (el sidebar es overlay en mobile) */}
       <div style={{
         paddingTop: '0',
         paddingBottom: '0',
-        paddingLeft: '4rem',
-        paddingRight: sidebarOpen ? 'calc(350px + 4rem)' : '4rem',
+        paddingLeft: isMobile ? '1rem' : '4rem',
+        paddingRight: isMobile ? '1rem' : (sidebarOpen ? 'calc(350px + 4rem)' : '4rem'),
         transition: 'padding-right 0.45s cubic-bezier(0.4, 0, 0.2, 1)',
         overflow: 'visible'
       }}>

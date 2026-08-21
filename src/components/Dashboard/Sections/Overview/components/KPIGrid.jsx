@@ -40,11 +40,13 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
   
   // Ancho dinámico basado en el espacio real disponible
   const getCardWidthPixels = () => {
-    const dashboardPadding = 128; // 4rem * 2 del Dashboard
-    const containerMargin = sidebarOpen ? 40 : 80; // márgenes del contenedor KPIGrid
-    const sidebarWidth = sidebarOpen ? 350 : 0;
+    const isMobileWidth = windowWidth < 768;
+    const dashboardPadding = isMobileWidth ? 32 : 128; // 1rem*2 en mobile, 4rem*2 en desktop
+    const containerMargin = isMobileWidth ? 16 : (sidebarOpen ? 40 : 80); // márgenes del contenedor KPIGrid
+    const sidebarWidth = sidebarOpen && !isMobileWidth ? 350 : 0;
     const available = windowWidth - dashboardPadding - containerMargin - sidebarWidth;
-    return Math.floor(available / 5);
+    // En mobile los KPIs se apilan en columna (1 por fila), no en 5 columnas
+    return Math.floor(available / (isMobileWidth ? 1 : 5));
   };
   
   return (
@@ -588,12 +590,14 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
 
   const margins = getMargins();
 
+  const isMobileWidth = windowWidth < 768;
+
   return (
     <div style={{
       paddingTop: '40px',
-      marginLeft: '3rem',
-      marginRight: '3rem',
-      width: 'calc(100% - 6rem)',
+      marginLeft: isMobileWidth ? '0.75rem' : '3rem',
+      marginRight: isMobileWidth ? '0.75rem' : '3rem',
+      width: isMobileWidth ? 'calc(100% - 1.5rem)' : 'calc(100% - 6rem)',
     }}>
       <div style={{
         width: '100%',
@@ -601,10 +605,10 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
       }}>
         <div style={{
           display: 'flex',
-          flexDirection: windowWidth < 768 ? 'column' : 'row',
+          flexDirection: isMobileWidth ? 'column' : 'row',
           alignItems: 'stretch',
           justifyContent: 'stretch',
-          gap: '0px',
+          gap: isMobileWidth ? '10px' : '0px',
           width: '100%',
           flexWrap: 'nowrap',
         }}>
