@@ -689,18 +689,23 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             FIFO engine &middot; daily time-series &middot; NRT prices
           </span>
         </p>
-      </div>
 
-      {/* ── Contact links — bottom-left on mobile so they never collide with the bottom-right error toast ── */}
-      <div style={{
-        position: 'fixed',
-        bottom: '24px',
-        ...(isMobile ? { left: '20px' } : { right: '24px' }),
-        display: 'flex',
-        gap: '16px',
-        alignItems: 'center',
-        zIndex: 10,
-      }}>
+        {/* ── Contact links — in normal flow on mobile (fixed positioning kept overlapping
+             the footer text above on short viewports); fixed bottom-right on desktop ── */}
+        <div style={isMobile ? {
+          display: 'flex',
+          gap: '20px',
+          alignItems: 'center',
+          justifyContent: 'center',
+        } : {
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          display: 'flex',
+          gap: '16px',
+          alignItems: 'center',
+          zIndex: 10,
+        }}>
         {[
           {
             key: 'github',
@@ -738,6 +743,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
             </svg>
           </a>
         ))}
+        </div>
       </div>
 
       {/* Error toast */}

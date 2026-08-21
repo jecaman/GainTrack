@@ -4,6 +4,7 @@ import { makeOpId } from '../../../../../utils/chartUtils';
 
 // KPI Card Component - Diseño limpio sin rectangulos
 const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = false, tooltip = null, sidebarOpen = false, windowWidth = 1200 }) => {
+  const isMobileCard = windowWidth < 768;
   const [isTooltipHovered, setIsTooltipHovered] = useState(false);
   const [isCardHovered, setIsCardHovered] = useState(false);
   
@@ -18,17 +19,19 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     const thisPercentLength = changePercent ? changePercent.toString().length : 0;
     const thisContentChars = thisValueLength + thisPercentLength + (showChange ? 2 : 0); // +2 solo si hay porcentaje
     
-    if (thisContentChars === 0) return '1.8rem'; // Default si no hay contenido
-    
+    if (thisContentChars === 0) return windowWidth < 768 ? '1.3rem' : '1.8rem'; // Default si no hay contenido
+
     // Calcular tamaño de fuente para que EL CONTENIDO DE ESTE KPI quepa
     const pixelsPerChar = availableWidth / thisContentChars;
     const fontSize = Math.min(pixelsPerChar / 12, 1.8); // Cambiado de 16 a 12 para permitir fuentes más grandes
     
-    // Mínimo legible
-    const minFontSize = windowWidth < 768 ? 0.9 : 1.0;
-    
-    const finalSize = Math.max(fontSize, minFontSize);
-    
+    // Mínimo legible, y tope más bajo en mobile — con 2 columnas ya no hace falta
+    // llenar todo el ancho de la tarjeta como en desktop (eso las hacía gigantes).
+    const minFontSize = windowWidth < 768 ? 0.85 : 1.0;
+    const maxFontSize = windowWidth < 768 ? 1.3 : 1.8;
+
+    const finalSize = Math.min(Math.max(fontSize, minFontSize), maxFontSize);
+
     return `${finalSize}rem`;
   };
   
@@ -45,8 +48,8 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
     const containerMargin = isMobileWidth ? 16 : (sidebarOpen ? 40 : 80); // márgenes del contenedor KPIGrid
     const sidebarWidth = sidebarOpen && !isMobileWidth ? 350 : 0;
     const available = windowWidth - dashboardPadding - containerMargin - sidebarWidth;
-    // En mobile los KPIs se apilan en columna (1 por fila), no en 5 columnas
-    return Math.floor(available / (isMobileWidth ? 1 : 5));
+    // En mobile los KPIs van en una grid de 2 columnas, no en 5 columnas ni a ancho completo
+    return Math.floor(available / (isMobileWidth ? 2 : 5));
   };
   
   return (
@@ -58,9 +61,9 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         justifyContent: 'center', // Centrar verticalmente todo el contenido
         textAlign: 'center',
         position: 'relative',
-        flex: 1,
-        minWidth: '150px',
-        height: '110px', // Altura reducida para menos margen inferior
+        flex: isMobileCard ? '0 1 auto' : 1,
+        minWidth: isMobileCard ? '0' : '150px',
+        height: isMobileCard ? '84px' : '110px', // Altura reducida para menos margen inferior
         overflow: 'hidden', // Contener el contenido dentro del KPI
         border: `1px solid ${isCardHovered ? (theme.accentPrimary || '#00ff88') : 'transparent'}`, // Borde verde fosforito en hover
         borderRadius: '12px', // Bordes redondeados
@@ -106,13 +109,13 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
       )}
 
       {/* Título del KPI con botón tooltip integrado */}
-      <div 
+      <div
         style={{
           color: '#ffffff',
-          fontSize: '1.0rem', // Título un poco más grande
+          fontSize: isMobileCard ? '0.6rem' : '1.0rem', // Título un poco más grande
           fontWeight: '600',
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
+          letterSpacing: isMobileCard ? '0.2px' : '0.5px',
           fontFamily: 'monospace',
           textAlign: 'center',
           marginBottom: '4px', // Espacio reducido para mejor centrado
@@ -138,17 +141,17 @@ const KPICard = ({ label, value, changePercent, isPositive, theme, showChange = 
         
         {/* Tooltip esquinado arriba derecha */}
         {tooltip && (
-          <div 
+          <div
             style={{
-              width: '16px',
-              height: '16px',
+              width: isMobileCard ? '13px' : '16px',
+              height: isMobileCard ? '13px' : '16px',
               borderRadius: '50%',
               backgroundColor: isTooltipHovered ? (theme.accentPrimary || '#00ff88') : 'rgba(255, 255, 255, 0.4)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              fontSize: '10px',
+              fontSize: isMobileCard ? '8px' : '10px',
               fontWeight: '700',
               color: isTooltipHovered ? '#000000' : '#ffffff',
               fontFamily: 'monospace',
@@ -603,12 +606,17 @@ const KPIGrid = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new 
         width: '100%',
         position: 'relative',
       }}>
-        <div style={{
+        <div style={isMobileWidth ? {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: '8px',
+          width: '100%',
+        } : {
           display: 'flex',
-          flexDirection: isMobileWidth ? 'column' : 'row',
+          flexDirection: 'row',
           alignItems: 'stretch',
           justifyContent: 'stretch',
-          gap: isMobileWidth ? '10px' : '0px',
+          gap: '0px',
           width: '100%',
           flexWrap: 'nowrap',
         }}>
