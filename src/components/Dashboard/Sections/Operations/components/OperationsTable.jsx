@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { formatEuropeanCurrency, formatEuropeanNumber, formatEuropeanPercentage, formatEuropeanPrice } from '../../../../../utils/numberFormatter';
 import { getAssetLogo, KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 import { assetLabelMap, makeOpId } from '../../../../../utils/chartUtils';
+import { useIsMobile } from '../../../../../hooks/useIsMobile';
 
 const OperationsTable = ({ 
   portfolioData, 
@@ -34,6 +35,7 @@ const OperationsTable = ({
   onToggleAllOperations,
   currency = { symbol: '€', multiplier: 1 },
 }) => {
+  const { isMobile } = useIsMobile();
   const [showTooltip, setShowTooltip] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -259,8 +261,8 @@ const OperationsTable = ({
       
       {/* Título */}
       <div style={{
-        paddingLeft: '60px',
-        paddingRight: '60px',
+        paddingLeft: isMobile ? '1rem' : '60px',
+        paddingRight: isMobile ? '1rem' : '60px',
         marginBottom: '0.6rem',
       }}>
         <div style={{
@@ -278,10 +280,12 @@ const OperationsTable = ({
       {/* Fechas + columna derecha (i arriba, toggle abajo) */}
       <div style={{
         display: 'flex',
+        flexWrap: isMobile ? 'wrap' : 'nowrap',
+        gap: isMobile ? '12px' : '0',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        paddingLeft: '60px',
-        paddingRight: '60px',
+        paddingLeft: isMobile ? '1rem' : '60px',
+        paddingRight: isMobile ? '1rem' : '60px',
         marginBottom: '1.5rem',
       }}>
         {/* Badges de fecha — solo visualización */}
@@ -401,7 +405,7 @@ const OperationsTable = ({
                   background: 'none',
                   border: 'none',
                   borderBottom: active ? `2px solid ${color}` : '2px solid transparent',
-                  padding: '2px 0 4px',
+                  padding: isMobile ? '10px 0' : '2px 0 4px',
                   cursor: 'pointer',
                   fontSize: '13px',
                   fontFamily: 'monospace',
@@ -425,15 +429,17 @@ const OperationsTable = ({
 
       <div style={{ background: 'transparent', border: 'none', width: '100%', margin: '0', padding: '0' }}>
         <div style={{
-          overflow: 'visible',
-          width: 'calc(100% - 120px)',
-          marginLeft: '60px',
-          marginRight: '60px',
+          overflow: isMobile ? 'hidden' : 'visible',
+          overflowX: isMobile ? 'auto' : 'visible',
+          WebkitOverflowScrolling: 'touch',
+          width: isMobile ? 'calc(100% - 1.5rem)' : 'calc(100% - 120px)',
+          marginLeft: isMobile ? '0.75rem' : '60px',
+          marginRight: isMobile ? '0.75rem' : '60px',
           padding: '0',
           boxSizing: 'border-box'
         }}>
           <table style={{
-            width: '100%',
+            width: isMobile ? '800px' : '100%',
             tableLayout: 'fixed',
             borderCollapse: 'separate',
             borderSpacing: 0,
@@ -458,7 +464,7 @@ const OperationsTable = ({
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      padding: '2px',
+                      padding: isMobile ? '9px' : '2px',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -565,7 +571,7 @@ const OperationsTable = ({
                           background: 'none',
                           border: 'none',
                           cursor: 'pointer',
-                          padding: '2px',
+                          padding: isMobile ? '9px' : '2px',
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',

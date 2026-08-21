@@ -2,8 +2,10 @@ import { useState, useLayoutEffect, useEffect } from 'react';
 import { assetLabelMap, makeOpId } from '../../../../../utils/chartUtils';
 import { formatEuropeanNumber, formatEuropeanCurrency, formatEuropeanPercentage, formatEuropeanPrice } from '../../../../../utils/numberFormatter';
 import { getAssetLogo, KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
+import { useIsMobile } from '../../../../../hooks/useIsMobile';
 
 const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), sidebarOpen = false, currency = { symbol: '€', multiplier: 1 } }) => {
+  const { isMobile } = useIsMobile();
   const [showTooltip, setShowTooltip] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'portfolioPercent', direction: 'desc' });
   const fmt = (v) => formatEuropeanCurrency(v * currency.multiplier, currency.symbol);
@@ -333,10 +335,10 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
       <div style={{
         position: 'absolute',
         top: '-2px',
-        right: sidebarOpen ? '-16px' : '62px',
+        right: isMobile ? '0.75rem' : (sidebarOpen ? '-16px' : '62px'),
         zIndex: 1000
       }}>
-        <div 
+        <div
           style={{
             width: '20px',
             height: '20px',
@@ -363,6 +365,7 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
             e.currentTarget.style.backgroundColor = '#666666';
             e.currentTarget.style.transform = 'scale(1)';
           }}
+          onClick={() => setShowTooltip((prev) => !prev)}
         >
           i
           
@@ -404,12 +407,15 @@ const AssetLeaderboard = ({ portfolioData, theme, startDate, endDate, hiddenAsse
         margin: '0',
         padding: '0'
       }}>
-        {/* Mismos márgenes que el timeline (responsive a sidebarOpen) */}
+        {/* Mismos márgenes que el timeline (responsive a sidebarOpen); en mobile la tabla
+            es más ancha que la pantalla, así que este contenedor scrollea horizontalmente. */}
         <div style={{
-          overflow: 'visible',
-          width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)',
-          marginLeft: '60px',
-          marginRight: sidebarOpen ? '-20px' : '60px',
+          overflow: isMobile ? 'hidden' : 'visible',
+          overflowX: isMobile ? 'auto' : 'visible',
+          WebkitOverflowScrolling: 'touch',
+          width: isMobile ? 'calc(100% - 1.5rem)' : (sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)'),
+          marginLeft: isMobile ? '0.75rem' : '60px',
+          marginRight: isMobile ? '0.75rem' : (sidebarOpen ? '-20px' : '60px'),
           padding: '0',
           boxSizing: 'border-box'
         }}>

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { assetLabelMap, makeOpId } from '../../../../../utils/chartUtils';
 import { KRAKEN_ASSETS } from '../../../../../utils/krakenAssets';
 import { formatEuropeanCurrency, formatEuropeanNumber, formatEuropeanPercentage } from '../../../../../utils/numberFormatter';
+import { useIsMobile } from '../../../../../hooks/useIsMobile';
 
 const mapFrontendToBackend = (asset) => {
   const mapping = { BTC: 'XXBT', ETH: 'XETH', BITCOIN: 'XXBT', ETHEREUM: 'XETH' };
@@ -28,6 +29,7 @@ const PortfolioBar = ({
   sidebarOpen = false,
   currency = { symbol: '€', multiplier: 1 },
 }) => {
+  const { isMobile } = useIsMobile();
   const [hovered, setHovered] = useState(null);
   // X relativo al contenedor (no al viewport) para position:absolute
   const [relativeX, setRelativeX] = useState(0);
@@ -83,11 +85,14 @@ const PortfolioBar = ({
   const allocations = computeAllocations();
   if (allocations.length === 0) return null;
 
+  // Clamp so the (roughly 200px-wide) centered tooltip can't spill past the container edges
+  const clampRelativeX = (x, containerWidth) => Math.min(Math.max(x, 105), containerWidth - 105);
+
   const handleMouseMove = (e) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     // X relativo al contenedor, centrado para el tooltip
-    setRelativeX(e.clientX - rect.left);
+    setRelativeX(clampRelativeX(e.clientX - rect.left, rect.width));
   };
 
   const handleMouseLeave = () => setHovered(null);
@@ -97,9 +102,9 @@ const PortfolioBar = ({
     <div
       ref={containerRef}
       style={{
-        width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)',
-        marginLeft: '60px',
-        marginRight: sidebarOpen ? '-20px' : '60px',
+        width: isMobile ? 'calc(100% - 1.5rem)' : (sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)'),
+        marginLeft: isMobile ? '0.75rem' : '60px',
+        marginRight: isMobile ? '0.75rem' : (sidebarOpen ? '-20px' : '60px'),
         marginTop: '2rem',
         marginBottom: '0.25rem',
         position: 'relative',
@@ -137,6 +142,13 @@ const PortfolioBar = ({
                 minWidth: seg.percent > 1 ? undefined : '3px',
               }}
               onMouseEnter={() => setHovered(seg)}
+              onClick={(e) => {
+                // Tap-to-toggle fallback for touch devices, which have no hover state
+                if (!containerRef.current) return;
+                const rect = containerRef.current.getBoundingClientRect();
+                setRelativeX(clampRelativeX(e.clientX - rect.left, rect.width));
+                setHovered((prev) => (prev?.asset === seg.asset ? null : seg));
+              }}
             />
           );
         })}

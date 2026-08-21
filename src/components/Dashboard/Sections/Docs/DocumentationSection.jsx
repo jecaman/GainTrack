@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useIsMobile } from '../../../../hooks/useIsMobile';
 
 const TOC_ITEMS = [
   // ── Technical ──
@@ -525,7 +526,7 @@ const PerformanceSection = ({ s }) => (
     <h2 style={s.sectionTitle}>Performance & Scale</h2>
     <div style={s.greenBar} />
 
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+    <div className="docs-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
       {[
         {
           metric: '~50ms',
@@ -738,7 +739,7 @@ const DashboardGuideSection = ({ s }) => (
     <p style={s.body}>
       Four key performance indicators calculated using FIFO accounting:
     </p>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+    <div className="docs-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
       {[
         { name: 'Total Invested', desc: 'Sum of all buy costs minus sell proceeds (your net cash outflow)' },
         { name: 'Portfolio Value', desc: 'Current market value of all held positions at live prices' },
@@ -809,7 +810,7 @@ const SecuritySection = ({ s }) => (
       only storage is a Supabase database containing public market prices (daily closing prices),
       which is independent of any user information.
     </p>
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
+    <div className="docs-two-col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '1.2rem' }}>
       {[
         { name: 'API Keys', desc: 'Used for a single Kraken API call, then discarded. Never stored in any database, log, or file.' },
         { name: 'CSV Files', desc: 'Parsed in server memory and never saved to disk. The raw file is not accessible after processing.' },
@@ -908,6 +909,7 @@ const ContactSection = ({ s }) => (
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 const DocumentationSection = ({ theme, sidebarOpen }) => {
+  const { isMobile } = useIsMobile();
   const [activeTocId, setActiveTocId] = useState('tldr');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const sectionRefs = useRef({});
@@ -992,20 +994,21 @@ const DocumentationSection = ({ theme, sidebarOpen }) => {
   return (
     <div style={{
       display: 'flex',
-      gap: '3rem',
-      paddingLeft: '24px',
-      paddingRight: '40px',
+      flexDirection: isMobile ? 'column' : 'row',
+      gap: isMobile ? '1.5rem' : '3rem',
+      paddingLeft: isMobile ? '1rem' : '24px',
+      paddingRight: isMobile ? '1rem' : '40px',
       paddingBottom: '6rem',
       minHeight: '100vh',
     }}>
-      {/* Sticky TOC */}
+      {/* Sticky TOC — en mobile pasa a ser una lista normal apilada encima del contenido */}
       {!sidebarOpen && (
         <nav style={{
-          position: 'sticky',
+          position: isMobile ? 'static' : 'sticky',
           top: '110px',
           alignSelf: 'flex-start',
-          minWidth: '240px',
-          maxWidth: '240px',
+          minWidth: isMobile ? '100%' : '240px',
+          maxWidth: isMobile ? '100%' : '240px',
           paddingTop: '0.5rem',
           flexShrink: 0,
         }}>
@@ -1094,6 +1097,12 @@ const DocumentationSection = ({ theme, sidebarOpen }) => {
         <SecuritySection s={s} />
         <ContactSection s={s} />
       </div>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .docs-two-col { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
 
       {/* Scroll to top button */}
       {showScrollTop && (

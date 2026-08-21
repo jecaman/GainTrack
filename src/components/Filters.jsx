@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import './Filters.css';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // Asset Logo Component with multiple fallbacks
 const AssetLogo = ({ asset, size = 16 }) => {
@@ -81,6 +82,7 @@ const AssetLogo = ({ asset, size = 16 }) => {
 };
 
 const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSidebarToggle, showApplyPopup, setShowApplyPopup, startDate, endDate, onApplyToAll, popupSource, timelineQuickFilter }) => {
+  const { isMobile, windowWidth } = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
   const [showTabPulse, setShowTabPulse] = useState(false);
   const [isTabHoverDisabled, setIsTabHoverDisabled] = useState(false);
@@ -846,16 +848,18 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
   };
 
   // Create the sidebar content
+  // On mobile the panel becomes a full-width overlay instead of a fixed 320px push-panel.
+  const panelWidth = isMobile ? windowWidth : 320;
   const sidebarContent = (
     <div style={{
       position: 'fixed',
       top: 0,
       right: 0,
-      width: '360px', // 320px panel + 50px tab
+      width: `${panelWidth + 60}px`, // panel + tab
       height: '100vh',
       display: 'flex',
       flexDirection: 'row',
-      transform: isOpen ? 'translateX(0)' : 'translateX(315px)',
+      transform: isOpen ? 'translateX(0)' : `translateX(${panelWidth - 5}px)`,
       transition: 'transform 0.3s linear',
       zIndex: 999999,
       pointerEvents: 'none'
@@ -967,7 +971,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
 
         {/* Main Sidebar Panel */}
         <div className="filter-sidebar" style={{
-          width: '320px',
+          width: `${panelWidth}px`,
           height: '100vh',
           background: theme.bgElevated,
           border: `1px solid ${theme.borderColor}`,
@@ -1114,12 +1118,17 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                 if (dateRange.to) {
                                   setCalendarDate(new Date(dateRange.to));
                                 }
-                                // Calcular posición del botón
+                                // Calcular posición del botón (clamp para que no se salga del viewport)
                                 if (endCalendarButtonRef.current) {
                                   const rect = endCalendarButtonRef.current.getBoundingClientRect();
+                                  const calendarWidth = 260;
+                                  const clampedLeft = Math.min(
+                                    Math.max(8, rect.left - 220),
+                                    window.innerWidth - calendarWidth - 8
+                                  );
                                   setCalendarPosition({
                                     top: rect.bottom + 8,
-                                    left: rect.left - 220
+                                    left: clampedLeft
                                   });
                                 }
                                 setShowCustomCalendar(true);
@@ -1579,8 +1588,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   });
                                 }}
                                 style={{
-                                  width: '16px',
-                                  height: '12px',
+                                  width: isMobile ? '26px' : '16px',
+                                  height: isMobile ? '20px' : '12px',
                                   border: 'none',
                                   background: 'transparent',
                                   color: theme.textSecondary,
@@ -1614,8 +1623,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   });
                                 }}
                                 style={{
-                                  width: '16px',
-                                  height: '12px',
+                                  width: isMobile ? '26px' : '16px',
+                                  height: isMobile ? '20px' : '12px',
                                   border: 'none',
                                   background: 'transparent',
                                   color: theme.textSecondary,
@@ -1780,8 +1789,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   });
                                 }}
                                 style={{
-                                  width: '16px',
-                                  height: '12px',
+                                  width: isMobile ? '26px' : '16px',
+                                  height: isMobile ? '20px' : '12px',
                                   border: 'none',
                                   background: 'transparent',
                                   color: theme.textSecondary,
@@ -1814,8 +1823,8 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
                                   });
                                 }}
                                 style={{
-                                  width: '16px',
-                                  height: '12px',
+                                  width: isMobile ? '26px' : '16px',
+                                  height: isMobile ? '20px' : '12px',
                                   border: 'none',
                                   background: 'transparent',
                                   color: theme.textSecondary,

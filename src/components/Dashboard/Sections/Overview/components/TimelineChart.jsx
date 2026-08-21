@@ -4,6 +4,7 @@ import zoomPlugin from 'chartjs-plugin-zoom';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import { makeOpId } from '../../../../../utils/chartUtils';
+import { useIsMobile } from '../../../../../hooks/useIsMobile';
 
 // Registrar escalas y plugins
 Chart.register(TimeScale, LinearScale, PointElement, LineElement, Tooltip, Filler, zoomPlugin);
@@ -392,6 +393,7 @@ const splitLinePlugin = {
 Chart.register(hoverPlugin, hideGrayLinesPlugin, splitLinePlugin);
 
 const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), excludedOperations = new Set(), disabledOps = new Set(), showApplyPopup, setShowApplyPopup, startDate: externalStartDate, endDate: externalEndDate, buttonStartDate, buttonEndDate, setStartDate: setExternalStartDate, setEndDate: setExternalEndDate, onTimelineApplyToAll, showTimelinePopup, showTimelineClickPopup, sidebarOpen, timelineUnfreezeTooltipRef, filterSelectedPreset, isInPointClickMode, setIsInPointClickMode, onFilterReset, isApplyingFromTimeline, viewMode: viewModeProp = 'both', onViewModeChange, showTotalInvested: showTotalInvestedProp = false, onShowTotalInvestedChange, periodMode: periodModeProp = 'day', onPeriodModeChange }) => {
+  const { isMobile } = useIsMobile();
   // Constantes de estilo reutilizables
   const isDark = theme.bg === '#000000';
   const COLORS = {
@@ -3354,13 +3356,18 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       border: 'none',
       borderRadius: '0',
       boxSizing: 'border-box',
-      overflow: 'visible'
+      overflow: 'visible',
+      // El bloque de controles + gráfico es demasiado ancho para un móvil; en vez de
+      // rehacer el layout absoluto, lo hacemos scrolleable horizontalmente (igual que las tablas).
+      overflowX: isMobile ? 'auto' : 'visible',
+      WebkitOverflowScrolling: 'touch'
     }}>
       {/* Contenedor igual que AssetLeaderboard */}
       <div style={{
         background: 'transparent',
         border: 'none',
         borderRadius: '0',
+        minWidth: isMobile ? '900px' : 'auto',
         overflow: 'visible'
       }}>
         <div style={{
@@ -4594,7 +4601,7 @@ const TimelineChart = ({ portfolioData, theme, hiddenAssets = new Set(), exclude
       
 
       <div style={{
-        height: '600px',
+        height: isMobile ? '380px' : '600px',
         width: sidebarOpen ? 'calc(100% - 40px)' : 'calc(100% - 120px)',
         marginLeft: '60px',
         marginRight: sidebarOpen ? '-20px' : '60px', // Margen negativo para extender más allá del borde

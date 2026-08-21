@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import SectionTabs from './Navigation/SectionTabs';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 const Header = ({
   theme,
@@ -12,6 +13,7 @@ const Header = ({
   disabledOpsCount = 0,
   hasData = true
 }) => {
+  const { isMobile } = useIsMobile();
   const [refreshState, setRefreshState] = useState('idle');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -63,7 +65,7 @@ const Header = ({
         top: 0,
         zIndex: 10100,
         width: '100%',
-        height: '90px',
+        height: isMobile ? '68px' : '90px',
         background: '#000000',
         backdropFilter: 'blur(24px)',
         borderBottom: `1px solid ${theme.borderColor}`,
@@ -72,8 +74,8 @@ const Header = ({
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        paddingTop: '38px',   /* margen visible encima del menú */
-        paddingRight: sidebarOpen ? '350px' : '0',
+        paddingTop: isMobile ? '20px' : '38px',   /* margen visible encima del menú */
+        paddingRight: isMobile ? '0' : (sidebarOpen ? '350px' : '0'),
         transition: 'padding-right 0.45s cubic-bezier(0.4,0,0.2,1)',
         boxSizing: 'border-box',
       }}>
@@ -83,8 +85,8 @@ const Header = ({
           onClick={onBackToForm}
           style={{
             position: 'absolute',
-            left: '2.5rem',
-            bottom: '16px',
+            left: isMobile ? '0.75rem' : '2.5rem',
+            bottom: isMobile ? '10px' : '16px',
             background: 'none',
             border: 'none',
             borderBottom: '2px solid transparent',
@@ -93,7 +95,7 @@ const Header = ({
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            fontSize: '20px',
+            fontSize: isMobile ? '16px' : '20px',
             fontFamily: 'monospace',
             fontWeight: '600',
             color: '#ffffff',
@@ -103,11 +105,11 @@ const Header = ({
           onMouseEnter={(e) => { e.currentTarget.style.borderBottomColor = 'rgba(255,255,255,0.7)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.borderBottomColor = 'transparent'; }}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
           </svg>
-          Back
+          {!isMobile && 'Back'}
         </button>
 
         {/* Tabs — centro, se posicionan con paddingTop del padre */}
@@ -135,8 +137,8 @@ const Header = ({
         {/* Derecha — anclado al fondo del header (solo en overview) */}
         {hasData && activeSection === 'overview' && <div style={{
           position: 'absolute',
-          right: sidebarOpen ? '370px' : '2.5rem',
-          bottom: '16px',
+          right: isMobile ? '0.75rem' : (sidebarOpen ? '370px' : '2.5rem'),
+          bottom: isMobile ? '10px' : '16px',
           display: 'flex',
           alignItems: 'center',
           gap: '22px',
@@ -168,7 +170,7 @@ const Header = ({
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
               <path d="M3 3v5h5" />
             </svg>
-            <span style={{ fontSize: '18px', fontFamily: 'monospace', fontWeight: '600', letterSpacing: '0.5px', color: 'inherit' }}>
+            <span style={{ fontSize: isMobile ? '14px' : '18px', fontFamily: 'monospace', fontWeight: '600', letterSpacing: '0.5px', color: 'inherit' }}>
               {refreshState === 'loading' ? '···' : (priceTime || '--:--')}
             </span>
           </button>

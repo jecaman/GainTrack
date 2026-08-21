@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './GainTrackForm.css';
 import GainTrackBrand from './GainTrackBrand';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const fetchWithTimeout = (url, options = {}, timeoutMs = 30000) => {
   const controller = new AbortController();
@@ -40,6 +41,7 @@ const BackgroundPattern = React.memo(({ isDark = true }) => {
 });
 
 const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) => {
+  const { isMobile } = useIsMobile();
   const [formData, setFormData] = useState({
     apiKey: '',
     secretKey: ''
@@ -457,7 +459,7 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
                           border: 'none',
                           borderBottom: `1px solid ${theme.border}`,
                           borderRadius: '0',
-                          color: theme.textPrimary, fontSize: '12px',
+                          color: theme.textPrimary, fontSize: isMobile ? '16px' : '12px',
                           outline: 'none', transition: 'border-color 0.2s ease', boxSizing: 'border-box',
                           fontFamily: "'JetBrains Mono', monospace"
                         }}
@@ -578,8 +580,8 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '20px',
-          flexWrap: 'nowrap',
+          gap: isMobile ? '12px' : '20px',
+          flexWrap: 'wrap',
           justifyContent: 'center',
         }}>
           {[
@@ -689,11 +691,11 @@ const GainTrackForm = ({ onSubmit, isLoading, error, isVisible, onOpenDocs }) =>
         </p>
       </div>
 
-      {/* ── Contact links (bottom right) ── */}
+      {/* ── Contact links — bottom-left on mobile so they never collide with the bottom-right error toast ── */}
       <div style={{
         position: 'fixed',
         bottom: '24px',
-        right: '24px',
+        ...(isMobile ? { left: '20px' } : { right: '24px' }),
         display: 'flex',
         gap: '16px',
         alignItems: 'center',
