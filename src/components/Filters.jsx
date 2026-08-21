@@ -893,7 +893,7 @@ const Filters = ({ theme, onFiltersChange, onFilterReset, portfolioData, onSideb
             height: '120px',
             width: '60px',
             position: 'relative',
-            top: '245px',
+            top: isMobile ? '90px' : '245px',
             animation: showTabPulse ? 'tabPulse 2s ease-in-out infinite' : 'none',
             fontFamily: "'Inter', sans-serif",
             userSelect: 'none',
